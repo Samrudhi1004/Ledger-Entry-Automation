@@ -149,10 +149,11 @@ class ApproveRejectView(APIView):
 
         try:
             session = _service.review_session(
-                session_id = session_id,
-                action     = serializer.validated_data['action'],
-                supervisor = request.user,
-                remark     = serializer.validated_data.get('remark', ''),
+                session_id          = session_id,
+                action              = serializer.validated_data['action'],
+                supervisor          = request.user,
+                remark              = serializer.validated_data.get('remark', ''),
+                rejected_parameters = serializer.validated_data.get('rejected_parameters', []),
             )
             return Response(InspectionSessionSerializer(session).data)
         except Exception as e:

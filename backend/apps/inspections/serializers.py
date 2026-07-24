@@ -20,8 +20,13 @@ class RecordMeasurementSerializer(serializers.Serializer):
 
 
 class ReviewSerializer(serializers.Serializer):
-    action = serializers.ChoiceField(choices=['approve', 'reject'])
-    remark = serializers.CharField(required=False, allow_blank=True, default='')
+    action              = serializers.ChoiceField(choices=['approve', 'reject'])
+    remark              = serializers.CharField(required=False, allow_blank=True, default='')
+    rejected_parameters = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list,
+    )
 
 
 class InspectionSessionSerializer(serializers.ModelSerializer):

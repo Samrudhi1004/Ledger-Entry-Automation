@@ -15,14 +15,69 @@ export default function SessionDetailPage() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  // Per-parameter targeting state for 1ST PC #2
+  const [flaggedParams, setFlaggedParams] = useState({});
+  const [rejectRemark, setRejectRemark]   = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
   const fetchDetail = async () => {
     try {
       const res = await getSessionDetail(sessionId);
-      setSession(res.data);
+      const sData = res.data;
+      setSession(sData);
+
+      // Pre-select out-of-spec parameters by default
+      const initialFlags = {};
+      (sData.measurements || sData.parameter_summary || []).forEach((m) => {
+        if (m.status === 'out_of_spec') {
+          initialFlags[m.parameter_code] = true;
+        }
+      });
+      setFlaggedParams(initialFlags);
     } catch (err) {
       setError(err.response?.data?.error || 'Session details not found.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleParam = (pCode) => {
+    setFlaggedParams((prev) => ({
+      ...prev,
+      [pCode]: !prev[pCode],
+    }));
+  };
+
+  const handleSelectAllOOC = () => {
+    const oocFlags = {};
+    (session.measurements || session.parameter_summary || []).forEach((m) => {
+      if (m.status === 'out_of_spec') {
+        oocFlags[m.parameter_code] = true;
+      }
+    });
+    setFlaggedParams(oocFlags);
+  };
+
+  const handleRejectSelected = async () => {
+    const selectedCodes = Object.keys(flaggedParams).filter((k) => flaggedParams[k]);
+    if (selectedCodes.length === 0) {
+      alert('Please select at least one parameter to flag for 1ST PC #2 re-entry.');
+      return;
+    }
+    if (!rejectRemark.trim()) {
+      alert('Please enter a Supervisor Remark explaining why these parameter(s) are rejected.');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await reviewSession(sessionId, 'reject', rejectRemark, selectedCodes);
+      alert(`Successfully requested 1ST PC #2 retrial for parameter(s): ${selectedCodes.join(', ')}`);
+      fetchDetail();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to submit targeted rejection.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -219,12 +274,52 @@ export default function SessionDetailPage() {
           )}
         </div>
 
-        {/* Measurements List Table */}
+        {/* Measurements List Table & Targeted Rejection Control */}
         <div className="card">
-          <h3 className="section-title mb-16">
-            <span className="dot" />
-            Parameter Measurements ({measurements.length})
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 className="section-title" style={{ margin: 0 }}>
+              <span className="dot" />
+              Parameter Measurements ({measurements.length})
+            </h3>
+            {session.status === 'pending_review' && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={handleSelectAllOOC}
+                style={{ color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }}
+              >
+                ⚡ Select All Out-Of-Spec (OOC)
+              </button>
+            )}
+          </div>
+
+          {session.status === 'pending_review' && (
+            <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, padding: 14, marginBottom: 16 }}>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: 14, color: 'var(--accent-red)' }}>
+                🔍 Targeted Parameter Re-entry Request (1ST PC #2)
+              </h4>
+              <p style={{ margin: '0 0 12px 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                Check individual parameter(s) below to request re-measurement. Passed parameters remain approved and carry forward automatically.
+              </p>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Supervisor Remark (e.g. 'HS-02 Hole size out of spec. Adjust tool #2 and re-measure.')"
+                  value={rejectRemark}
+                  onChange={(e) => setRejectRemark(e.target.value)}
+                  style={{ flex: 1, padding: '8px 12px', fontSize: 13 }}
+                />
+                <button
+                  className="btn btn-danger"
+                  onClick={handleRejectSelected}
+                  disabled={actionLoading}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {actionLoading ? '⏳ Sending Alert...' : '🚨 Request 1ST PC #2 for Checked Params'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {measurements.length === 0 ? (
             <div className="empty-state">
@@ -236,6 +331,7 @@ export default function SessionDetailPage() {
               <table>
                 <thead>
                   <tr>
+                    {session.status === 'pending_review' && <th style={{ width: 40, textAlign: 'center' }}>Flag #2</th>}
                     <th>Parameter</th>
                     <th>Nominal</th>
                     <th>Lower Limit</th>
@@ -251,8 +347,20 @@ export default function SessionDetailPage() {
                 <tbody>
                   {measurements.map((m, idx) => {
                     const isOOC = m.status === 'out_of_spec';
+                    const isChecked = !!flaggedParams[m.parameter_code];
+
                     return (
                       <tr key={idx} className={isOOC ? 'row-ooc' : ''}>
+                        {session.status === 'pending_review' && (
+                          <td style={{ textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleParam(m.parameter_code)}
+                              style={{ width: 16, height: 16, cursor: 'pointer' }}
+                            />
+                          </td>
+                        )}
                         <td>
                           <div><strong>{m.parameter_code}</strong></div>
                           <div className="text-xs text-muted">{m.parameter_name}</div>

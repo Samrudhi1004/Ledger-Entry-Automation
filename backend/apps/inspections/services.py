@@ -314,6 +314,7 @@ class InspectionService:
         action: str,          # 'approve' | 'reject'
         supervisor,
         remark: str = '',
+        rejected_parameters: list = None,
     ) -> InspectionSession:
         """Supervisor approves or rejects an inspection session."""
         session = InspectionSession.objects.get(session_id=session_id)
@@ -324,6 +325,18 @@ class InspectionService:
             if action == 'approve'
             else InspectionSession.Status.REJECTED
         )
+
+        doc = self.collection.find_one({'_id': str(session_id)})
+        if action == 'reject':
+            if not rejected_parameters and doc and 'parameter_summary' in doc:
+                rejected_parameters = [
+                    p['parameter_code'] for p in doc['parameter_summary']
+                    if p.get('status') == 'out_of_spec'
+                ]
+            if not rejected_parameters and doc and 'parameter_summary' in doc:
+                rejected_parameters = [p['parameter_code'] for p in doc['parameter_summary']]
+        else:
+            rejected_parameters = []
 
         session.status            = new_status
         session.supervisor        = supervisor
@@ -336,16 +349,17 @@ class InspectionService:
         self.collection.update_one(
             {'_id': str(session_id)},
             {'$set': {
-                'status':             new_status,
-                'supervisor_id':      supervisor.id,
-                'supervisor_remark':  remark,
-                'rejection_reason':   remark if action == 'reject' else '',
-                'approved_at':        now if action == 'approve' else None,
+                'status':              new_status,
+                'supervisor_id':       supervisor.id,
+                'supervisor_remark':   remark,
+                'rejection_reason':    remark if action == 'reject' else '',
+                'rejected_parameters': rejected_parameters,
+                'approved_at':         now if action == 'approve' else None,
             }},
         )
 
         if action == 'reject':
-            self._push_rejection_alert(session, remark)
+            self._push_rejection_alert(session, remark, rejected_parameters)
         else:
             self._push_session_event(session, 'supervisor_action')
 
@@ -395,7 +409,7 @@ class InspectionService:
             },
         )
 
-    def _push_rejection_alert(self, session, remark: str):
+    def _push_rejection_alert(self, session, remark: str, rejected_parameters: list = None):
         channel_layer = get_channel_layer()
         group_name    = f"plant_{session.machine.plant_id}"
         next_trial    = min(session.trial_number + 1, 3)
@@ -411,6 +425,7 @@ class InspectionService:
                 'part_number':        session.part.part_number,
                 'operator_id':        session.operator_id,
                 'supervisor_remark':  remark,
+                'rejected_parameters': rejected_parameters or [],
                 'status':             session.status,
             },
         )

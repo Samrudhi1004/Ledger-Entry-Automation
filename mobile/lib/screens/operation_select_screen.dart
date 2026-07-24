@@ -137,6 +137,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 final currentTrial = rej['trial_number'] ?? 1;
                 final nextTrial = currentTrial + 1;
                 final remark = rej['rejection_reason'] ?? rej['supervisor_remark'] ?? 'Correction required by supervisor.';
+                final List<dynamic> rejectedParams = rej['rejected_parameters'] ?? [];
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -164,6 +165,13 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                         'Remark: "$remark"',
                         style: const TextStyle(color: Colors.white, fontSize: 13, fontStyle: FontStyle.italic),
                       ),
+                      if (rejectedParams.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Targeted Re-entry Params: ${rejectedParams.join(", ")}',
+                          style: const TextStyle(color: Colors.amberAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
@@ -179,7 +187,10 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                         onPressed: () async {
                           if (_templates.isNotEmpty) {
                             final targetTemplate = _templates.first;
-                            await provider.loadParameters(targetTemplate);
+                            await provider.loadParameters(
+                              targetTemplate,
+                              targetRejectedCodes: rejectedParams,
+                            );
                             final started = await provider.startSession(
                               trial: nextTrial,
                               parentId: rej['session_id'],

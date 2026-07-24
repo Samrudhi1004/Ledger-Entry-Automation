@@ -9,8 +9,12 @@ export const getSessionDetail = (sessionId) =>
 export const getSessions = (params = {}) =>
   api.get('/api/inspections/', { params });
 
-export const reviewSession = (sessionId, action, remark = '') =>
-  api.post(`/api/inspections/${sessionId}/review/`, { action, remark });
+export const reviewSession = (sessionId, action, remark = '', rejectedParameters = []) =>
+  api.post(`/api/inspections/${sessionId}/review/`, {
+    action,
+    remark,
+    rejected_parameters: rejectedParameters,
+  });
 
 export const supervisorOverride = (sessionId, parameterCode, value, remark = '') =>
   api.post(`/api/inspections/${sessionId}/supervisor-override/`, {

@@ -45,13 +45,17 @@ class InspectionProvider with ChangeNotifier {
     }
   }
 
-  Future<void> loadParameters(Map<String, dynamic> template) async {
+  Future<void> loadParameters(Map<String, dynamic> template, {List<dynamic>? targetRejectedCodes}) async {
     selectedTemplate = template;
     isLoading = true;
     notifyListeners();
 
     final result = await ApiService.getParameters(template['id']);
-    parameters = result;
+    if (targetRejectedCodes != null && targetRejectedCodes.isNotEmpty) {
+      parameters = result.where((p) => targetRejectedCodes.contains(p['parameter_code'])).toList();
+    } else {
+      parameters = result;
+    }
     currentParamIndex = 0;
     recordedResults.clear();
     isLoading = false;
