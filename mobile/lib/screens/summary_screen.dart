@@ -136,21 +136,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                       });
 
                       if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              success
-                                  ? 'Inspection session submitted successfully to Supervisor!'
-                                  : 'Session completed locally.',
-                            ),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
-                          (route) => false,
-                        );
+                        _showCompletionDialog(context, provider);
                       }
                     },
               style: ElevatedButton.styleFrom(
@@ -170,4 +156,139 @@ class _SummaryScreenState extends State<SummaryScreen> {
       ),
     );
   }
+
+  void _showCompletionDialog(BuildContext context, InspectionProvider provider) {
+    final results = provider.recordedResults;
+    int okCount = 0;
+    int oocCount = 0;
+
+    results.forEach((key, val) {
+      if (val['status'] == 'ok') {
+        okCount++;
+      } else {
+        oocCount++;
+      }
+    });
+
+    final templateName = provider.selectedTemplate?['name'] ??
+        'Op ${provider.selectedTemplate?['version'] ?? 10} — Inspection';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1424),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.greenAccent, width: 1.5),
+        ),
+        title: Column(
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 54),
+            const SizedBox(height: 10),
+            const Text(
+              'OPERATION UPDATED & SUBMITTED!',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              templateName,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.blueAccent, fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF131D30),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildStatCol('FILLED', '${results.length} / ${provider.parameters.length}', Colors.blueAccent),
+                    _buildStatCol('PASSED (OK)', '$okCount', Colors.greenAccent),
+                    _buildStatCol('OOC FAIL', '$oocCount', Colors.redAccent),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('FILLED MEASUREMENTS:', style: TextStyle(color: Colors.blueGrey, fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 6),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: provider.parameters.length,
+                  itemBuilder: (_, idx) {
+                    final p = provider.parameters[idx];
+                    final code = p['parameter_code'];
+                    final res = results[code];
+                    if (res == null) return const SizedBox.shrink();
+                    final isOk = res['status'] == 'ok';
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('${p['parameter_code']} (${p['parameter_name']})', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                          Row(
+                            children: [
+                              Text('${res['measured_value']} ${p['unit']}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                              const SizedBox(width: 6),
+                              Icon(isOk ? Icons.check_circle : Icons.cancel, color: isOk ? Colors.greenAccent : Colors.redAccent, size: 14),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.greenAccent,
+              foregroundColor: Colors.black,
+              minimumSize: const Size(double.infinity, 45),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+                (route) => false,
+              );
+            },
+            child: const Text('DONE / NEXT OPERATION', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCol(String title, String val, Color col) {
+    return Column(
+      children: [
+        Text(val, style: TextStyle(color: col, fontWeight: FontWeight.bold, fontSize: 16)),
+        const SizedBox(height: 2),
+        Text(title, style: const TextStyle(color: Colors.blueGrey, fontSize: 10)),
+      ],
+    );
+  }
 }
+
