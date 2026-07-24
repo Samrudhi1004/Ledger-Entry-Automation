@@ -1,0 +1,77 @@
+"""
+Models for Factory → Plant → Machine hierarchy.
+"""
+
+from django.db import models
+
+
+class Factory(models.Model):
+    """Top-level organisational unit — e.g. 'Liha Tech Plant 1'."""
+
+    name      = models.CharField(max_length=100)
+    code      = models.CharField(max_length=20, unique=True)   # e.g. FAC-01
+    location  = models.CharField(max_length=200, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table  = 'factories'
+        ordering  = ['name']
+        verbose_name_plural = 'Factories'
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+
+class Plant(models.Model):
+    """A production plant / shop floor within a factory."""
+
+    factory   = models.ForeignKey(Factory, on_delete=models.CASCADE, related_name='plants')
+    name      = models.CharField(max_length=100)
+    code      = models.CharField(max_length=20, unique=True)   # e.g. PLT-01
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'plants'
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} — {self.factory.name}"
+
+
+class Machine(models.Model):
+    """A machine on the shop floor that produces inspectable parts."""
+
+    class Status(models.TextChoices):
+        ACTIVE      = 'active',      'Active'
+        MAINTENANCE = 'maintenance', 'Under Maintenance'
+        INACTIVE    = 'inactive',    'Inactive'
+
+    plant          = models.ForeignKey(Plant, on_delete=models.CASCADE, related_name='machines')
+    name           = models.CharField(max_length=100)
+    machine_code   = models.CharField(max_length=30, unique=True)  # e.g. MCH-001
+    machine_type   = models.CharField(max_length=100, blank=True)  # e.g. CNC Lathe
+    manufacturer   = models.CharField(max_length=100, blank=True)
+    model_number   = models.CharField(max_length=100, blank=True)
+    status         = models.CharField(max_length=15, choices=Status.choices, default=Status.ACTIVE)
+
+    # QR code value — scanned by Flutter app to quickly select machine
+    qr_code        = models.CharField(max_length=100, unique=True, blank=True)
+
+    is_active  = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'machines'
+        ordering = ['machine_code']
+
+    def __str__(self):
+        return f"{self.machine_code} — {self.name} ({self.plant.name})"
+
+    def save(self, *args, **kwargs):
+        # Auto-generate QR code value if not set
+        if not self.qr_code:
+            self.qr_code = self.machine_code
+        super().save(*args, **kwargs)

@@ -1,0 +1,39 @@
+# Environment & Secrets
+.env
+*.env
+*.env.*
+
+# Python / Django
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+ENV/
+*.sqlite3
+backend/media/audio/
+backend/media/transcriptions/
+
+# Node / Frontend (React / Vite)
+node_modules/
+dashboard/node_modules/
+dashboard/dist/
+dashboard/dist-ssr/
+*.local
+
+# Flutter / Mobile
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.idea/
+mobile/build/
+mobile/.metadata
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
