@@ -117,14 +117,14 @@ class InspectionService:
         total_params   = len(parameters)
         session_id     = uuid.uuid4()
 
-        # 1. Create PostgreSQL session
+        # 1. Create PostgreSQL session using actual template inspection type
         session = InspectionSession.objects.create(
             session_id      = session_id,
             part            = part,
             machine         = machine,
             operator        = operator,
             supervisor      = supervisor,
-            inspection_type = inspection_type,
+            inspection_type = template.inspection_type,
             shift           = shift,
             total_parameters = total_params,
         )
@@ -189,13 +189,15 @@ class InspectionService:
             'part', 'machine'
         ).get(session_id=session_id)
 
-        # Fetch parameter
-        parameter = InspectionParameter.objects.get(
+        # Fetch parameter safely by part and parameter code across active templates
+        parameter = InspectionParameter.objects.filter(
             template__part=session.part,
-            template__inspection_type=session.inspection_type,
-            template__is_active=True,
             parameter_code=parameter_code,
-        )
+            template__is_active=True,
+        ).first()
+
+        if not parameter:
+            raise ValueError(f"Parameter '{parameter_code}' not found for part {session.part.part_number}.")
 
         # Validate
         result = self.validator.validate(measured_value, parameter)
