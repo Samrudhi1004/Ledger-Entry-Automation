@@ -94,6 +94,8 @@ class InspectionService:
         shift: str,
         supervisor=None,
         template_id=None,
+        trial_number: int = 1,
+        parent_session_id: str = None,
     ) -> InspectionSession:
         """
         Creates a PostgreSQL InspectionSession + initialises MongoDB document.
@@ -117,6 +119,10 @@ class InspectionService:
         total_params   = len(parameters)
         session_id     = uuid.uuid4()
 
+        parent_session = None
+        if parent_session_id:
+            parent_session = InspectionSession.objects.filter(session_id=parent_session_id).first()
+
         # 1. Create PostgreSQL session using actual template inspection type
         session = InspectionSession.objects.create(
             session_id      = session_id,
@@ -126,6 +132,8 @@ class InspectionService:
             supervisor      = supervisor,
             inspection_type = template.inspection_type,
             shift           = shift,
+            trial_number    = trial_number,
+            parent_session  = parent_session,
             total_parameters = total_params,
         )
 
@@ -140,9 +148,11 @@ class InspectionService:
             'operator_id':         operator.id,
             'operator_name':       operator.get_full_name(),
             'supervisor_id':       supervisor.id if supervisor else None,
-            'inspection_type':     inspection_type,
+            'inspection_type':     template.inspection_type,
             'shift':               shift,
             'status':              'in_progress',
+            'trial_number':        trial_number,
+            'parent_session_id':   parent_session_id,
             'started_at':          datetime.now(timezone.utc),
             'completed_at':        None,
             'measurements':        [],
@@ -303,8 +313,10 @@ class InspectionService:
         session.status            = new_status
         session.supervisor        = supervisor
         session.supervisor_remark = remark
+        if action == 'reject':
+            session.rejection_reason = remark
         session.reviewed_at       = now
-        session.save(update_fields=['status', 'supervisor', 'supervisor_remark', 'reviewed_at'])
+        session.save(update_fields=['status', 'supervisor', 'supervisor_remark', 'rejection_reason', 'reviewed_at'])
 
         self.collection.update_one(
             {'_id': str(session_id)},
@@ -312,11 +324,16 @@ class InspectionService:
                 'status':             new_status,
                 'supervisor_id':      supervisor.id,
                 'supervisor_remark':  remark,
+                'rejection_reason':   remark if action == 'reject' else '',
                 'approved_at':        now if action == 'approve' else None,
             }},
         )
 
-        self._push_session_event(session, 'supervisor_action')
+        if action == 'reject':
+            self._push_rejection_alert(session, remark)
+        else:
+            self._push_session_event(session, 'supervisor_action')
+
         return session
 
     # ── Get Full Document ─────────────────────────────────────────────────
@@ -359,5 +376,26 @@ class InspectionService:
                 'machine_code':  session.machine.machine_code,
                 'status':        session.status,
                 'has_ooc':       session.has_ooc,
+                'trial_number':  session.trial_number,
+            },
+        )
+
+    def _push_rejection_alert(self, session, remark: str):
+        channel_layer = get_channel_layer()
+        group_name    = f"plant_{session.machine.plant_id}"
+        next_trial    = min(session.trial_number + 1, 3)
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                'type':               'inspection.event',
+                'event':              'rejection_alert',
+                'session_id':         str(session.session_id),
+                'trial_number':       session.trial_number,
+                'next_trial_number':  next_trial,
+                'machine_code':       session.machine.machine_code,
+                'part_number':        session.part.part_number,
+                'operator_id':        session.operator_id,
+                'supervisor_remark':  remark,
+                'status':             session.status,
             },
         )

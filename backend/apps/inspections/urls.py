@@ -7,6 +7,7 @@ from .views import (
     PendingReviewView,
     ApproveRejectView,
     SessionListView,
+    RejectionsListView,
 )
 
 urlpatterns = [
@@ -14,6 +15,7 @@ urlpatterns = [
     path('pending/',                        PendingReviewView.as_view(),      name='pending-review'),
 
     # Operator flow
+    path('rejections/',                     RejectionsListView.as_view(),     name='rejections-list'),
     path('start/',                          StartInspectionView.as_view(),    name='inspection-start'),
     path('<str:session_id>/measure/',       RecordMeasurementView.as_view(),  name='record-measurement'),
     path('<str:session_id>/complete/',      CompleteInspectionView.as_view(), name='inspection-complete'),

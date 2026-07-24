@@ -176,9 +176,30 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       backgroundColor: const Color(0xFF080C18),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D1424),
-        title: Text(
-          'Parameter $currentIndex of $totalCount',
-          style: const TextStyle(color: Colors.white, fontSize: 16),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: provider.trialNumber == 1 ? Colors.blueAccent.withValues(alpha: 0.2) : Colors.orangeAccent.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: provider.trialNumber == 1 ? Colors.blueAccent : Colors.orangeAccent),
+              ),
+              child: Text(
+                '1ST PC #${provider.trialNumber}',
+                style: TextStyle(
+                  color: provider.trialNumber == 1 ? Colors.blueAccent : Colors.orangeAccent,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Param $currentIndex/$totalCount',
+              style: const TextStyle(color: Colors.white, fontSize: 15),
+            ),
+          ],
         ),
         actions: [
           IconButton(

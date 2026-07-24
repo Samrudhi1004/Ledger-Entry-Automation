@@ -3,11 +3,13 @@ from .models import InspectionSession
 
 
 class StartInspectionSerializer(serializers.Serializer):
-    part_number     = serializers.CharField()
-    machine_id      = serializers.IntegerField()
-    template_id     = serializers.IntegerField(required=False)
-    inspection_type = serializers.CharField(required=False, default='first_piece')
-    shift           = serializers.ChoiceField(choices=['A', 'B', 'C'], default='A')
+    part_number       = serializers.CharField()
+    machine_id        = serializers.IntegerField()
+    template_id       = serializers.IntegerField(required=False)
+    inspection_type   = serializers.CharField(required=False, default='first_piece')
+    shift             = serializers.ChoiceField(choices=['A', 'B', 'C'], default='A')
+    trial_number      = serializers.IntegerField(required=False, default=1)
+    parent_session_id = serializers.CharField(required=False, allow_null=True)
 
 
 class RecordMeasurementSerializer(serializers.Serializer):
@@ -36,6 +38,7 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
             'session_id', 'part_number', 'part_name', 'machine_code',
             'operator_name', 'supervisor_name',
             'inspection_type', 'shift', 'status',
+            'trial_number', 'parent_session', 'rejection_reason',
             'total_parameters', 'recorded_count', 'progress_percent',
             'has_ooc', 'has_critical_fail',
             'started_at', 'completed_at', 'reviewed_at',

@@ -42,12 +42,14 @@ class StartInspectionView(APIView):
 
         try:
             session = _service.create_session(
-                part            = part,
-                machine         = machine,
-                operator        = request.user,
-                inspection_type = d.get('inspection_type', 'first_piece'),
-                shift           = d.get('shift', 'A'),
-                template_id     = d.get('template_id'),
+                part              = part,
+                machine           = machine,
+                operator          = request.user,
+                inspection_type   = d.get('inspection_type', 'first_piece'),
+                shift             = d.get('shift', 'A'),
+                template_id       = d.get('template_id'),
+                trial_number      = d.get('trial_number', 1),
+                parent_session_id = d.get('parent_session_id'),
             )
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -189,3 +191,23 @@ class SessionListView(generics.ListAPIView):
                 qs = qs.filter(operator=request.user)
 
         return qs
+
+
+# ─── Operator Rejections List ─────────────────────────────────────────────
+class RejectionsListView(generics.ListAPIView):
+    """
+    GET /api/inspections/rejections/
+    Returns active rejected sessions for the operator that require corrective trial #2 or #3.
+    """
+    serializer_class   = InspectionSessionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return InspectionSession.objects.select_related(
+            'part', 'machine', 'operator', 'supervisor'
+        ).filter(
+            operator=self.request.user,
+            status=InspectionSession.Status.REJECTED,
+            trial_number__lt=3,
+        ).order_by('-reviewed_at')
+

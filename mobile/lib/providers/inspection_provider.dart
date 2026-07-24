@@ -9,6 +9,10 @@ class InspectionProvider with ChangeNotifier {
   int currentParamIndex = 0;
 
   String? sessionId;
+  int trialNumber = 1;
+  String? parentSessionId;
+  List<dynamic> activeRejections = [];
+  Map<String, dynamic>? activeRejectionNotice;
   Map<String, Map<String, dynamic>> recordedResults = {};
   bool isLoading = false;
   String? errorMessage;
@@ -19,6 +23,8 @@ class InspectionProvider with ChangeNotifier {
     selectedTemplate = null;
     parameters = [];
     currentParamIndex = 0;
+    trialNumber = 1;
+    parentSessionId = null;
     notifyListeners();
   }
 
@@ -27,6 +33,16 @@ class InspectionProvider with ChangeNotifier {
     selectedTemplate = null;
     parameters = [];
     notifyListeners();
+  }
+
+  Future<void> fetchPendingRejections() async {
+    try {
+      final list = await ApiService.getRejections();
+      activeRejections = list;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error fetching rejections: $e');
+    }
   }
 
   Future<void> loadParameters(Map<String, dynamic> template) async {
@@ -42,12 +58,19 @@ class InspectionProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> startSession({String shift = 'A', String inspectionType = 'first_piece'}) async {
+  Future<bool> startSession({
+    String shift = 'A',
+    String inspectionType = 'first_piece',
+    int trial = 1,
+    String? parentId,
+  }) async {
     if (selectedPart == null || selectedMachine == null || selectedTemplate == null) {
       return false;
     }
 
     isLoading = true;
+    trialNumber = trial;
+    parentSessionId = parentId;
     notifyListeners();
 
     final result = await ApiService.startSession(
@@ -56,6 +79,8 @@ class InspectionProvider with ChangeNotifier {
       templateId: selectedTemplate!['id'],
       inspectionType: inspectionType,
       shift: shift,
+      trialNumber: trial,
+      parentSessionId: parentId,
     );
 
     isLoading = false;

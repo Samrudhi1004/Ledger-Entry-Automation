@@ -112,6 +112,8 @@ class ApiService {
     required int templateId,
     required String inspectionType,
     required String shift,
+    int trialNumber = 1,
+    String? parentSessionId,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/inspections/start/'),
@@ -122,6 +124,8 @@ class ApiService {
         'template_id': templateId,
         'inspection_type': inspectionType,
         'shift': shift,
+        'trial_number': trialNumber,
+        'parent_session_id': parentSessionId,
       }),
     );
 
@@ -129,6 +133,21 @@ class ApiService {
       return jsonDecode(response.body);
     }
     return null;
+  }
+
+  // Fetch active supervisor rejections for operator
+  static Future<List<dynamic>> getRejections() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/inspections/rejections/'),
+      headers: await _headers(),
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      if (decoded is List) return decoded;
+      if (decoded is Map && decoded['results'] != null) return decoded['results'];
+    }
+    return [];
   }
 
   // 7. Transcribe Voice Audio File

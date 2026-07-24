@@ -42,6 +42,10 @@ export default function PendingReviewPage({ onPendingCountChange }) {
 
   const handleReview = async (action) => {
     if (!selectedSession) return;
+    if (action === 'reject' && !remark.trim()) {
+      alert('Please enter a Supervisor Remark explaining why this trial is rejected and what machine offset needs adjustment.');
+      return;
+    }
     setActionLoading(true);
     try {
       await reviewSession(selectedSession.session_id, action, remark);
@@ -56,7 +60,7 @@ export default function PendingReviewPage({ onPendingCountChange }) {
 
   return (
     <>
-      <Header title="Pending Reviews" subtitle="Approve or reject completed inspection sheets" />
+      <Header title="Pending Reviews" subtitle="Approve or reject completed piece-wise inspection sheets" />
 
       <div className="page-content bg-gradient-animated">
         <div className="card">
@@ -82,6 +86,7 @@ export default function PendingReviewPage({ onPendingCountChange }) {
               <table>
                 <thead>
                   <tr>
+                    <th>Trial Tag</th>
                     <th>Session ID</th>
                     <th>Part Number</th>
                     <th>Machine</th>
@@ -100,6 +105,11 @@ export default function PendingReviewPage({ onPendingCountChange }) {
                       className={s.has_ooc ? 'row-ooc clickable-row' : 'clickable-row'}
                       onClick={() => navigate(`/inspections/${s.session_id}`)}
                     >
+                      <td>
+                        <span className={`badge ${s.trial_number === 1 ? 'badge-primary' : s.trial_number === 2 ? 'badge-warning' : 'badge-danger'}`}>
+                          1ST PC #{s.trial_number ?? 1}
+                        </span>
+                      </td>
                       <td className="font-mono">{shortId(s.session_id)}</td>
                       <td>{s.part?.part_number ?? s.part_number}</td>
                       <td className="font-mono">{s.machine?.machine_code ?? s.machine_code}</td>
@@ -132,7 +142,7 @@ export default function PendingReviewPage({ onPendingCountChange }) {
 
       {selectedSession && (
         <Modal
-          title={`Review Session ${shortId(selectedSession.session_id)}`}
+          title={`Review Session — 1ST PC #${selectedSession.trial_number ?? 1} (${shortId(selectedSession.session_id)})`}
           onClose={() => setSelectedSession(null)}
           footer={
             <>
@@ -142,7 +152,7 @@ export default function PendingReviewPage({ onPendingCountChange }) {
                 onClick={() => handleReview('reject')}
                 disabled={actionLoading}
               >
-                Reject Sheet
+                Reject & Request 1ST PC #{Math.min((selectedSession.trial_number || 1) + 1, 3)}
               </button>
               <button
                 id="review-approve-btn"
@@ -157,38 +167,45 @@ export default function PendingReviewPage({ onPendingCountChange }) {
         >
           <div className="info-row mb-16">
             <div className="info-item">
+              <span className="info-label">Trial Phase</span>
+              <span className="info-value text-blue font-bold">1ST PC #{selectedSession.trial_number ?? 1}</span>
+            </div>
+            <div className="info-item">
               <span className="info-label">Part</span>
-              <span className="info-value">{selectedSession.part?.part_number}</span>
+              <span className="info-value">{selectedSession.part?.part_number ?? selectedSession.part_number}</span>
             </div>
             <div className="info-item">
               <span className="info-label">Machine</span>
-              <span className="info-value font-mono">{selectedSession.machine?.machine_code}</span>
+              <span className="info-value font-mono">{selectedSession.machine?.machine_code ?? selectedSession.machine_code}</span>
             </div>
             <div className="info-item">
               <span className="info-label">Operator</span>
-              <span className="info-value">{selectedSession.operator?.username}</span>
+              <span className="info-value">{selectedSession.operator?.username ?? selectedSession.operator_name}</span>
             </div>
             <div className="info-item">
               <span className="info-label">OOC Issues</span>
               <span className="info-value">
                 {selectedSession.has_ooc ? (
-                  <span className="text-red font-bold">Yes</span>
+                  <span className="text-red font-bold">Yes (OOC)</span>
                 ) : (
-                  <span className="text-green">No</span>
+                  <span className="text-green">No (OK)</span>
                 )}
               </span>
             </div>
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="review-remark">Supervisor Remarks</label>
+            <label className="form-label" htmlFor="review-remark">Supervisor Rejection / Approval Remarks</label>
             <textarea
               id="review-remark"
               className="form-textarea"
-              placeholder="Add comments on why this inspection is approved or rejected..."
+              placeholder="e.g. 'TL-01 is out of spec by +0.3mm. Adjust Z-axis offset and perform 1ST PC #2 trial.'"
               value={remark}
               onChange={(e) => setRemark(e.target.value)}
             />
+            <small style={{ color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+              ⚠️ Rejecting will trigger a real-time WebSocket alert on the Operator&apos;s phone to unlock 1ST PC #{Math.min((selectedSession.trial_number || 1) + 1, 3)}.
+            </small>
           </div>
         </Modal>
       )}
