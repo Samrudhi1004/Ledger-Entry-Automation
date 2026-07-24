@@ -118,6 +118,21 @@ class InspectionProvider with ChangeNotifier {
     }
   }
 
+  void goToParameter(int index) {
+    if (index >= 0 && index < parameters.length) {
+      currentParamIndex = index;
+      notifyListeners();
+    }
+  }
+
+  bool isParamFilled(String code) => recordedResults.containsKey(code);
+
+  String? getParamStatus(String code) => recordedResults[code]?['status'];
+
+  int get filledCount => recordedResults.length;
+
+  int get remainingCount => parameters.length - recordedResults.length;
+
   Future<bool> completeSession() async {
     if (sessionId == null) return false;
 
@@ -130,3 +145,4 @@ class InspectionProvider with ChangeNotifier {
     return success;
   }
 }
+

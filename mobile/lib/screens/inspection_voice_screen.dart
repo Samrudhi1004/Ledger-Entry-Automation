@@ -208,7 +208,122 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                 color: Colors.blueAccent,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+
+            // Filled / Remaining Header Counter Row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      'FILLED: ${provider.filledCount} / $totalCount',
+                      style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Icon(Icons.hourglass_top_rounded, color: Colors.amberAccent, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      'REMAINING: ${provider.remainingCount}',
+                      style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            // Horizontal Parameter Checklist Bar with Small Filled/Unfilled Icons
+            SizedBox(
+              height: 52,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: provider.parameters.length,
+                itemBuilder: (context, idx) {
+                  final item = provider.parameters[idx];
+                  final code = item['parameter_code'] ?? 'P${idx + 1}';
+                  final isFilled = provider.isParamFilled(code);
+                  final status = provider.getParamStatus(code);
+                  final isSelected = idx == provider.currentParamIndex;
+
+                  Color chipBg = const Color(0xFF0D1424);
+                  Color borderCol = const Color(0xFF1E293B);
+                  IconData statusIcon = Icons.radio_button_unchecked_rounded;
+                  Color iconCol = Colors.blueGrey;
+                  String statusLabel = 'Unfilled';
+
+                  if (isFilled) {
+                    if (status == 'ok') {
+                      chipBg = Colors.green.withValues(alpha: 0.15);
+                      borderCol = Colors.greenAccent;
+                      statusIcon = Icons.check_circle_rounded;
+                      iconCol = Colors.greenAccent;
+                      statusLabel = 'Filled (OK)';
+                    } else {
+                      chipBg = Colors.red.withValues(alpha: 0.15);
+                      borderCol = Colors.redAccent;
+                      statusIcon = Icons.cancel_rounded;
+                      iconCol = Colors.redAccent;
+                      statusLabel = 'Filled (OOC)';
+                    }
+                  }
+
+                  if (isSelected) {
+                    borderCol = Colors.blueAccent;
+                  }
+
+                  return GestureDetector(
+                    onTap: () {
+                      provider.goToParameter(idx);
+                      setState(() {
+                        _lastResult = null;
+                      });
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: chipBg,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: borderCol, width: isSelected ? 2 : 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(statusIcon, color: iconCol, size: 18),
+                          const SizedBox(width: 6),
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                code,
+                                style: TextStyle(
+                                  color: isSelected ? Colors.white : Colors.white70,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              Text(
+                                statusLabel,
+                                style: TextStyle(color: iconCol, fontSize: 9, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+
 
             // Parameter Card Header
             Container(
