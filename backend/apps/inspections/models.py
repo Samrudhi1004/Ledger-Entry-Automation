@@ -39,12 +39,16 @@ class InspectionSession(models.Model):
     )
 
     # Session metadata
-    inspection_type  = models.CharField(max_length=20)  # first_piece / hourly / final
-    shift            = models.CharField(max_length=1, choices=Shift.choices, default=Shift.A)
-    status           = models.CharField(max_length=20, choices=Status.choices, default=Status.IN_PROGRESS)
-    trial_number     = models.IntegerField(default=1)   # 1 for 1st PC #1, 2 for 1st PC #2, 3 for 1st PC #3
-    parent_session   = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='child_trials')
-    rejection_reason = models.TextField(blank=True)
+    inspection_type            = models.CharField(max_length=20)  # first_piece / hourly / final
+    shift                      = models.CharField(max_length=1, choices=Shift.choices, default=Shift.A)
+    status                     = models.CharField(max_length=20, choices=Status.choices, default=Status.IN_PROGRESS)
+    trial_number               = models.IntegerField(default=1)   # 1 for 1st PC #1, 2 for 1st PC #2, 3 for 1st PC #3
+    parent_session             = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='child_trials')
+    rejection_reason           = models.TextField(blank=True)
+    hourly_unlocked_slot       = models.IntegerField(default=0)   # 0 = setup, 1..8 for 1/HR..8/HR
+    shift_start_time           = models.DateTimeField(null=True, blank=True)
+    supervisor_override_active = models.BooleanField(default=False)
+    is_setup_approved          = models.BooleanField(default=False)
 
     # Quick flags (avoid expensive MongoDB lookups for dashboards)
     total_parameters  = models.PositiveIntegerField(default=0)

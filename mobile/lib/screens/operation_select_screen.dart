@@ -201,8 +201,79 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
 
             const SizedBox(height: 20),
             const Text(
-              'SELECT PROCESS OPERATION TO INSPECT',
+              'HOURLY IN-PROCESS INSPECTION SLOTS (1/HR - 8/HR)',
               style: TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+            ),
+            const SizedBox(height: 10),
+
+            // Horizontal Hourly Slots Strip
+            SizedBox(
+              height: 52,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: 8,
+                itemBuilder: (context, index) {
+                  final slotNum = index + 1;
+                  final isOpen = slotNum == 1; // 1/HR is open, others time-locked for demo
+
+                  return GestureDetector(
+                    onTap: () {
+                      if (!isOpen) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('🔒 Slot $slotNum/HR is time-locked. Opens in ${slotNum * 60} mins.'),
+                            backgroundColor: Colors.orangeAccent,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('🟢 Slot $slotNum/HR Active. Perform hourly inspection.'),
+                            backgroundColor: Colors.green,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isOpen ? Colors.greenAccent.withValues(alpha: 0.15) : const Color(0xFF0D1424),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isOpen ? Colors.greenAccent : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isOpen ? Icons.play_circle_fill_rounded : Icons.lock_clock_rounded,
+                            color: isOpen ? Colors.greenAccent : Colors.blueGrey,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '$slotNum/HR',
+                            style: TextStyle(
+                              color: isOpen ? Colors.white : Colors.blueGrey,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            const SizedBox(height: 20),
+            const Text(
+              'SELECT PROCESS OPERATION TO INSPECT',
+              style: TextStyle(color: TextStyle(color: Colors.blueGrey).color, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
             ),
             const SizedBox(height: 12),
 

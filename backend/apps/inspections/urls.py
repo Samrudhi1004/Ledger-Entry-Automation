@@ -8,11 +8,15 @@ from .views import (
     ApproveRejectView,
     SessionListView,
     RejectionsListView,
+    SupervisorOverrideView,
+    HourlyStatusView,
 )
 
 urlpatterns = [
     # Supervisor flow
     path('pending/',                        PendingReviewView.as_view(),      name='pending-review'),
+    path('<str:session_id>/supervisor-override/', SupervisorOverrideView.as_view(), name='supervisor-override'),
+    path('<str:session_id>/hourly-status/', HourlyStatusView.as_view(),      name='hourly-status'),
 
     # Operator flow
     path('rejections/',                     RejectionsListView.as_view(),     name='rejections-list'),

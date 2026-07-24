@@ -211,3 +211,53 @@ class RejectionsListView(generics.ListAPIView):
             trial_number__lt=3,
         ).order_by('-reviewed_at')
 
+
+# ─── Supervisor 3rd Trial Direct Override ─────────────────────────────────
+class SupervisorOverrideView(APIView):
+    """
+    POST /api/inspections/<session_id>/supervisor-override/
+    Allows Supervisor to directly enter/correct a parameter reading on 1ST PC #3.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, session_id):
+        if not (request.user.is_supervisor or request.user.is_staff):
+            return Response({'error': 'Only supervisors can perform direct overrides.'}, status=status.HTTP_403_FORBIDDEN)
+
+        parameter_code = request.data.get('parameter_code')
+        override_value = request.data.get('measured_value')
+        remark         = request.data.get('remark', '')
+
+        if not parameter_code or override_value is None:
+            return Response({'error': 'parameter_code and measured_value are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            val = float(override_value)
+            res = _service.supervisor_override_measurement(
+                session_id=session_id,
+                parameter_code=parameter_code,
+                override_value=val,
+                supervisor=request.user,
+                remark=remark,
+            )
+            return Response(res, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ─── Hourly Time-Lock Status ──────────────────────────────────────────────
+class HourlyStatusView(APIView):
+    """
+    GET /api/inspections/<session_id>/hourly-status/
+    Returns open/locked/overdue status for hourly slots 1/HR through 8/HR.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, session_id):
+        try:
+            res = _service.get_hourly_status(session_id)
+            return Response(res, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+

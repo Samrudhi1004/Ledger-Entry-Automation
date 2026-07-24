@@ -409,90 +409,142 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
 
             const SizedBox(height: 24),
 
-            // Voice Capture Input Section
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0D1424),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF1E293B)),
-              ),
-              child: Column(
-                children: [
-                  const Text('VOICE / MANUAL INPUT', style: TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
+            // Voice Capture Input / Locked Section
+            Builder(
+              builder: (context) {
+                final isFilled = provider.isParamFilled(param['parameter_code']);
+                final recorded = provider.recordedResults[param['parameter_code']];
 
-                  // Big Mic Button for Live Speech Recording
-                  GestureDetector(
-                    onTap: _isProcessing ? null : _toggleVoiceRecording,
-                    child: Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _isRecording
-                            ? Colors.redAccent
-                            : (_isProcessing ? Colors.amber : Colors.blueAccent),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (_isRecording ? Colors.redAccent : Colors.blueAccent).withValues(alpha: 0.4),
-                            blurRadius: 20,
-                            spreadRadius: 4,
-                          )
-                        ],
-                      ),
-                      child: Icon(
-                        _isRecording
-                            ? Icons.stop_rounded
-                            : (_isProcessing ? Icons.sync_rounded : Icons.mic_rounded),
-                        size: 48,
-                        color: Colors.white,
-                      ),
+                if (isFilled && recorded != null) {
+                  return Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.greenAccent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.6)),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _isRecording
-                        ? 'Recording... Tap to Stop & Validate'
-                        : (_isProcessing ? 'Processing Speech...' : 'Tap Mic to Speak Reading'),
-                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 20),
+                    child: Column(
+                      children: [
+                        const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.lock_rounded, color: Colors.greenAccent, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'VALUE SUBMITTED & LOCKED',
+                              style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Recorded Reading: ${recorded['measured_value'] ?? recorded['value']} ${param['unit']}',
+                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Status: ${(recorded['status'] ?? 'OK').toString().toUpperCase()}',
+                          style: TextStyle(
+                            color: (recorded['status'] == 'out_of_spec') ? Colors.redAccent : Colors.greenAccent,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Overwriting is prohibited. Proceed to next parameter.',
+                          style: TextStyle(color: Colors.blueGrey, fontSize: 11, fontStyle: FontStyle.italic),
+                        ),
+                      ],
+                    ),
+                  );
+                }
 
-                  // Manual Text Input Fallback
-                  Row(
+                return Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D1424),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFF1E293B)),
+                  ),
+                  child: Column(
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _inputController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Or type value manually...',
-                            hintStyle: const TextStyle(color: Colors.blueGrey),
-                            filled: true,
-                            fillColor: const Color(0xFF131D30),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide.none,
+                      const Text('VOICE / MANUAL INPUT', style: TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 16),
+
+                      // Big Mic Button for Live Speech Recording
+                      GestureDetector(
+                        onTap: _isProcessing ? null : _toggleVoiceRecording,
+                        child: Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _isRecording
+                                ? Colors.redAccent
+                                : (_isProcessing ? Colors.amber : Colors.blueAccent),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (_isRecording ? Colors.redAccent : Colors.blueAccent).withValues(alpha: 0.4),
+                                blurRadius: 20,
+                                spreadRadius: 4,
+                              )
+                            ],
+                          ),
+                          child: Icon(
+                            _isRecording
+                                ? Icons.stop_rounded
+                                : (_isProcessing ? Icons.sync_rounded : Icons.mic_rounded),
+                            size: 48,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _isRecording
+                            ? 'Recording... Tap to Stop & Validate'
+                            : (_isProcessing ? 'Processing Speech...' : 'Tap Mic to Speak Reading'),
+                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Manual Text Input Fallback
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _inputController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                hintText: 'Or type value manually...',
+                                hintStyle: const TextStyle(color: Colors.blueGrey),
+                                filled: true,
+                                fillColor: const Color(0xFF131D30),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              onSubmitted: (val) => _submitSpokenOrTypedValue(val),
                             ),
                           ),
-                          onSubmitted: (val) => _submitSpokenOrTypedValue(val),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        onPressed: () => _submitSpokenOrTypedValue(_inputController.text),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text('CONFIRM', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            onPressed: () => _submitSpokenOrTypedValue(_inputController.text),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blueAccent,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: const Text('CONFIRM', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
 
             const SizedBox(height: 20),

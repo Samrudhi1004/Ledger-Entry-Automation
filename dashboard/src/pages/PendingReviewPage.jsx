@@ -4,7 +4,8 @@ import Header from '../components/layout/Header';
 import Badge from '../components/common/Badge';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Modal from '../components/common/Modal';
-import { getPendingSessions, reviewSession } from '../api/inspections';
+import InspectionGridSheet from '../components/inspection/InspectionGridSheet';
+import { getPendingSessions, getSessionDetail, reviewSession } from '../api/inspections';
 import { formatDateTime, shortId } from '../utils/formatters';
 
 export default function PendingReviewPage({ onPendingCountChange }) {
@@ -12,6 +13,7 @@ export default function PendingReviewPage({ onPendingCountChange }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [selectedSession, setSelectedSession] = useState(null);
+  const [sessionDetail, setSessionDetail]     = useState(null);
   const [remark, setRemark]     = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -35,9 +37,15 @@ export default function PendingReviewPage({ onPendingCountChange }) {
     fetchPending();
   }, []);
 
-  const handleOpenReview = (session) => {
+  const handleOpenReview = async (session) => {
     setSelectedSession(session);
     setRemark('');
+    try {
+      const res = await getSessionDetail(session.session_id);
+      setSessionDetail(res.data);
+    } catch {
+      setSessionDetail(session);
+    }
   };
 
   const handleReview = async (action) => {
@@ -165,33 +173,8 @@ export default function PendingReviewPage({ onPendingCountChange }) {
             </>
           }
         >
-          <div className="info-row mb-16">
-            <div className="info-item">
-              <span className="info-label">Trial Phase</span>
-              <span className="info-value text-blue font-bold">1ST PC #{selectedSession.trial_number ?? 1}</span>
-            </div>
-            <div className="info-item">
-              <span className="info-label">Part</span>
-              <span className="info-value">{selectedSession.part?.part_number ?? selectedSession.part_number}</span>
-            </div>
-            <div className="info-item">
-              <span className="info-label">Machine</span>
-              <span className="info-value font-mono">{selectedSession.machine?.machine_code ?? selectedSession.machine_code}</span>
-            </div>
-            <div className="info-item">
-              <span className="info-label">Operator</span>
-              <span className="info-value">{selectedSession.operator?.username ?? selectedSession.operator_name}</span>
-            </div>
-            <div className="info-item">
-              <span className="info-label">OOC Issues</span>
-              <span className="info-value">
-                {selectedSession.has_ooc ? (
-                  <span className="text-red font-bold">Yes (OOC)</span>
-                ) : (
-                  <span className="text-green">No (OK)</span>
-                )}
-              </span>
-            </div>
+          <div className="mb-16">
+            <InspectionGridSheet session={sessionDetail || selectedSession} onUpdate={() => handleOpenReview(selectedSession)} />
           </div>
 
           <div className="form-group">

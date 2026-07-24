@@ -209,6 +209,21 @@ class InspectionService:
         if not parameter:
             raise ValueError(f"Parameter '{parameter_code}' not found for part {session.part.part_number}.")
 
+        # Check single-entry lock in MongoDB
+        doc = self.collection.find_one({'_id': str(session_id)})
+        if doc and 'measurements' in doc:
+            for m in doc['measurements']:
+                if m.get('parameter_code') == parameter_code:
+                    raise ValueError(f"Parameter '{parameter_code}' measurement is locked. Cannot re-enter once submitted.")
+
+        # On Trial #2, block entry if parameter passed in Trial #1
+        if session.trial_number == 2 and session.parent_session:
+            parent_doc = self.collection.find_one({'_id': str(session.parent_session.session_id)})
+            if parent_doc and 'parameter_summary' in parent_doc:
+                for p in parent_doc['parameter_summary']:
+                    if p.get('parameter_code') == parameter_code and p.get('status') == 'ok':
+                        raise ValueError(f"Parameter '{parameter_code}' passed in 1ST PC #1 and is locked.")
+
         # Validate
         result = self.validator.validate(measured_value, parameter)
 
@@ -399,3 +414,81 @@ class InspectionService:
                 'status':             session.status,
             },
         )
+
+    # ── Supervisor 3rd Trial Override ─────────────────────────────────────
+    def supervisor_override_measurement(
+        self,
+        session_id: str,
+        parameter_code: str,
+        override_value: float,
+        supervisor,
+        remark: str = '',
+    ) -> dict:
+        """Allows Supervisor direct override/correction for 1ST PC #3 (3rd Trial Chance)."""
+        session = InspectionSession.objects.get(session_id=session_id)
+        if session.trial_number != 3 and not session.supervisor_override_active:
+            raise ValueError("Supervisor direct override is only permitted for 1ST PC #3 (3rd Trial Chance).")
+
+        parameter = InspectionParameter.objects.filter(
+            template__part=session.part,
+            parameter_code=parameter_code,
+            template__is_active=True,
+        ).first()
+        if not parameter:
+            raise ValueError(f"Parameter '{parameter_code}' not found.")
+
+        result = self.validator.validate(override_value, parameter)
+
+        # Update MongoDB document parameter_summary & measurements
+        now = datetime.now(timezone.utc)
+        self.collection.update_one(
+            {'_id': str(session_id), 'parameter_summary.parameter_code': parameter_code},
+            {'$set': {
+                'parameter_summary.$.measured_value':       override_value,
+                'parameter_summary.$.status':               result.status,
+                'parameter_summary.$.override_by_supervisor': True,
+                'parameter_summary.$.supervisor_id':         supervisor.id,
+                'parameter_summary.$.supervisor_remark':     remark,
+                'parameter_summary.$.updated_at':            now,
+            }},
+        )
+
+        session.has_ooc = result.status == 'out_of_spec'
+        session.supervisor_override_active = True
+        session.save(update_fields=['has_ooc', 'supervisor_override_active'])
+
+        self._push_session_event(session, 'supervisor_override')
+        return {
+            'status': 'success',
+            'parameter_code': parameter_code,
+            'measured_value': override_value,
+            'result_status': result.status,
+        }
+
+    # ── Hourly Time-Lock Management ───────────────────────────────────────
+    def get_hourly_status(self, session_id: str) -> dict:
+        """Returns time-locked status for hourly slots 1/HR through 8/HR."""
+        session = InspectionSession.objects.get(session_id=session_id)
+        now = datetime.now(timezone.utc)
+        start = session.shift_start_time or session.started_at
+        elapsed_minutes = (now - start).total_seconds() / 60.0
+
+        slots = []
+        for i in range(1, 9):
+            unlock_minute = (i - 1) * 60  # 1/HR opens at 0m, 2/HR at 60m...
+            is_unlocked = elapsed_minutes >= unlock_minute
+            is_overdue  = elapsed_minutes >= (unlock_minute + 75)  # 15m grace period
+
+            slots.append({
+                'slot':          f"{i}/HR",
+                'slot_number':   i,
+                'is_unlocked':   is_unlocked,
+                'is_overdue':    is_overdue,
+                'unlock_minute': unlock_minute,
+            })
+
+        return {
+            'session_id':      str(session.session_id),
+            'elapsed_minutes': round(elapsed_minutes, 1),
+            'slots':           slots,
+        }

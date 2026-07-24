@@ -11,3 +11,10 @@ export const getSessions = (params = {}) =>
 
 export const reviewSession = (sessionId, action, remark = '') =>
   api.post(`/api/inspections/${sessionId}/review/`, { action, remark });
+
+export const supervisorOverride = (sessionId, parameterCode, value, remark = '') =>
+  api.post(`/api/inspections/${sessionId}/supervisor-override/`, {
+    parameter_code: parameterCode,
+    measured_value: value,
+    remark,
+  });
