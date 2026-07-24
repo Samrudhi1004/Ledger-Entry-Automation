@@ -273,7 +273,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
             const SizedBox(height: 20),
             const Text(
               'SELECT PROCESS OPERATION TO INSPECT',
-              style: TextStyle(color: TextStyle(color: Colors.blueGrey).color, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+              style: TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
             ),
             const SizedBox(height: 12),
 
