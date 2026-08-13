@@ -11,7 +11,9 @@ export default function InspectionGridSheet({ session, onUpdate }) {
 
   const trialNum = session.trial_number ?? 1;
   const isTrial3 = trialNum === 3;
-  const parameters = session.parameter_summary ?? [];
+  const parameters = (session.parameter_summary && session.parameter_summary.length > 0)
+    ? session.parameter_summary
+    : (session.parameters && session.parameters.length > 0 ? session.parameters : (session.measurements || []));
   const measurements = session.measurements ?? [];
 
   // Group measurements by parameter_code
@@ -69,8 +71,7 @@ export default function InspectionGridSheet({ session, onUpdate }) {
         <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: 'rgba(255,255,255,0.03)', textAlign: 'center' }}>
-              <th style={{ textAlign: 'left', padding: '10px' }}>CODE</th>
-              <th style={{ textAlign: 'left', padding: '10px' }}>PARAMETER NAME</th>
+              <th style={{ textAlign: 'left', padding: '10px' }}>PARAMETER</th>
               <th style={{ padding: '10px' }}>SPECIFICATION</th>
               <th style={{ padding: '10px', background: 'rgba(59, 130, 246, 0.1)' }}>1ST PC #1</th>
               <th style={{ padding: '10px', background: 'rgba(245, 158, 11, 0.1)' }}>1ST PC #2</th>
@@ -90,19 +91,26 @@ export default function InspectionGridSheet({ session, onUpdate }) {
               const pCode = p.parameter_code;
               const pMeas = measurementMap[pCode] || [];
               const isOOC = p.status === 'out_of_spec';
-              const val = p.measured_value ?? (pMeas.length > 0 ? pMeas[0].measured_value : null);
+              
+              const fpMeas = pMeas.filter(m => m.inspection_type === 'first_piece' || (!m.inspection_type && (!m.hourly_slot || m.hourly_slot === 0)));
+              const hourlyMeas = {};
+              pMeas.forEach((m) => {
+                if (m.inspection_type === 'hourly' && m.hourly_slot > 0) {
+                  const slot = m.hourly_slot || 1;
+                  hourlyMeas[slot] = m.measured_value;
+                }
+              });
 
-              // Determine value positions for Trial #1, Trial #2, Trial #3
-              const valT1 = trialNum === 1 ? val : (pMeas.length > 0 ? pMeas[0].measured_value : null);
-              const valT2 = trialNum === 2 ? val : (pMeas.length > 1 ? pMeas[1].measured_value : null);
-              const valT3 = trialNum === 3 ? val : (pMeas.length > 2 ? pMeas[2].measured_value : null);
+              // Determine value positions for First Piece Trial #1, Trial #2, Trial #3 (Inspector)
+              const valT1 = fpMeas.find(m => (m.trial_number || 1) === 1)?.measured_value ?? (trialNum === 1 && p.measured_value !== undefined ? p.measured_value : null);
+              const valT2 = fpMeas.find(m => m.trial_number === 2)?.measured_value ?? (trialNum === 2 && p.measured_value !== undefined ? p.measured_value : null);
+              const valT3 = fpMeas.find(m => m.trial_number === 3)?.measured_value ?? (trialNum === 3 && p.measured_value !== undefined ? p.measured_value : null);
 
               return (
                 <tr key={pCode} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td className="font-mono" style={{ fontWeight: 'bold', padding: '10px' }}>
-                    {pCode} {p.is_critical && <span style={{ color: 'var(--accent-red)' }}>★</span>}
+                  <td style={{ fontWeight: 'bold', padding: '10px' }}>
+                    {p.parameter_name} {p.is_critical && <span style={{ color: 'var(--accent-red)' }}>★</span>}
                   </td>
-                  <td style={{ padding: '10px' }}>{p.parameter_name}</td>
                   <td style={{ textAlign: 'center', padding: '10px', fontSize: '12px', color: 'var(--text-muted)' }}>
                     {p.nominal} ± {(p.upper_limit - p.nominal).toFixed(2)} {p.unit}
                   </td>
@@ -140,7 +148,16 @@ export default function InspectionGridSheet({ session, onUpdate }) {
                           placeholder="Correct Value"
                           value={overrideVal}
                           onChange={(e) => setOverrideVal(e.target.value)}
-                          style={{ padding: '4px 8px', fontSize: '12px' }}
+                          autoFocus
+                          style={{ fontSize: '12px', padding: '4px 8px' }}
+                        />
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="Override reason..."
+                          value={overrideRemark}
+                          onChange={(e) => setOverrideRemark(e.target.value)}
+                          style={{ fontSize: '11px', padding: '4px 8px' }}
                         />
                         <button
                           className="btn btn-success btn-sm"
@@ -163,7 +180,7 @@ export default function InspectionGridSheet({ session, onUpdate }) {
                         <span className={`badge ${isOOC && trialNum === 3 ? 'badge-danger' : 'badge-success'}`}>
                           {valT3} {p.unit}
                         </span>
-                        {p.override_by_supervisor && <span title="Supervisor Override Entry">✏️</span>}
+                        {p.override_by_supervisor && <span title="Supervisor Override Entry">(Override)</span>}
                       </div>
                     ) : isTrial3 ? (
                       <button
@@ -174,7 +191,7 @@ export default function InspectionGridSheet({ session, onUpdate }) {
                         }}
                         style={{ fontSize: '11px', padding: '3px 8px' }}
                       >
-                        ✏️ Override
+                        Override
                       </button>
                     ) : (
                       <span style={{ color: 'var(--text-muted)' }}>—</span>
@@ -182,11 +199,14 @@ export default function InspectionGridSheet({ session, onUpdate }) {
                   </td>
 
                   {/* 1/HR through 8/HR Hourly Columns */}
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((slotNum) => (
-                    <td key={slotNum} style={{ textAlign: 'center', padding: '8px', color: 'var(--text-muted)', fontSize: '12px' }}>
-                      —
-                    </td>
-                  ))}
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((slotNum) => {
+                    const hrVal = hourlyMeas[slotNum];
+                    return (
+                      <td key={slotNum} style={{ textAlign: 'center', padding: '8px', color: hrVal !== undefined ? '#ffffff' : 'var(--text-muted)', fontSize: '12px', fontWeight: hrVal !== undefined ? 'bold' : 'normal' }}>
+                        {hrVal !== undefined ? `${hrVal} ${p.unit}` : '—'}
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}

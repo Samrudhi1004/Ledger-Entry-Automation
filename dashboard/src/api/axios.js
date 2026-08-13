@@ -16,25 +16,61 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 // ── Response interceptor — auto-refresh on 401 ──────────────
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config;
     if (error.response?.status === 401 && !original._retry) {
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            original.headers.Authorization = `Bearer ${token}`;
+            return api(original);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
       original._retry = true;
+      isRefreshing = true;
+
       const refresh = localStorage.getItem('refresh_token');
       if (refresh) {
         try {
           const res = await axios.post(`${BASE_URL}/api/users/token/refresh/`, {
             refresh,
           });
-          localStorage.setItem('access_token', res.data.access);
-          original.headers.Authorization = `Bearer ${res.data.access}`;
+          const { access, refresh: newRefresh } = res.data;
+          localStorage.setItem('access_token', access);
+          if (newRefresh) {
+            localStorage.setItem('refresh_token', newRefresh);
+          }
+          original.headers.Authorization = `Bearer ${access}`;
+          processQueue(null, access);
           return api(original);
-        } catch {
+        } catch (refreshErr) {
+          processQueue(refreshErr, null);
           localStorage.clear();
           window.location.href = '/login';
+          return Promise.reject(refreshErr);
+        } finally {
+          isRefreshing = false;
         }
       } else {
         localStorage.clear();

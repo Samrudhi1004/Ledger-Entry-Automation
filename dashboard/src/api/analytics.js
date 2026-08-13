@@ -22,3 +22,7 @@ export const getParameterOOCRate = (partNumber) =>
   api.get('/api/analytics/parameters/ooc-rate/', {
     params: { part: partNumber },
   });
+
+export const getDailyCompletedReports = (params) =>
+  api.get('/api/analytics/daily-completed-reports/', { params });
+

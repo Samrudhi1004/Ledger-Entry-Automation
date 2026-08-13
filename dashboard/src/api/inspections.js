@@ -22,3 +22,28 @@ export const supervisorOverride = (sessionId, parameterCode, value, remark = '')
     measured_value: value,
     remark,
   });
+
+export const downloadInspectionPDF = async (sessionId, fileName = '') => {
+  const response = await api.get(`/api/inspections/${sessionId}/pdf/`, {
+    responseType: 'blob',
+  });
+  const blob = new Blob([response.data], { type: 'application/pdf' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', fileName || `Daily_Report_${sessionId.slice(0, 8)}.pdf`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const openInspectionPDF = async (sessionId) => {
+  const response = await api.get(`/api/inspections/${sessionId}/pdf/`, {
+    responseType: 'blob',
+  });
+  const blob = new Blob([response.data], { type: 'application/pdf' });
+  const url = window.URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => window.URL.revokeObjectURL(url), 60000); // Clean up memory
+};

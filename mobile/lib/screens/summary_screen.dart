@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
-import 'machine_select_screen.dart';
+import 'app_home_screen.dart';
+import 'operation_select_screen.dart';
+import 'report_sheet_screen.dart';
+import 'inspection_voice_screen.dart';
+import 'daily_production_report_screen.dart';
 
 class SummaryScreen extends StatefulWidget {
   const SummaryScreen({super.key});
@@ -14,17 +19,67 @@ class SummaryScreen extends StatefulWidget {
 class _SummaryScreenState extends State<SummaryScreen> {
   bool _isSubmitting = false;
 
+  String _formatSpecSubtitle(Map<String, dynamic> param) {
+    if (param['is_process_parameter'] == true) {
+      return 'Spec: ${param['specification'] ?? '—'} ${param['unit'] ?? ''}';
+    }
+
+    final type = (param['measurement_type'] ?? '').toString().toLowerCase();
+    final name = (param['parameter_name'] ?? '').toString().toUpperCase();
+
+    if (type == 'visual') {
+      return 'Spec: Visual Pass / Fail Check';
+    }
+    if (name.contains('MIN')) {
+      return 'Spec: ≥ ${param['lower_limit']} ${param['unit']} (MINIMUM)';
+    }
+    if (type == 'surface' || name.contains('MAX')) {
+      return 'Spec: ≤ ${param['upper_limit']} ${param['unit']} (MAXIMUM)';
+    }
+    return 'Spec: ${param['nominal_value']} ${param['unit']} [${param['lower_limit']} - ${param['upper_limit']}]';
+  }
+
+  String _formatRecordedValue(Map<String, dynamic> param, Map<String, dynamic> res) {
+    if (param['is_process_parameter'] == true) {
+      if (param['data_type'] == 'yes_no') {
+        return (res['measured_value'] == 1.0 || res['status'] == 'ok') ? 'YES (PASS)' : 'NO (REJECT)';
+      }
+      return '${res['measured_value']} ${param['unit'] ?? ''}';
+    }
+
+    final type = (param['measurement_type'] ?? '').toString().toLowerCase();
+
+    if (type == 'visual') {
+      return (res['measured_value'] == 1.0 || res['status'] == 'ok') ? 'YES (PASS)' : 'NO (REJECT)';
+    }
+    return '${res['measured_value']} ${param['unit']}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<InspectionProvider>(context);
     final results = provider.recordedResults;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF080C18),
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D1424),
-        title: const Text('Inspection Session Summary', style: TextStyle(color: Colors.white)),
-        elevation: 0,
+        backgroundColor: Colors.white,
+        elevation: 1,
+        title: const Text('Inspection Session Summary', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)),
+        iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.home_rounded, color: Color(0xFF2563EB)),
+            tooltip: 'Go to Home',
+            onPressed: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const AppHomeScreen()),
+                (route) => false,
+              );
+            },
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -42,9 +97,44 @@ class _SummaryScreenState extends State<SummaryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Part: ${provider.selectedPart?['part_number'] ?? 'FBT00222'} (POLY V PULLEY)',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Part: ${provider.selectedPart?['part_number'] ?? '-'} (${provider.selectedPart?['part_name'] ?? provider.selectedPart?['part_number'] ?? '-'})',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: provider.inspectionType == 'first_piece'
+                              ? const Color(0xFF38BDF8).withValues(alpha: 0.15)
+                              : const Color(0xFF10B981).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: provider.inspectionType == 'first_piece'
+                                ? const Color(0xFF38BDF8)
+                                : const Color(0xFF10B981),
+                          ),
+                        ),
+                        child: Text(
+                          provider.inspectionType == 'first_piece'
+                              ? '1ST PC #${provider.trialNumber} SHEET'
+                              : 'HOURLY SHEET',
+                          style: TextStyle(
+                            color: provider.inspectionType == 'first_piece'
+                                ? const Color(0xFF38BDF8)
+                                : const Color(0xFF10B981),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -85,11 +175,11 @@ class _SummaryScreenState extends State<SummaryScreen> {
                     ),
                     child: ListTile(
                       title: Text(
-                        '${param['parameter_code']}: ${param['parameter_name']}',
+                        '${param['parameter_name']}',
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                       ),
                       subtitle: Text(
-                        'Spec: ${param['nominal_value']} ${param['unit']} (${param['lower_limit']} - ${param['upper_limit']})',
+                        _formatSpecSubtitle(param),
                         style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
                       ),
                       trailing: isRecorded
@@ -100,7 +190,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                '${res['measured_value']} ${param['unit']} (${res['status'].toUpperCase()})',
+                                '${_formatRecordedValue(param, res)} (${res['status'].toString().toUpperCase()})',
                                 style: TextStyle(
                                   color: isOk ? Colors.green : Colors.red,
                                   fontWeight: FontWeight.bold,
@@ -120,45 +210,74 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
             const SizedBox(height: 16),
 
-            // Submit Session Button
+            // Submit / Finalize Session Button
             ElevatedButton(
               onPressed: _isSubmitting
                   ? null
                   : () async {
+                      // ⚠️ Guard: Block finalization if no parameters were loaded.
+                      // This prevents the false "FIRST PIECE FINALIZED & PASSED"
+                      // shown when parameters.length == 0 and oocCount == 0.
+                      if (provider.parameters.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              '❌ Cannot finalize: No inspection parameters were loaded for this session. '
+                              'Please ensure the operation template has configured parameters.',
+                            ),
+                            backgroundColor: Colors.redAccent,
+                            duration: Duration(seconds: 5),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                        return;
+                      }
+
                       setState(() {
                         _isSubmitting = true;
                       });
 
-                      final success = await provider.completeSession();
+                      final auth = Provider.of<AuthProvider>(context, listen: false);
+                      Map<String, dynamic>? finalResult;
+
+                      if (auth.isInspector) {
+                        finalResult = await provider.finalizeFirstPieceSession();
+                      } else {
+                        await provider.completeSession();
+                      }
+
+                      if (!mounted) return;
 
                       setState(() {
                         _isSubmitting = false;
                       });
 
-                      if (mounted) {
-                        _showCompletionDialog(context, provider);
-                      }
+                      _showCompletionDialog(provider, finalResult);
                     },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
+                backgroundColor: Provider.of<AuthProvider>(context, listen: false).isInspector ? Colors.blueAccent : Colors.green,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               child: _isSubmitting
                   ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text(
-                      'SUBMIT SESSION TO SUPERVISOR',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                  : Text(
+                      Provider.of<AuthProvider>(context, listen: false).isInspector
+                          ? 'FINALIZE FIRST PIECE & GENERATE PDF'
+                          : 'SUBMIT HOURLY SESSION',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
             ),
+
           ],
         ),
       ),
     );
   }
 
-  void _showCompletionDialog(BuildContext context, InspectionProvider provider) {
+  void _showCompletionDialog(InspectionProvider provider, [Map<String, dynamic>? finalResult]) {
     final results = provider.recordedResults;
+    final totalParams = provider.parameters.length;
     int okCount = 0;
     int oocCount = 0;
 
@@ -173,6 +292,14 @@ class _SummaryScreenState extends State<SummaryScreen> {
     final templateName = provider.selectedTemplate?['name'] ??
         'Op ${provider.selectedTemplate?['version'] ?? 10} — Inspection';
 
+    final isInspector = Provider.of<AuthProvider>(context, listen: false).isInspector;
+
+    // ⚠️ Hard guard: 0/0 must NEVER be treated as PASSED.
+    // If no parameters are present, this is an invalid finalization state.
+    // isPassed requires: (a) API returned finalized_passed, OR (b) oocCount==0 AND totalParams>0.
+    final isPassed = (finalResult?['status'] == 'finalized_passed') ||
+        (oocCount == 0 && totalParams > 0 && results.isNotEmpty);
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -180,16 +307,18 @@ class _SummaryScreenState extends State<SummaryScreen> {
         backgroundColor: const Color(0xFF0D1424),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Colors.greenAccent, width: 1.5),
+          side: BorderSide(color: isPassed ? Colors.greenAccent : Colors.redAccent, width: 1.5),
         ),
         title: Column(
           children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 54),
+            Icon(isPassed ? Icons.verified_rounded : Icons.warning_rounded, color: isPassed ? Colors.greenAccent : Colors.redAccent, size: 54),
             const SizedBox(height: 10),
-            const Text(
-              'OPERATION UPDATED & SUBMITTED!',
+            Text(
+              isInspector
+                  ? (isPassed ? 'FIRST PIECE FINALIZED & PASSED!' : 'FIRST PIECE FINALIZED (FAILED)')
+                  : 'HOURLY INSPECTION SUBMITTED!',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
             ),
             const SizedBox(height: 4),
             Text(
@@ -199,11 +328,36 @@ class _SummaryScreenState extends State<SummaryScreen> {
             ),
           ],
         ),
+
         content: SizedBox(
           width: double.maxFinite,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Show warning if 0 parameters were recorded (abnormal state)
+              if (totalParams == 0) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.redAccent),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'No inspection parameters were loaded. This session has 0 parameters — results are invalid.',
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -213,7 +367,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildStatCol('FILLED', '${results.length} / ${provider.parameters.length}', Colors.blueAccent),
+                    _buildStatCol('FILLED', '${results.length} / $totalParams', Colors.blueAccent),
                     _buildStatCol('PASSED (OK)', '$okCount', Colors.greenAccent),
                     _buildStatCol('OOC FAIL', '$oocCount', Colors.redAccent),
                   ],
@@ -241,7 +395,14 @@ class _SummaryScreenState extends State<SummaryScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('${p['parameter_code']} (${p['parameter_name']})', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                          Expanded(
+                            child: Text(
+                              '${p['parameter_name']}',
+                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           Row(
                             children: [
                               Text('${res['measured_value']} ${p['unit']}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
@@ -259,22 +420,105 @@ class _SummaryScreenState extends State<SummaryScreen> {
           ),
         ),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.greenAccent,
-              foregroundColor: Colors.black,
-              minimumSize: const Size(double.infinity, 45),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
-                (route) => false,
-              );
-            },
-            child: const Text('DONE / NEXT OPERATION', style: TextStyle(fontWeight: FontWeight.bold)),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF38BDF8),
+                    side: const BorderSide(color: Color(0xFF38BDF8)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.home_rounded, size: 16),
+                  label: const Text('BACK TO HOME', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    provider.resetForNextOperation();
+                    Navigator.pop(ctx);
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AppHomeScreen()),
+                      (route) => false,
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: oocCount > 0 ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: Icon(
+                    isInspector
+                        ? (oocCount > 0 ? Icons.build_circle_rounded : Icons.assignment_rounded)
+                        : Icons.fact_check_rounded,
+                    size: 16,
+                  ),
+                  label: Text(
+                    isInspector
+                        ? (oocCount > 0
+                            ? '1ST PC #${provider.trialNumber + 1}'
+                            : 'DAILY REPORT')
+                        : 'NEXT OPERATION',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                  onPressed: () async {
+                    final auth = Provider.of<AuthProvider>(context, listen: false);
+                    final navigator = Navigator.of(context);
+                    final messenger = ScaffoldMessenger.of(context);
+
+                    Navigator.pop(ctx);
+
+                    if (auth.isInspector) {
+                      final currentTrial = provider.trialNumber;
+                      if (oocCount > 0 && currentTrial < 3) {
+                        final nextTrial = currentTrial + 1;
+                        final template = provider.selectedTemplate;
+                        if (template != null) {
+                          await provider.loadParametersForRetrial(template, trial: nextTrial);
+                          await provider.startSession(trial: nextTrial, inspectionType: 'first_piece');
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text('🎯 Auto-launched Corrective Trial 1ST PC #$nextTrial for $oocCount failed parameter(s).'),
+                              backgroundColor: const Color(0xFFF59E0B),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          navigator.push(
+                            MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+                          );
+                          return;
+                        }
+                      }
+                      navigator.push(
+                        MaterialPageRoute(builder: (_) => const ReportSheetScreen()),
+                      );
+                    } else {
+                      // Capture slot state BEFORE reset (reset clears completedHourlySlots).
+                      // ONLY check contains(8) — after slot 7 completes, hourlySlot auto-advances
+                      // to 8 but slot 8 is NOT done yet. hourlySlot >= 8 would fire too early.
+                      final wasSlot8Done = provider.completedHourlySlots.contains(8);
+                      provider.resetForNextOperation();
+                      if (wasSlot8Done) {
+                        // Slot 8 inspection is fully submitted → go to Daily Production Report
+                        navigator.push(
+                          MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
+                        );
+                      } else {
+                        // Still have slots to complete → go back to operation select
+                        navigator.push(
+                          MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
         ],
       ),

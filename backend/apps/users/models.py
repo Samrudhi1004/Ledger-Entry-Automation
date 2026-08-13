@@ -12,7 +12,7 @@ class User(AbstractUser):
     class Role(models.TextChoices):
         OPERATOR          = 'operator',           'Operator'
         SUPERVISOR        = 'supervisor',         'Supervisor'
-        QUALITY_ENGINEER  = 'quality_engineer',   'Quality Engineer'
+        QUALITY_ENGINEER  = 'quality_engineer',   'Inspector'
         ADMIN             = 'admin',              'Admin'
 
     # Core fields

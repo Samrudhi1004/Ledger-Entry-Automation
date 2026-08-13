@@ -95,6 +95,12 @@ class MachineDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class   = MachineSerializer
     permission_classes = [IsAuthenticated]
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.is_active = False
+        instance.save()
+        return Response({'message': f'Machine {instance.machine_code} deactivated successfully.'}, status=status.HTTP_204_NO_CONTENT)
+
 
 class MachineByQRView(APIView):
     """

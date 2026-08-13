@@ -9,8 +9,13 @@ import PendingReviewPage from './pages/PendingReviewPage';
 import SessionDetailPage from './pages/SessionDetailPage';
 import InspectionsPage from './pages/InspectionsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import ReportsHubPage from './pages/ReportsHubPage';
+import SetupApprovalReportsPage from './pages/SetupApprovalReportsPage';
+import DailyProductionReportsPage from './pages/DailyProductionReportsPage';
+import ProductionModulePage from './pages/ProductionModulePage';
 import MachinesPage from './pages/MachinesPage';
 import MachineDetailPage from './pages/MachineDetailPage';
+import ParametersPage from './pages/ParametersPage';
 import UsersPage from './pages/UsersPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
@@ -62,17 +67,41 @@ export default function App() {
       
       <Route
         path="/"
+        element={<Navigate to="/reports" replace />}
+      />
+      <Route
+        path="/pending"
+        element={<Navigate to="/reports" replace />}
+      />
+      <Route
+        path="/reports"
         element={
-          <ProtectedLayout pendingCount={pendingCount} onPendingCountChange={setPendingCount}>
-            <DashboardPage />
+          <ProtectedLayout pendingCount={pendingCount}>
+            <ReportsHubPage />
           </ProtectedLayout>
         }
       />
       <Route
-        path="/pending"
+        path="/reports/setup-approval"
         element={
-          <ProtectedLayout pendingCount={pendingCount} onPendingCountChange={setPendingCount}>
-            <PendingReviewPage onPendingCountChange={setPendingCount} />
+          <ProtectedLayout pendingCount={pendingCount}>
+            <SetupApprovalReportsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/reports/daily-production"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <DailyProductionReportsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/production"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <ProductionModulePage />
           </ProtectedLayout>
         }
       />
@@ -117,6 +146,15 @@ export default function App() {
         }
       />
       
+      <Route
+        path="/parameters"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <ParametersPage />
+          </ProtectedLayout>
+        }
+      />
+
       <Route
         path="/users"
         element={

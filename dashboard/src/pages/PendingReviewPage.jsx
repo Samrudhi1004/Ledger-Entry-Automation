@@ -86,7 +86,6 @@ export default function PendingReviewPage({ onPendingCountChange }) {
             <LoadingSpinner message="Loading pending sessions..." />
           ) : sessions.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-state-icon">✅</div>
               <div className="empty-state-text">No pending reviews. Everything is cleared!</div>
             </div>
           ) : (
@@ -150,29 +149,18 @@ export default function PendingReviewPage({ onPendingCountChange }) {
 
       {selectedSession && (
         <Modal
-          title={`Review Session — 1ST PC #${selectedSession.trial_number ?? 1} (${shortId(selectedSession.session_id)})`}
+          title={`First Piece Record — 1ST PC #${selectedSession.trial_number ?? 1} (${shortId(selectedSession.session_id)})`}
           onClose={() => setSelectedSession(null)}
           footer={
-            <>
-              <button
-                id="review-reject-btn"
-                className="btn btn-danger"
-                onClick={() => handleReview('reject')}
-                disabled={actionLoading}
-              >
-                Reject & Request 1ST PC #{Math.min((selectedSession.trial_number || 1) + 1, 3)}
-              </button>
-              <button
-                id="review-approve-btn"
-                className="btn btn-success"
-                onClick={() => handleReview('approve')}
-                disabled={actionLoading}
-              >
-                Approve & Save
-              </button>
-            </>
+            <button
+              className="btn btn-primary"
+              onClick={() => navigate(`/inspections/${selectedSession.session_id}`)}
+            >
+              View Full Report & PDF
+            </button>
           }
         >
+
           <div className="mb-16">
             <InspectionGridSheet session={sessionDetail || selectedSession} onUpdate={() => handleOpenReview(selectedSession)} />
           </div>
@@ -187,7 +175,7 @@ export default function PendingReviewPage({ onPendingCountChange }) {
               onChange={(e) => setRemark(e.target.value)}
             />
             <small style={{ color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-              ⚠️ Rejecting will trigger a real-time WebSocket alert on the Operator&apos;s phone to unlock 1ST PC #{Math.min((selectedSession.trial_number || 1) + 1, 3)}.
+              Rejecting will trigger a real-time WebSocket alert on the Operator&apos;s phone to unlock 1ST PC #{Math.min((selectedSession.trial_number || 1) + 1, 3)}.
             </small>
           </div>
         </Modal>

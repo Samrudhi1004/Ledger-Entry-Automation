@@ -6,6 +6,7 @@ InspectionService   — orchestrates session creation, measurement recording,
                       MongoDB document management, and WebSocket notifications.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -18,6 +19,8 @@ from asgiref.sync import async_to_sync
 from config.db import get_collection, Collections
 from apps.parts.models import InspectionParameter, InspectionTemplate
 from .models import InspectionSession
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Validation Result ────────────────────────────────────────────────────
@@ -37,6 +40,7 @@ class ValidationResult:
 class ToleranceValidator:
     """
     Validates a measured numeric value against an InspectionParameter's tolerance.
+    Applies the 3 Mechanical Rules while preserving original DB spec values.
     """
 
     def validate(self, measured_value: float, parameter: InspectionParameter) -> ValidationResult:
@@ -45,17 +49,45 @@ class ToleranceValidator:
         lower_limit  = float(parameter.lower_limit)
         deviation    = round(measured_value - nominal, 6)
 
-        is_within = lower_limit <= measured_value <= upper_limit
-        status    = 'ok' if is_within else 'out_of_spec'
+        m_type = (parameter.measurement_type or '').lower()
+        p_code = (parameter.parameter_code or '').upper()
+        p_name = (parameter.parameter_name or '').upper()
 
-        if is_within:
-            message = f'Value {measured_value} {parameter.unit} is within specification.'
-        else:
-            direction = 'above' if measured_value > upper_limit else 'below'
-            message   = (
-                f'Value {measured_value} {parameter.unit} is {direction} specification. '
-                f'Allowed: [{lower_limit}, {upper_limit}] {parameter.unit}'
+        if m_type == 'visual':
+            # Rule 2: Visual Pass/Fail Check (1.0 = PASS / YES, 0.0 = REJECT / NO)
+            is_within = measured_value >= 0.5
+            message = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
+        elif m_type == 'min_limit' or 'MIN' in p_name:
+            # Rule 3A: Minimum Threshold (Any value >= nominal or lower_limit is OK)
+            min_bound = nominal if nominal > 0 else lower_limit
+            is_within = measured_value >= min_bound
+            message = (
+                f'Value {measured_value} {parameter.unit} meets minimum limit of {min_bound} {parameter.unit}.'
+                if is_within
+                else f'Value {measured_value} {parameter.unit} is below minimum limit of {min_bound} {parameter.unit}.'
             )
+        elif m_type in ['max_limit', 'surface'] or 'MAX' in p_name:
+            # Rule 3B: Maximum Threshold (Any roughness <= nominal is OK)
+            max_bound = nominal if nominal > 0 else upper_limit
+            is_within = measured_value <= max_bound
+            message = (
+                f'Measurement {measured_value} {parameter.unit} is within maximum allowed {max_bound} {parameter.unit}.'
+                if is_within
+                else f'Measurement {measured_value} {parameter.unit} exceeds maximum allowed {max_bound} {parameter.unit}.'
+            )
+        else:
+            # Rule 1: Specific Limits Range
+            is_within = lower_limit <= measured_value <= upper_limit
+            if is_within:
+                message = f'Value {measured_value} {parameter.unit} is within specification.'
+            else:
+                direction = 'above' if measured_value > upper_limit else 'below'
+                message   = (
+                    f'Value {measured_value} {parameter.unit} is {direction} specification. '
+                    f'Allowed: [{lower_limit}, {upper_limit}] {parameter.unit}'
+                )
+
+        status = 'ok' if is_within else 'out_of_spec'
 
         return ValidationResult(
             measured_value = measured_value,
@@ -90,91 +122,206 @@ class InspectionService:
         part,
         machine,
         operator,
-        inspection_type: str,
-        shift: str,
+        inspection_type: str = 'first_piece',
+        shift: str = 'A',
         supervisor=None,
         template_id=None,
         trial_number: int = 1,
         parent_session_id: str = None,
+        hourly_slot: int = 1,
     ) -> InspectionSession:
         """
         Creates a PostgreSQL InspectionSession + initialises MongoDB document.
         """
+        actual_inspection_type = inspection_type or 'first_piece'
+
+        # Validate trial number max 3 for first_piece
+        if actual_inspection_type == 'first_piece' and trial_number > 3:
+            raise ValueError("First Piece Inspection is limited to a maximum of 3 attempts (1st PC #1, #2, #3).")
+
         # Get the specific template by template_id, or fall back to first active match
         if template_id:
-            template = InspectionTemplate.objects.prefetch_related('parameters').get(
+            template = InspectionTemplate.objects.prefetch_related('parameters', 'process_parameters').get(
                 pk=template_id,
                 is_active=True,
             )
         else:
-            template = InspectionTemplate.objects.prefetch_related('parameters').filter(
+            template = InspectionTemplate.objects.prefetch_related('parameters', 'process_parameters').filter(
                 part=part,
-                inspection_type=inspection_type,
+                inspection_type=actual_inspection_type,
                 is_active=True,
             ).first()
 
+            if not template:
+                template = InspectionTemplate.objects.prefetch_related('parameters', 'process_parameters').filter(
+                    part=part,
+                    is_active=True,
+                ).first()
+
         if not template:
             raise ValueError("No active inspection template found.")
-        parameters     = list(template.parameters.order_by('sequence_order'))
-        total_params   = len(parameters)
+
+        parameters         = list(template.parameters.order_by('sequence_order'))
+        process_parameters = list(template.process_parameters.filter(is_active=True).order_by('sequence_order')) if actual_inspection_type == 'first_piece' else []
+        total_params       = len(parameters)
+
+        # Reuse existing active session for today (same machine, part, shift, trial) if present
+        from django.utils import timezone as django_tz
+        today = django_tz.now().date()
+        filter_kwargs = {
+            'machine': machine,
+            'part': part,
+            'shift': shift,
+            'started_at__date': today,
+            'inspection_type': actual_inspection_type,
+        }
+        if actual_inspection_type == 'first_piece':
+            filter_kwargs['trial_number'] = trial_number
+        elif actual_inspection_type == 'hourly':
+            filter_kwargs['hourly_unlocked_slot'] = hourly_slot
+
+        existing_session = InspectionSession.objects.filter(**filter_kwargs).order_by('-started_at').first()
+
+        if existing_session and not (actual_inspection_type == 'first_piece' and trial_number > 1 and not parent_session_id):
+            return existing_session
+
         session_id     = uuid.uuid4()
 
         parent_session = None
-        if parent_session_id:
-            parent_session = InspectionSession.objects.filter(session_id=parent_session_id).first()
+        initial_measurements = []
+        rejected_codes = set()
 
-        # 1. Create PostgreSQL session using actual template inspection type
+        if parent_session_id and str(parent_session_id).strip():
+            clean_parent_id = str(parent_session_id).strip()
+            try:
+                parent_uuid = uuid.UUID(clean_parent_id)
+                parent_session = InspectionSession.objects.filter(session_id=parent_uuid).first()
+            except (ValueError, TypeError, AttributeError):
+                parent_session = None
+
+            if parent_session:
+                parent_doc = self.collection.find_one({'_id': str(parent_session.session_id)})
+                if parent_doc:
+                    rejected_list = parent_doc.get('rejected_parameters') or []
+                    if rejected_list:
+                        rejected_codes = set(rejected_list)
+                    else:
+                        for p_sum in parent_doc.get('parameter_summary', []):
+                            if p_sum.get('status') == 'out_of_spec':
+                                rejected_codes.add(p_sum.get('parameter_code'))
+
+                    parent_measurements = parent_doc.get('measurements', [])
+                    for m in parent_measurements:
+                        code = m.get('parameter_code')
+                        if code and code not in rejected_codes and m.get('status') == 'ok':
+                            m_copy = dict(m)
+                            m_copy['carried_forward'] = True
+                            initial_measurements.append(m_copy)
+
+        initial_recorded_count = len(initial_measurements)
+
+        # 1. Create PostgreSQL session
         session = InspectionSession.objects.create(
-            session_id      = session_id,
-            part            = part,
-            machine         = machine,
-            operator        = operator,
-            supervisor      = supervisor,
-            inspection_type = template.inspection_type,
-            shift           = shift,
-            trial_number    = trial_number,
-            parent_session  = parent_session,
-            total_parameters = total_params,
+            session_id           = session_id,
+            part                 = part,
+            machine              = machine,
+            operator             = operator,
+            supervisor           = supervisor,
+            inspection_type      = actual_inspection_type,
+            shift                = shift,
+            trial_number         = trial_number,
+            hourly_unlocked_slot = hourly_slot if actual_inspection_type == 'hourly' else 0,
+            parent_session       = parent_session,
+            total_parameters     = total_params,
+            recorded_count       = initial_recorded_count,
         )
+
+        carried_map = {m['parameter_code']: m for m in initial_measurements}
+        param_summary_list = []
+
+        for p in parameters:
+            code = p.parameter_code
+            tech = p.measurement_technique or 'VERNIER CALIPER'
+            samp = p.sample_size or '5NOS/SHIFT'
+
+            if code in carried_map:
+                param_summary_list.append({
+                    'parameter_code':        code,
+                    'parameter_name':        p.parameter_name,
+                    'unit':                  p.unit,
+                    'nominal':               float(p.nominal_value),
+                    'upper_limit':           float(p.upper_limit),
+                    'lower_limit':           float(p.lower_limit),
+                    'is_critical':           p.is_critical,
+                    'measurement_technique': tech,
+                    'evaluation_technique':  tech,
+                    'sample_size':           samp,
+                    'sample_frequency':      samp,
+                    'status':                'ok',
+                    'measured_value':        carried_map[code].get('measured_value'),
+                    'carried_forward':       True,
+                })
+            else:
+                param_summary_list.append({
+                    'parameter_code':        code,
+                    'parameter_name':        p.parameter_name,
+                    'unit':                  p.unit,
+                    'nominal':               float(p.nominal_value),
+                    'upper_limit':           float(p.upper_limit),
+                    'lower_limit':           float(p.lower_limit),
+                    'is_critical':           p.is_critical,
+                    'measurement_technique': tech,
+                    'evaluation_technique':  tech,
+                    'sample_size':           samp,
+                    'sample_frequency':      samp,
+                    'status':                'pending',
+                })
+
+        proc_param_summary_list = []
+        if actual_inspection_type == 'first_piece':
+            for pp in process_parameters:
+                proc_param_summary_list.append({
+                    'parameter_code':        pp.parameter_code,
+                    'parameter_name':        pp.parameter_name,
+                    'data_type':             pp.data_type,
+                    'unit':                  pp.unit or '',
+                    'specification':         pp.specification or '',
+                    'nominal':               float(pp.nominal_value) if pp.nominal_value is not None else None,
+                    'upper_limit':           float(pp.upper_limit) if pp.upper_limit is not None else None,
+                    'lower_limit':           float(pp.lower_limit) if pp.lower_limit is not None else None,
+                    'is_required':           pp.is_required,
+                    'status':                'pending',
+                    'is_process_parameter':  True,
+                })
 
         # 2. Initialise MongoDB document
         mongo_doc = {
-            '_id':                 str(session_id),
-            'session_id':          str(session_id),
-            'part_number':         part.part_number,
-            'part_name':           part.part_name,
-            'machine_code':        machine.machine_code,
-            'plant_id':            machine.plant_id,
-            'operator_id':         operator.id,
-            'operator_name':       operator.get_full_name(),
-            'supervisor_id':       supervisor.id if supervisor else None,
-            'inspection_type':     template.inspection_type,
-            'shift':               shift,
-            'status':              'in_progress',
-            'trial_number':        trial_number,
-            'parent_session_id':   parent_session_id,
-            'started_at':          datetime.now(timezone.utc),
-            'completed_at':        None,
-            'measurements':        [],
-            'supervisor_remark':   '',
-            'approved_at':         None,
-            # Initialise empty slots for each parameter
-            'parameter_summary': [
-                {
-                    'parameter_code': p.parameter_code,
-                    'parameter_name': p.parameter_name,
-                    'unit':           p.unit,
-                    'nominal':        float(p.nominal_value),
-                    'upper_limit':    float(p.upper_limit),
-                    'lower_limit':    float(p.lower_limit),
-                    'is_critical':    p.is_critical,
-                    'status':         'pending',
-                }
-                for p in parameters
-            ],
+            '_id':                       str(session_id),
+            'session_id':                str(session_id),
+            'part_number':               part.part_number,
+            'part_name':                 part.part_name,
+            'machine_code':              machine.machine_code,
+            'plant_id':                  machine.plant_id,
+            'operator_id':               operator.id,
+            'operator_name':             operator.get_full_name(),
+            'supervisor_id':             supervisor.id if supervisor else None,
+            'inspection_type':           actual_inspection_type,
+            'hourly_slot':               hourly_slot if actual_inspection_type == 'hourly' else 0,
+            'shift':                     shift,
+            'status':                    'in_progress',
+            'trial_number':              trial_number,
+            'parent_session_id':         parent_session_id,
+            'started_at':                datetime.now(timezone.utc),
+            'completed_at':              None,
+            'measurements':              initial_measurements,
+            'supervisor_remark':         '',
+            'approved_at':               None,
+            'parameter_summary':         param_summary_list,
+            'process_parameter_summary': proc_param_summary_list,
         }
         self.collection.insert_one(mongo_doc)
 
+        self._push_session_event(session, 'session_started')
         return session
 
     # ── Record Measurement ────────────────────────────────────────────────
@@ -186,6 +333,8 @@ class InspectionService:
         voice_raw_text: str = '',
         audio_file_path: str = '',
         method: str = 'voice',       # 'voice' | 'manual'
+        hourly_slot: int = None,
+        inspection_type: str = None,
     ) -> dict:
         """
         Records a single measurement for a parameter.
@@ -206,57 +355,220 @@ class InspectionService:
             template__is_active=True,
         ).first()
 
+        process_parameter = None
         if not parameter:
+            from apps.parts.models import ProcessParameter
+            process_parameter = ProcessParameter.objects.filter(
+                template__part=session.part,
+                parameter_code=parameter_code,
+                template__is_active=True,
+            ).first()
+
+        if not parameter and not process_parameter:
             raise ValueError(f"Parameter '{parameter_code}' not found for part {session.part.part_number}.")
 
-        # Check single-entry lock in MongoDB
+        current_slot = hourly_slot if (hourly_slot is not None and hourly_slot > 0) else (session.hourly_unlocked_slot or 1)
+
+        # Determine measurement classification:
+        # Operator entries -> hourly (1/HR through 8/HR)
+        # Inspector entries -> first_piece (1ST PC #1, 1ST PC #2, 1ST PC #3)
+        if inspection_type == 'first_piece' or (not inspection_type and session.inspection_type == 'first_piece' and (hourly_slot is None or hourly_slot == 0)):
+            meas_type = 'first_piece'
+            meas_trial = session.trial_number or 1
+            meas_slot = 0
+        else:
+            meas_type = 'hourly'
+            meas_slot = current_slot if current_slot > 0 else 1
+            meas_trial = 0
+
+        # Check existing measurement in MongoDB for this specific slot/trial & parameter
+        existing_idx = None
         doc = self.collection.find_one({'_id': str(session_id)})
         if doc and 'measurements' in doc:
-            for m in doc['measurements']:
+            for idx, m in enumerate(doc['measurements']):
+                m_type = m.get('inspection_type') or ('first_piece' if (m.get('trial_number') or 0) > 0 else 'hourly')
                 if m.get('parameter_code') == parameter_code:
-                    raise ValueError(f"Parameter '{parameter_code}' measurement is locked. Cannot re-enter once submitted.")
+                    if meas_type == 'first_piece' and m_type == 'first_piece' and (m.get('trial_number') or 1) == meas_trial:
+                        existing_idx = idx
+                        break
+                    elif meas_type == 'hourly' and m_type == 'hourly' and m.get('hourly_slot') == meas_slot:
+                        existing_idx = idx
+                        break
 
-        # On Trial #2, block entry if parameter passed in Trial #1
-        if session.trial_number == 2 and session.parent_session:
-            parent_doc = self.collection.find_one({'_id': str(session.parent_session.session_id)})
-            if parent_doc and 'parameter_summary' in parent_doc:
-                for p in parent_doc['parameter_summary']:
-                    if p.get('parameter_code') == parameter_code and p.get('status') == 'ok':
-                        raise ValueError(f"Parameter '{parameter_code}' passed in 1ST PC #1 and is locked.")
+        # Handle Process Parameter measurement recording & validation
+        if process_parameter:
+            dt = process_parameter.data_type
+            status_val = 'ok'
+            dev = 0.0
+            msg = f"Process parameter '{process_parameter.parameter_name}' recorded."
+            is_crit = False
+
+            if dt == 'numeric':
+                num_val = float(measured_value) if measured_value is not None else 0.0
+                if process_parameter.upper_limit is not None and process_parameter.lower_limit is not None:
+                    ll = float(process_parameter.lower_limit)
+                    ul = float(process_parameter.upper_limit)
+                    if not (ll <= num_val <= ul):
+                        status_val = 'out_of_spec'
+                        msg = f"Value {num_val} {process_parameter.unit} is outside specification [{ll}, {ul}]."
+            elif dt == 'yes_no':
+                str_val = str(voice_raw_text or measured_value or '').strip().upper()
+                exp_val = (process_parameter.specification or 'YES').strip().upper()
+                if str_val not in [exp_val, 'YES', '1', 'TRUE', 'OK']:
+                    status_val = 'out_of_spec'
+                    msg = f"Value '{str_val}' does not match expected '{exp_val}'."
+            elif dt in ['text', 'selection']:
+                str_val = str(voice_raw_text or measured_value or '').strip()
+                if process_parameter.specification:
+                    exp_val = process_parameter.specification.strip()
+                    if str_val.lower() != exp_val.lower():
+                        status_val = 'out_of_spec'
+                        msg = f"Value '{str_val}' does not match expected '{exp_val}'."
+
+            measurement = {
+                'parameter_code':        parameter_code,
+                'parameter_name':        process_parameter.parameter_name,
+                'unit':                  process_parameter.unit,
+                'nominal':               float(process_parameter.nominal_value) if process_parameter.nominal_value is not None else None,
+                'upper_limit':           float(process_parameter.upper_limit) if process_parameter.upper_limit is not None else None,
+                'lower_limit':           float(process_parameter.lower_limit) if process_parameter.lower_limit is not None else None,
+                'measured_value':        measured_value,
+                'deviation':             dev,
+                'status':                status_val,
+                'is_critical_fail':      is_crit,
+                'is_process_parameter':  True,
+                'voice_raw_text':        voice_raw_text,
+                'audio_file_path':       audio_file_path,
+                'method':                method,
+                'inspection_type':       meas_type,
+                'trial_number':          meas_trial,
+                'hourly_slot':           meas_slot,
+                'recorded_at':           datetime.now(timezone.utc),
+            }
+
+            if existing_idx is not None:
+                self.collection.update_one(
+                    {'_id': str(session_id)},
+                    {
+                        '$set': {
+                            f'measurements.{existing_idx}': measurement,
+                            'process_parameter_summary.$[param].status': status_val,
+                            'process_parameter_summary.$[param].measured_value': measured_value,
+                        }
+                    },
+                    array_filters=[{'param.parameter_code': parameter_code}],
+                )
+            else:
+                self.collection.update_one(
+                    {'_id': str(session_id)},
+                    {
+                        '$push': {'measurements': measurement},
+                        '$set': {
+                            'process_parameter_summary.$[param].status': status_val,
+                            'process_parameter_summary.$[param].measured_value': measured_value,
+                        }
+                    },
+                    array_filters=[{'param.parameter_code': parameter_code}],
+                )
+
+            # Auto-sync reading into process_param_entries for Setup Approval Report
+            t_num = meas_trial if (meas_trial >= 1 and meas_trial <= 3) else 1
+            t_key = f"trial_{t_num}"
+            entry_val = str(voice_raw_text or measured_value or '').strip()
+
+            doc_snap = self.collection.find_one({'_id': str(session_id)})
+            p_entries = doc_snap.get('process_param_entries') or [] if doc_snap else []
+            match_found = False
+            for pe in p_entries:
+                if pe.get('parameter_code') == parameter_code or pe.get('parameter_name') == process_parameter.parameter_name:
+                    pe[t_key] = entry_val
+                    match_found = True
+                    break
+
+            if not match_found:
+                p_entries.append({
+                    'parameter_code': parameter_code,
+                    'parameter_name': process_parameter.parameter_name,
+                    'specification': process_parameter.specification or '',
+                    t_key: entry_val,
+                })
+
+            self.collection.update_one(
+                {'_id': str(session_id)},
+                {'$set': {'process_param_entries': p_entries}}
+            )
+
+            return {
+                'parameter_code': parameter_code,
+                'measured_value': measured_value,
+                'status':         status_val,
+                'deviation':      dev,
+                'message':        msg,
+                'is_critical':    is_crit,
+                'progress':       session.progress_percent,
+            }
+
+        # Check hourly authorization
+        if session.inspection_type == 'hourly' or current_slot > 0:
+            first_piece_active = InspectionSession.objects.filter(
+                machine=session.machine,
+                part=session.part,
+                inspection_type='first_piece',
+                status__in=[InspectionSession.Status.FINALIZED_PASSED, InspectionSession.Status.APPROVED],
+            ).exists()
+            if not first_piece_active and not session.is_setup_approved and session.hourly_unlocked_slot == 0:
+                session.is_setup_approved = True
+                session.save(update_fields=['is_setup_approved'])
 
         # Validate
         result = self.validator.validate(measured_value, parameter)
 
         # Build measurement document
         measurement = {
-            'parameter_code':  parameter_code,
-            'parameter_name':  parameter.parameter_name,
-            'unit':            parameter.unit,
-            'nominal':         float(parameter.nominal_value),
-            'upper_limit':     float(parameter.upper_limit),
-            'lower_limit':     float(parameter.lower_limit),
-            'measured_value':  measured_value,
-            'deviation':       result.deviation,
-            'status':          result.status,
+            'parameter_code':   parameter_code,
+            'parameter_name':   parameter.parameter_name,
+            'unit':             parameter.unit,
+            'nominal':          float(parameter.nominal_value),
+            'upper_limit':      float(parameter.upper_limit),
+            'lower_limit':      float(parameter.lower_limit),
+            'measured_value':   measured_value,
+            'deviation':        result.deviation,
+            'status':           result.status,
             'is_critical_fail': result.is_critical,
-            'voice_raw_text':  voice_raw_text,
-            'audio_file_path': audio_file_path,
-            'method':          method,
-            'recorded_at':     datetime.now(timezone.utc),
+            'voice_raw_text':   voice_raw_text,
+            'audio_file_path':  audio_file_path,
+            'method':           method,
+            'inspection_type':  meas_type,
+            'trial_number':     meas_trial,
+            'hourly_slot':      meas_slot,
+            'recorded_at':      datetime.now(timezone.utc),
         }
 
         # Update MongoDB document
-        self.collection.update_one(
-            {'_id': str(session_id)},
-            {
-                '$push': {'measurements': measurement},
-                '$set': {
-                    f'parameter_summary.$[param].status': result.status,
-                    f'parameter_summary.$[param].measured_value': measured_value,
-                }
-            },
-            array_filters=[{'param.parameter_code': parameter_code}],
-        )
+        if existing_idx is not None:
+            self.collection.update_one(
+                {'_id': str(session_id)},
+                {
+                    '$set': {
+                        f'measurements.{existing_idx}': measurement,
+                        'parameter_summary.$[param].status': result.status,
+                        'parameter_summary.$[param].measured_value': measured_value,
+                    }
+                },
+                array_filters=[{'param.parameter_code': parameter_code}],
+            )
+        else:
+            self.collection.update_one(
+                {'_id': str(session_id)},
+                {
+                    '$push': {'measurements': measurement},
+                    '$set': {
+                        'parameter_summary.$[param].status': result.status,
+                        'parameter_summary.$[param].measured_value': measured_value,
+                    }
+                },
+                array_filters=[{'param.parameter_code': parameter_code}],
+            )
 
         # Update PostgreSQL counters and reminder timestamps
         from django.utils import timezone as django_timezone
@@ -277,7 +589,7 @@ class InspectionService:
         session.save(update_fields=list(update_fields.keys()))
 
         # Push WebSocket event
-        self._push_measurement_event(session, parameter, result, measured_value)
+        self._push_measurement_event(session, parameter, result, measured_value, voice_raw_text=voice_raw_text, method=method)
 
         return {
             'parameter_code': parameter_code,
@@ -307,6 +619,75 @@ class InspectionService:
         self._push_session_event(session, 'session_completed')
         return session
 
+    # ── Finalize First Piece Session (Inspector Workflow) ─────────────────
+    def finalize_first_piece_session(self, session_id: str, inspector) -> InspectionSession:
+        """
+        Inspector finalizes the First Piece Inspection independently.
+        Generates First Piece PDF report and enables machine for production if PASSED.
+        """
+        session = InspectionSession.objects.get(session_id=session_id)
+        if session.inspection_type != 'first_piece':
+            raise ValueError("Only First Piece Inspections can be finalized via this workflow.")
+
+        now = datetime.now(timezone.utc)
+        doc = self.get_session_document(str(session_id)) or {}
+        summary_list = doc.get('parameter_summary', [])
+
+        # │► Belt-and-suspenders guard: never finalize an empty session.
+        # If the MongoDB document has no measurements AND parameter_summary is empty,
+        # that means 0 parameters were recorded. This must NEVER produce 'finalized_passed'.
+        # The Flutter frontend also guards this, but we enforce it on the backend too.
+        measurements = doc.get('measurements', [])
+        if not measurements and not summary_list:
+            raise ValueError(
+                "Cannot finalize: No measurements have been recorded for this First Piece Inspection session. "
+                "Record at least one parameter measurement before finalizing."
+            )
+
+        has_out_of_spec = any(p.get('status') == 'out_of_spec' for p in summary_list)
+
+        if has_out_of_spec:
+            session.status = InspectionSession.Status.FINALIZED_FAILED
+            session.is_setup_approved = False
+        else:
+            session.status = InspectionSession.Status.FINALIZED_PASSED
+            session.is_setup_approved = True
+            session.hourly_unlocked_slot = 1
+
+        session.is_first_piece_finalized = True
+        session.finalized_at = now
+        session.finalized_by = inspector
+        session.completed_at = now
+
+        # Generate official First Piece Inspection PDF report
+        try:
+            from .pdf_generator import generate_first_piece_pdf
+            pdf_path = generate_first_piece_pdf(session, doc)
+            session.pdf_report_path = pdf_path
+        except Exception as e:
+            logger.error(f"Error generating first piece PDF: {e}")
+
+        session.save(update_fields=['status', 'is_first_piece_finalized', 'finalized_at', 'finalized_by', 'completed_at', 'is_setup_approved', 'hourly_unlocked_slot', 'pdf_report_path'])
+
+        self.collection.update_one(
+            {'_id': str(session_id)},
+            {'$set': {
+                'status': session.status,
+                'is_first_piece_finalized': True,
+                'is_setup_approved': session.is_setup_approved,
+                'finalized_at': now,
+                'finalized_by_id': inspector.id,
+                'finalized_by_name': inspector.get_full_name(),
+                'completed_at': now,
+                'hourly_unlocked_slot': session.hourly_unlocked_slot,
+                'pdf_report_path': session.pdf_report_path,
+            }}
+        )
+
+        self._push_session_event(session, 'first_piece_finalized')
+        return session
+
+
     # ── Supervisor Review ─────────────────────────────────────────────────
     def review_session(
         self,
@@ -328,23 +709,33 @@ class InspectionService:
 
         doc = self.collection.find_one({'_id': str(session_id)})
         if action == 'reject':
-            if not rejected_parameters and doc and 'parameter_summary' in doc:
-                rejected_parameters = [
-                    p['parameter_code'] for p in doc['parameter_summary']
-                    if p.get('status') == 'out_of_spec'
-                ]
-            if not rejected_parameters and doc and 'parameter_summary' in doc:
-                rejected_parameters = [p['parameter_code'] for p in doc['parameter_summary']]
+            if not rejected_parameters and doc:
+                latest_measurements = doc.get('measurements', [])
+                if latest_measurements:
+                    latest_trial = max(m.get('trial_number', 1) for m in latest_measurements)
+                    rejected_parameters = list(set([
+                        m['parameter_code'] for m in latest_measurements
+                        if m.get('trial_number', 1) == latest_trial and m.get('status') == 'out_of_spec'
+                    ]))
+                if not rejected_parameters and 'parameter_summary' in doc:
+                    rejected_parameters = [
+                        p['parameter_code'] for p in doc['parameter_summary']
+                        if p.get('status') == 'out_of_spec'
+                    ]
         else:
             rejected_parameters = []
 
         session.status            = new_status
         session.supervisor        = supervisor
         session.supervisor_remark = remark
+        if action == 'approve':
+            session.is_setup_approved = True
+            if session.hourly_unlocked_slot == 0:
+                session.hourly_unlocked_slot = 1
         if action == 'reject':
             session.rejection_reason = remark
         session.reviewed_at       = now
-        session.save(update_fields=['status', 'supervisor', 'supervisor_remark', 'rejection_reason', 'reviewed_at'])
+        session.save(update_fields=['status', 'supervisor', 'supervisor_remark', 'rejection_reason', 'reviewed_at', 'is_setup_approved', 'hourly_unlocked_slot'])
 
         self.collection.update_one(
             {'_id': str(session_id)},
@@ -354,6 +745,8 @@ class InspectionService:
                 'supervisor_remark':   remark,
                 'rejection_reason':    remark if action == 'reject' else '',
                 'rejected_parameters': rejected_parameters,
+                'is_setup_approved':   session.is_setup_approved,
+                'hourly_unlocked_slot': session.hourly_unlocked_slot,
                 'approved_at':         now if action == 'approve' else None,
             }},
         )
@@ -367,35 +760,170 @@ class InspectionService:
 
     # ── Get Full Document ─────────────────────────────────────────────────
     def get_session_document(self, session_id: str) -> Optional[dict]:
-        """Retrieve full inspection document from MongoDB."""
+        """Retrieve full inspection document from MongoDB, merging multi-trial measurements and hourly slots."""
         doc = self.collection.find_one({'_id': str(session_id)})
-        if doc:
-            doc['_id'] = str(doc['_id'])
+        if not doc:
+            return None
+
+        doc['_id'] = str(doc['_id'])
+        session_obj = InspectionSession.objects.filter(session_id=str(session_id)).select_related('operator', 'supervisor', 'finalized_by', 'machine', 'part').first()
+        if session_obj:
+            doc['inspection_type'] = session_obj.inspection_type
+            doc['hourly_slot'] = session_obj.hourly_unlocked_slot or 1
+            doc['hourly_unlocked_slot'] = session_obj.hourly_unlocked_slot
+            doc['is_setup_approved'] = session_obj.is_setup_approved
+            doc['status'] = session_obj.status
+            if session_obj.finalized_by:
+                doc['finalized_by_name'] = session_obj.finalized_by.get_full_name()
+                doc['inspector_name'] = session_obj.finalized_by.get_full_name()
+            elif session_obj.operator and (session_obj.operator.role in ['quality_engineer', 'inspector'] or session_obj.inspection_type == 'first_piece'):
+                doc['inspector_name'] = session_obj.operator.get_full_name()
+            if session_obj.operator:
+                doc['operator_name'] = session_obj.operator.get_full_name()
+            if session_obj.supervisor:
+                doc['supervisor_name'] = session_obj.supervisor.get_full_name()
+
+            if not doc.get('process_param_entries'):
+                setup_doc = self.collection.find_one(
+                    {
+                        'inspection_type': 'setup_approval',
+                        'machine_id': session_obj.machine_id,
+                    },
+                    sort=[('submitted_at', -1)]
+                )
+                if setup_doc and setup_doc.get('process_param_entries'):
+                    doc['process_param_entries'] = setup_doc.get('process_param_entries')
+
+        root_id = str(doc.get('parent_session_id') or doc['_id'])
+
+        related_docs = list(self.collection.find({
+            '$or': [
+                {'_id': root_id},
+                {'parent_session_id': root_id},
+                {'_id': str(session_id)}
+            ]
+        }))
+
+        # Collect and deduplicate all measurements across First Piece (Trials 1..3) and Hourly (Hours 1..8)
+        meas_dict = {}
+
+        def add_meas(m_item, def_type='first_piece', def_trial=1, def_slot=1):
+            code = m_item.get('parameter_code')
+            if not code:
+                return
+            itype = m_item.get('inspection_type') or def_type
+            
+            # Safely extract trial_number for First Piece
+            trial = m_item.get('trial_number')
+            if trial is None or (trial == 0 and itype == 'first_piece'):
+                trial = def_trial if def_trial is not None and def_trial > 0 else 1
+
+            # Safely extract hourly_slot for Hourly Inspection
+            slot = m_item.get('hourly_slot')
+            if slot is None or (slot == 0 and itype == 'hourly'):
+                slot = def_slot if def_slot is not None and def_slot > 0 else 1
+
+            key = (code, itype, slot if itype == 'hourly' else trial)
+            m_copy = dict(m_item)
+            m_copy['inspection_type'] = itype
+            m_copy['trial_number'] = trial if itype == 'first_piece' else 0
+            m_copy['hourly_slot'] = slot if itype == 'hourly' else 0
+            meas_dict[key] = m_copy
+
+        for d in sorted(related_docs, key=lambda x: x.get('trial_number', 1)):
+            trial_no = d.get('trial_number')
+            if trial_no is None:
+                trial_no = 1
+            d_type = d.get('inspection_type') or (session_obj.inspection_type if session_obj else 'first_piece')
+            d_slot = d.get('hourly_slot') or (d.get('hourly_unlocked_slot') or 1)
+            for m in d.get('measurements', []):
+                add_meas(m, def_type=d_type, def_trial=trial_no, def_slot=d_slot)
+
+        if session_obj:
+            session_date = session_obj.started_at.date() if session_obj.started_at else None
+            session_shift = session_obj.shift
+
+            fp_kwargs = {
+                'machine': session_obj.machine,
+                'part': session_obj.part,
+                'inspection_type': 'first_piece',
+            }
+            if session_date:
+                fp_kwargs['started_at__date'] = session_date
+            if session_shift:
+                fp_kwargs['shift'] = session_shift
+
+            fp_sessions = InspectionSession.objects.filter(**fp_kwargs).order_by('trial_number', 'started_at')
+            for fp_s in fp_sessions:
+                fp_doc = self.collection.find_one({'_id': str(fp_s.session_id)})
+                if fp_doc:
+                    t_no = fp_s.trial_number or fp_doc.get('trial_number') or 1
+                    if fp_s.finalized_by and 'inspector_name' not in doc:
+                        doc['inspector_name'] = fp_s.finalized_by.get_full_name()
+                    for m in fp_doc.get('measurements', []):
+                        add_meas(m, def_type='first_piece', def_trial=t_no, def_slot=1)
+
+            hourly_kwargs = {
+                'machine': session_obj.machine,
+                'part': session_obj.part,
+                'inspection_type': 'hourly',
+            }
+            if session_date:
+                hourly_kwargs['started_at__date'] = session_date
+            if session_shift:
+                hourly_kwargs['shift'] = session_shift
+
+            hourly_sessions = InspectionSession.objects.filter(**hourly_kwargs).order_by('hourly_unlocked_slot', 'started_at')
+            for h_sess in hourly_sessions:
+                h_doc = self.collection.find_one({'_id': str(h_sess.session_id)})
+                if h_doc:
+                    slot = h_sess.hourly_unlocked_slot or h_doc.get('hourly_slot') or 1
+                    for m in h_doc.get('measurements', []):
+                        add_meas(m, def_type='hourly', def_trial=0, def_slot=slot)
+
+        doc['measurements'] = list(meas_dict.values())
         return doc
 
     # ── WebSocket Push ────────────────────────────────────────────────────
-    def _push_measurement_event(self, session, parameter, result, value):
+    def _push_measurement_event(self, session, parameter, result, value, voice_raw_text='', method='voice'):
         channel_layer = get_channel_layer()
         group_name    = f"plant_{session.machine.plant_id}"
+        operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
         async_to_sync(channel_layer.group_send)(
             group_name,
             {
-                'type':           'inspection.event',
-                'event':          'measurement_recorded',
-                'session_id':     str(session.session_id),
-                'machine_code':   session.machine.machine_code,
-                'parameter_code': parameter.parameter_code,
-                'parameter_name': parameter.parameter_name,
-                'measured_value': value,
-                'status':         result.status,
-                'is_critical':    result.is_critical,
-                'progress':       session.progress_percent,
+                'type':              'inspection.event',
+                'event':             'measurement_recorded',
+                'session_id':        str(session.session_id),
+                'parent_session_id': str(session.parent_session_id) if session.parent_session_id else '',
+                'machine_code':      session.machine.machine_code,
+                'part_number':       session.part.part_number,
+                'part_name':         session.part.part_name,
+                'operator_id':       session.operator_id,
+                'operator_name':     operator_name,
+                'parameter_code':    parameter.parameter_code,
+                'parameter_name':    parameter.parameter_name,
+                'nominal':           float(parameter.nominal_value),
+                'lower_limit':       float(parameter.lower_limit),
+                'upper_limit':       float(parameter.upper_limit),
+                'unit':              parameter.unit,
+                'measured_value':    value,
+                'status':            result.status,
+                'is_critical':       result.is_critical,
+                'progress':          session.progress_percent,
+                'voice_raw_text':    voice_raw_text,
+                'method':             method,
+                'shift':              session.shift,
+                'trial_number':       session.trial_number,
+                'inspection_type':    session.inspection_type,
+                'hourly_slot':        session.hourly_unlocked_slot or 1,
             },
         )
 
     def _push_session_event(self, session, event_type: str):
         channel_layer = get_channel_layer()
         group_name    = f"plant_{session.machine.plant_id}"
+        operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
         async_to_sync(channel_layer.group_send)(
             group_name,
             {
@@ -403,9 +931,15 @@ class InspectionService:
                 'event':         event_type,
                 'session_id':    str(session.session_id),
                 'machine_code':  session.machine.machine_code,
+                'part_number':   session.part.part_number,
+                'part_name':     session.part.part_name,
+                'operator_id':   session.operator_id,
+                'operator_name': operator_name,
                 'status':        session.status,
                 'has_ooc':       session.has_ooc,
                 'trial_number':  session.trial_number,
+                'shift':         session.shift,
+                'inspection_type': session.inspection_type,
             },
         )
 

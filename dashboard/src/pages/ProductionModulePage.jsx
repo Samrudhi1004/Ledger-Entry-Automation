@@ -1,0 +1,121 @@
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import Header from '../components/layout/Header';
+import { BarChart3, ArrowRight, Layers, CheckCircle2, Factory } from 'lucide-react';
+
+export default function ProductionModulePage() {
+  const navigate = useNavigate();
+
+  const productionCards = [
+    {
+      id: 'daily-production-reports',
+      title: 'Daily Production Reports',
+      badge: '● End of Day Output & Rejections',
+      badgeBg: '#FFF7ED',
+      badgeColor: '#C2410C',
+      icon: BarChart3,
+      iconBg: '#FFF7ED',
+      iconColor: '#EA580C',
+      description:
+        'End-of-day shift production targets, completed jobs, correct vs incorrect counts, rejection breakup (CR, MR, RW), achievement %, and supervisor filters.',
+      details: ['End of Day Shift Production Logs', 'Target vs Actual Achievement %', 'CR / MR / RW Rejection Breakup'],
+      actionText: 'Open Daily Production Reports',
+      link: '/reports/daily-production',
+    },
+  ];
+
+  return (
+    <>
+      <Header
+        title="Production Module"
+        subtitle="Operational Production Hub — End-of-day output logs, shift target tracking, and rejection analytics"
+      />
+
+      <div className="page-content bg-gradient-animated" style={{ padding: '28px', background: '#F8FAFC', minHeight: '100vh' }}>
+        
+
+
+        {/* Feature Cards Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '24px' }}>
+          {productionCards.map((card) => {
+            const IconComponent = card.icon;
+            return (
+              <div
+                key={card.id}
+                className="card shadow-hover-elevate transition-all duration-300"
+                style={{
+                  borderRadius: '16px',
+                  padding: '24px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justify: 'space-between',
+                  border: '1px solid #E2E8F0',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <div>
+                  {/* Top Icon & Badge */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                    <div
+                      style={{
+                        width: '48px',
+                        height: '48px',
+                        borderRadius: '12px',
+                        backgroundColor: card.iconBg,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justify: 'center',
+                        color: card.iconColor,
+                      }}
+                    >
+                      <IconComponent size={24} />
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        backgroundColor: card.badgeBg,
+                        color: card.badgeColor,
+                      }}
+                    >
+                      {card.badge}
+                    </span>
+                  </div>
+
+                  {/* Title */}
+                  <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0F172A', marginBottom: '24px' }}>
+                    {card.title}
+                  </h3>
+                </div>
+
+                {/* Action Button */}
+                <button
+                  className="btn btn-primary"
+                  onClick={() => navigate(card.link)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    borderRadius: '10px',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justify: 'center',
+                    gap: '8px',
+                    backgroundColor: '#EA580C',
+                    borderColor: '#EA580C',
+                  }}
+                >
+                  <span>{card.actionText}</span>
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}

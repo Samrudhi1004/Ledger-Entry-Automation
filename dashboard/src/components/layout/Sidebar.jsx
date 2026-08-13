@@ -1,20 +1,69 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import {
+  Database,
+  ShieldCheck,
+  Layers,
+  Users,
+  Sliders,
+  Cpu,
+  BarChart3,
+  Factory,
+  LogOut,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
 
-const NAV_ITEMS = [
-  { icon: '⚡', label: 'Live Dashboard',    to: '/' },
-  { icon: '⏳', label: 'Pending Reviews',   to: '/pending',   badgeKey: 'pending' },
-  { icon: '📋', label: 'Inspections',       to: '/inspections' },
-  { icon: '📊', label: 'Analytics',         to: '/analytics' },
-  { icon: '🏭', label: 'Machines',          to: '/machines' },
-  { icon: '👥', label: 'Users & Operators', to: '/users' },
+const MODULES = [
+  {
+    key: 'master',
+    label: 'Master Database',
+    icon: Database,
+    items: [
+      { icon: Users, label: 'Users & Operators', to: '/users' },
+      { icon: Sliders, label: 'Master Parameters', to: '/parameters' },
+    ],
+  },
+  {
+    key: 'qa',
+    label: 'Reports',
+    icon: ShieldCheck,
+    to: '/reports',
+    items: [],
+  },
+  {
+    key: 'production',
+    label: 'Production Module',
+    icon: Layers,
+    to: '/production',
+    items: [],
+  },
 ];
 
 export default function Sidebar({ pendingCount = 0 }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // Initialize expanded state: expand module that contains current active route, or master by default
+  const [expanded, setExpanded] = useState(() => {
+    const activeMod = MODULES.find((m) => m.items && m.items.some((item) => item.to === location.pathname));
+    return activeMod ? { [activeMod.key]: true } : { master: true };
+  });
+
+  // Automatically expand module when route changes
+  useEffect(() => {
+    const activeMod = MODULES.find((m) => m.items && m.items.some((item) => item.to === location.pathname));
+    if (activeMod) {
+      setExpanded((prev) => ({ ...prev, [activeMod.key]: true }));
+    }
+  }, [location.pathname]);
+
+  const toggleModule = (key) => {
+    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -30,7 +79,9 @@ export default function Sidebar({ pendingCount = 0 }) {
     <aside className="sidebar">
       {/* Logo */}
       <div className="sidebar-logo">
-        <div className="sidebar-logo-icon">🏭</div>
+        <div className="sidebar-logo-icon">
+          <Factory size={20} color="#ffffff" />
+        </div>
         <div className="sidebar-logo-text">
           <span className="sidebar-logo-title">Inspection Hub</span>
           <span className="sidebar-logo-sub">Quality Control</span>
@@ -39,21 +90,78 @@ export default function Sidebar({ pendingCount = 0 }) {
 
       {/* Nav */}
       <nav className="sidebar-nav">
-        <div className="sidebar-section-label">Navigation</div>
-        {NAV_ITEMS.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-          >
-            <span>{item.icon}</span>
-            <span style={{ flex: 1 }}>{item.label}</span>
-            {item.badgeKey === 'pending' && pendingCount > 0 && (
-              <span className="nav-badge">{pendingCount}</span>
-            )}
-          </NavLink>
-        ))}
+        {MODULES.map((module) => {
+          const ModuleIcon = module.icon;
+
+          if (module.to) {
+            const isDirectActive = location.pathname === module.to;
+            return (
+              <div key={module.key} className={`sidebar-module${isDirectActive ? ' has-active' : ''}`}>
+                <NavLink
+                  to={module.to}
+                  className={`sidebar-module-header${isDirectActive ? ' active' : ''}`}
+                  style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+                >
+                  <span className="module-icon">
+                    <ModuleIcon size={16} />
+                  </span>
+                  <span className="module-title">{module.label}</span>
+                </NavLink>
+              </div>
+            );
+          }
+
+          const isExpanded = !!expanded[module.key];
+          const hasActiveChild = module.items && module.items.some((item) => item.to === location.pathname);
+
+          return (
+            <div key={module.key} className={`sidebar-module${hasActiveChild ? ' has-active' : ''}`}>
+              <button
+                type="button"
+                className={`sidebar-module-header${isExpanded ? ' expanded' : ''}`}
+                onClick={() => toggleModule(module.key)}
+              >
+                <span className="module-icon">
+                  <ModuleIcon size={16} />
+                </span>
+                <span className="module-title">{module.label}</span>
+                <span className="module-chevron">
+                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </span>
+              </button>
+
+              {isExpanded && (
+                <div className="sidebar-submodules">
+                  {module.items && module.items.length > 0 ? (
+                    module.items.map((item) => {
+                      const ItemIcon = item.icon;
+                      return (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          end={item.to === '/'}
+                          className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+                        >
+                          <ItemIcon size={16} />
+                          <span style={{ flex: 1 }}>{item.label}</span>
+                          {item.badgeKey === 'pending' && pendingCount > 0 && (
+                            <span className="nav-badge">{pendingCount}</span>
+                          )}
+                        </NavLink>
+                      );
+                    })
+                  ) : (
+                    <div className="sidebar-empty-item">
+                      <span style={{ opacity: 0.5, fontSize: '0.75rem', fontStyle: 'italic', paddingLeft: '8px' }}>
+                        (Empty)
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
       {/* User footer */}
@@ -71,13 +179,14 @@ export default function Sidebar({ pendingCount = 0 }) {
             className="btn btn-ghost btn-sm"
             onClick={handleLogout}
             disabled={loggingOut}
-            style={{ padding: '4px 8px', flexShrink: 0 }}
+            style={{ padding: '4px 8px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             title="Log out"
           >
-            ↩
+            <LogOut size={16} />
           </button>
         </div>
       </div>
     </aside>
   );
 }
+

@@ -10,6 +10,8 @@ class InspectionProvider with ChangeNotifier {
 
   String? sessionId;
   int trialNumber = 1;
+  String shift = 'A';
+  String inspectionType = 'first_piece';
   String? parentSessionId;
   List<dynamic> activeRejections = [];
   Map<String, dynamic>? activeRejectionNotice;
@@ -25,7 +27,28 @@ class InspectionProvider with ChangeNotifier {
     currentParamIndex = 0;
     trialNumber = 1;
     parentSessionId = null;
+    recordedResults.clear();
     notifyListeners();
+  }
+
+  void resetForNextOperation() {
+    selectedPart = null;
+    selectedTemplate = null;
+    parameters = [];
+    currentParamIndex = 0;
+    sessionId = null;
+    trialNumber = 1;
+    parentSessionId = null;
+    recordedResults.clear();
+    activeRejectionNotice = null;
+    isLoading = false;
+    errorMessage = null;
+    notifyListeners();
+  }
+
+  void logout() {
+    selectedMachine = null;
+    resetForNextOperation();
   }
 
   void selectPart(Map<String, dynamic> part) {
@@ -45,16 +68,39 @@ class InspectionProvider with ChangeNotifier {
     }
   }
 
-  Future<void> loadParameters(Map<String, dynamic> template, {List<dynamic>? targetRejectedCodes}) async {
+  Future<void> loadParameters(
+    Map<String, dynamic> template, {
+    List<dynamic>? targetRejectedCodes,
+    bool isFirstPiece = false,
+    String? categoryFilter,
+  }) async {
     selectedTemplate = template;
     isLoading = true;
     notifyListeners();
 
-    final result = await ApiService.getParameters(template['id']);
-    if (targetRejectedCodes != null && targetRejectedCodes.isNotEmpty) {
-      parameters = result.where((p) => targetRejectedCodes.contains(p['parameter_code'])).toList();
+    List<dynamic> allCombined = [];
+
+    if (categoryFilter == 'process') {
+      // Process parameters — ONLY loaded for Setup Approval screen.
+      // Never loaded in the normal FPI / Hourly inspection flow.
+      final procParams = await ApiService.getProcessParameters(template['id']);
+      for (var pp in procParams) {
+        pp['is_process_parameter'] = true;
+      }
+      allCombined = procParams;
     } else {
-      parameters = result;
+      // Default: product parameters only.
+      // This covers both 'product' categoryFilter AND the normal FPI / hourly flow.
+      // Process Parameters MUST NOT be mixed into the First PC or Hourly inspection sessions.
+      final prodParams = await ApiService.getParameters(template['id']);
+      allCombined = List.from(prodParams);
+    }
+
+    if (targetRejectedCodes != null && targetRejectedCodes.isNotEmpty) {
+      final filtered = allCombined.where((p) => targetRejectedCodes.contains(p['parameter_code'])).toList();
+      parameters = filtered.isNotEmpty ? filtered : allCombined;
+    } else {
+      parameters = allCombined;
     }
     currentParamIndex = 0;
     recordedResults.clear();
@@ -62,10 +108,131 @@ class InspectionProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loadParametersForRetrial(Map<String, dynamic> template, {required int trial}) async {
+    selectedTemplate = template;
+    isLoading = true;
+    notifyListeners();
+
+    final allParams = await ApiService.getParameters(template['id']);
+    await fetchPendingRejections();
+    List<dynamic> targetCodes = [];
+
+    if (activeRejections.isNotEmpty) {
+      targetCodes = activeRejections.first['rejected_parameters'] ?? [];
+    }
+
+    if (targetCodes.isEmpty && selectedMachine != null) {
+      final setupInfo = await ApiService.checkSetupApproved(selectedMachine!['id']);
+      if (setupInfo['session_id'] != null) {
+        final sessionDoc = await ApiService.getSessionDetail(setupInfo['session_id']);
+        if (sessionDoc != null && sessionDoc['measurements'] != null) {
+          final measurements = sessionDoc['measurements'] as List;
+          final prevTrial = trial - 1;
+          final prevTrialMeasurements = measurements.where((m) => (m['trial_number'] ?? 1) == prevTrial).toList();
+          final oocCodes = prevTrialMeasurements
+              .where((m) => m['status'] == 'out_of_spec')
+              .map((m) => m['parameter_code'])
+              .toSet()
+              .toList();
+          if (oocCodes.isNotEmpty) {
+            targetCodes = oocCodes;
+          }
+        }
+      }
+    }
+
+    if (targetCodes.isNotEmpty) {
+      final filtered = allParams.where((p) => targetCodes.contains(p['parameter_code'])).toList();
+      parameters = filtered.isNotEmpty ? filtered : allParams;
+    } else {
+      parameters = allParams;
+    }
+
+    currentParamIndex = 0;
+    recordedResults.clear();
+    isLoading = false;
+    notifyListeners();
+  }
+
+  int hourlySlot = 1;
+  Set<int> completedHourlySlots = {};
+
+  void setHourlySlot(int slot) {
+    hourlySlot = slot;
+    inspectionType = 'hourly';
+    notifyListeners();
+  }
+
+  void markHourlySlotCompleted(int slot) {
+    completedHourlySlots.add(slot);
+    if (hourlySlot < 8) {
+      hourlySlot = slot + 1;
+    }
+    notifyListeners();
+  }
+
+  void syncCompletedSlots(List<int> slots) {
+    completedHourlySlots.addAll(slots);
+    if (completedHourlySlots.isNotEmpty) {
+      final maxDone = completedHourlySlots.reduce((a, b) => a > b ? a : b);
+      if (maxDone >= hourlySlot && maxDone < 8) {
+        hourlySlot = maxDone + 1;
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> restoreActiveReportState(Map<String, dynamic> setupStatus) async {
+    if (setupStatus['session_id'] != null) {
+      sessionId = setupStatus['session_id'].toString();
+
+      if (selectedPart == null && setupStatus['part_number'] != null) {
+        selectedPart = {
+          'part_number': setupStatus['part_number'],
+          'part_name': setupStatus['part_name'] ?? setupStatus['part_number'],
+        };
+      }
+
+      if (setupStatus['completed_hourly_slots'] is List) {
+        final List<int> slots = List<int>.from(setupStatus['completed_hourly_slots']);
+        syncCompletedSlots(slots);
+      }
+
+      if (setupStatus['next_unlocked_slot'] is int) {
+        final int next = setupStatus['next_unlocked_slot'];
+        if (next > 0 && next <= 8) {
+          hourlySlot = next;
+        }
+      }
+
+      try {
+        final doc = await ApiService.getSessionDetail(sessionId!);
+        if (doc != null && doc['measurements'] is List) {
+          recordedResults.clear();
+          for (var m in doc['measurements']) {
+            final code = m['parameter_code'];
+            if (code != null) {
+              recordedResults[code.toString()] = m;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error restoring recorded measurements: $e');
+      }
+    }
+    notifyListeners();
+  }
+
+  bool isHourlySlotUnlocked(int slot) {
+    if (slot <= 1) return true;
+    return completedHourlySlots.contains(slot - 1);
+  }
+
   Future<bool> startSession({
     String shift = 'A',
     String inspectionType = 'first_piece',
     int trial = 1,
+    int hourlySlot = 1,
     String? parentId,
   }) async {
     if (selectedPart == null || selectedMachine == null || selectedTemplate == null) {
@@ -73,7 +240,10 @@ class InspectionProvider with ChangeNotifier {
     }
 
     isLoading = true;
-    trialNumber = trial;
+    trialNumber = inspectionType == 'hourly' ? 0 : trial;
+    this.hourlySlot = inspectionType == 'first_piece' ? 0 : hourlySlot;
+    this.inspectionType = inspectionType;
+    this.shift = shift;
     parentSessionId = parentId;
     notifyListeners();
 
@@ -84,6 +254,7 @@ class InspectionProvider with ChangeNotifier {
       inspectionType: inspectionType,
       shift: shift,
       trialNumber: trial,
+      hourlySlot: inspectionType == 'first_piece' ? 0 : hourlySlot,
       parentSessionId: parentId,
     );
 
@@ -123,6 +294,8 @@ class InspectionProvider with ChangeNotifier {
       value: value,
       voiceRawText: voiceRawText,
       method: method,
+      hourlySlot: inspectionType == 'first_piece' ? 0 : hourlySlot,
+      inspectionType: inspectionType,
     );
 
     isLoading = false;
@@ -147,6 +320,10 @@ class InspectionProvider with ChangeNotifier {
     }
   }
 
+  void advanceToNext() => nextParameter();
+  void goToPrev() => previousParameter();
+  void jumpToParam(int index) => goToParameter(index);
+
   void goToParameter(int index) {
     if (index >= 0 && index < parameters.length) {
       currentParamIndex = index;
@@ -158,6 +335,8 @@ class InspectionProvider with ChangeNotifier {
 
   String? getParamStatus(String code) => recordedResults[code]?['status'];
 
+  dynamic getParamReading(String code) => recordedResults[code]?['value'];
+
   int get filledCount => recordedResults.length;
 
   int get remainingCount => parameters.length - recordedResults.length;
@@ -168,10 +347,40 @@ class InspectionProvider with ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
+    final currentSlot = hourlySlot;
     final success = await ApiService.completeSession(sessionId!);
+    if (success) {
+      if (inspectionType == 'hourly') {
+        if (!completedHourlySlots.contains(currentSlot)) {
+          completedHourlySlots.add(currentSlot);
+        }
+        if (hourlySlot < 8) {
+          hourlySlot = hourlySlot + 1;
+        }
+      }
+    }
     isLoading = false;
     notifyListeners();
     return success;
   }
+
+  Future<Map<String, dynamic>?> finalizeFirstPieceSession() async {
+    if (sessionId == null) return null;
+
+    isLoading = true;
+    notifyListeners();
+
+    final result = await ApiService.finalizeFirstPiece(sessionId!);
+    if (result != null) {
+      completedHourlySlots.add(hourlySlot);
+      if (hourlySlot < 8) {
+        hourlySlot = hourlySlot + 1;
+      }
+    }
+    isLoading = false;
+    notifyListeners();
+    return result;
+  }
 }
+
 

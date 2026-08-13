@@ -1,13 +1,14 @@
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 
-from .models import Part, InspectionTemplate, InspectionParameter
+from .models import Part, InspectionTemplate, InspectionParameter, ProcessParameter
 from .serializers import (
     PartSerializer, PartListSerializer,
     InspectionTemplateSerializer, InspectionTemplateListSerializer,
-    InspectionParameterSerializer,
+    InspectionParameterSerializer, ProcessParameterSerializer,
 )
 from apps.users.permissions import IsAdminUser, IsQualityEngineer, IsSupervisorOrAbove
 
@@ -38,16 +39,27 @@ class PartListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsQualityEngineer()]
+            return [IsSupervisorOrAbove()]
         return [IsAuthenticated()]
 
 
 class PartDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """GET /api/parts/<part_number>/  — lookup by part number"""
+    """GET/PUT/DELETE /api/parts/<part_number>/"""
     serializer_class   = PartSerializer
     permission_classes = [IsAuthenticated]
     queryset           = Part.objects.select_related('machine').all()
     lookup_field       = 'part_number'
+
+    def get_permissions(self):
+        if self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            return [IsSupervisorOrAbove()]
+        return [IsAuthenticated()]
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.is_active = False
+        instance.save()
+        return Response({'message': f'Part {instance.part_number} deactivated successfully.'}, status=status.HTTP_204_NO_CONTENT)
 
 
 # ─── Inspection Templates ──────────────────────────────────────────────────
@@ -55,7 +67,7 @@ class TemplateListCreateView(generics.ListCreateAPIView):
     """
     GET  /api/parts/<part_number>/templates/                     → all templates for part
     GET  /api/parts/<part_number>/templates/?type=first_piece    → filter by type
-    POST /api/parts/<part_number>/templates/                     → create template (QE)
+    POST /api/parts/<part_number>/templates/                     → create template (Supervisor/QE/Admin)
     """
     permission_classes = [IsAuthenticated]
 
@@ -65,7 +77,8 @@ class TemplateListCreateView(generics.ListCreateAPIView):
         return InspectionTemplateSerializer
 
     def get_queryset(self):
-        part_number = self.kwargs['part_number']
+        from urllib.parse import unquote
+        part_number = unquote(self.kwargs['part_number'])
         qs = InspectionTemplate.objects.filter(
             part__part_number=part_number,
             is_active=True,
@@ -76,7 +89,9 @@ class TemplateListCreateView(generics.ListCreateAPIView):
         return qs
 
     def perform_create(self, serializer):
-        part = Part.objects.get(part_number=self.kwargs['part_number'])
+        from urllib.parse import unquote
+        part_number = unquote(self.kwargs['part_number'])
+        part = Part.objects.get(part_number=part_number)
         # Auto-increment version
         last_version = InspectionTemplate.objects.filter(
             part=part,
@@ -86,8 +101,55 @@ class TemplateListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsQualityEngineer()]
+            return [IsSupervisorOrAbove()]
         return [IsAuthenticated()]
+
+
+class TemplateDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET/PUT/DELETE /api/parts/templates/<id>/"""
+    serializer_class   = InspectionTemplateSerializer
+    queryset           = InspectionTemplate.objects.all()
+
+    def get_permissions(self):
+        if self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            return [IsSupervisorOrAbove()]
+        return [IsAuthenticated()]
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.is_active = False
+        instance.save()
+        return Response({'message': 'Operation template deactivated successfully.'}, status=status.HTTP_204_NO_CONTENT)
+
+
+class TemplatePublishView(APIView):
+    """
+    POST /api/parts/templates/<id>/publish/
+    Publishes and broadcasts the configured template to shop floor operators and quality inspectors.
+    """
+    permission_classes = [IsAuthenticated, IsSupervisorOrAbove]
+
+    def post(self, request, pk):
+        try:
+            template = InspectionTemplate.objects.prefetch_related('parameters', 'part__machine').get(pk=pk)
+            template.is_active = True
+            template.is_published = True
+            template.published_at = timezone.now()
+            template.save()
+
+            serializer = InspectionTemplateSerializer(template, context={'request': request})
+            return Response({
+                'success': True,
+                'message': f"Operation '{template.name or template.get_inspection_type_display()}' published and dispatched to mobile successfully!",
+                'template': serializer.data,
+                'published_at': template.published_at,
+                'parameters_count': template.parameters.count(),
+            }, status=status.HTTP_200_OK)
+        except InspectionTemplate.DoesNotExist:
+            return Response(
+                {'error': f'Inspection template with ID {pk} not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
 
 class ActiveTemplateView(APIView):
@@ -99,6 +161,8 @@ class ActiveTemplateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, part_number, inspection_type):
+        from urllib.parse import unquote
+        part_number = unquote(part_number)
         try:
             template = InspectionTemplate.objects.prefetch_related('parameters').get(
                 part__part_number=part_number,
@@ -127,7 +191,7 @@ class ActiveTemplateView(APIView):
 class ParameterListCreateView(generics.ListCreateAPIView):
     """
     GET  /api/parts/templates/<template_id>/parameters/
-    POST /api/parts/templates/<template_id>/parameters/  → add parameter (QE)
+    POST /api/parts/templates/<template_id>/parameters/  → add parameter (Supervisor/QE/Admin)
     """
     serializer_class   = InspectionParameterSerializer
     permission_classes = [IsAuthenticated]
@@ -143,12 +207,77 @@ class ParameterListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsQualityEngineer()]
+            return [IsSupervisorOrAbove()]
         return [IsAuthenticated()]
 
 
 class ParameterDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET/PUT/DELETE /api/parts/parameters/<id>/"""
     serializer_class   = InspectionParameterSerializer
-    permission_classes = [IsQualityEngineer]
     queryset           = InspectionParameter.objects.all()
+
+    def get_permissions(self):
+        if self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            return [IsSupervisorOrAbove()]
+        return [IsAuthenticated()]
+
+
+# ─── Process Parameters ───────────────────────────────────────────────────
+class ProcessParameterListCreateView(generics.ListCreateAPIView):
+    """
+    GET  /api/parts/templates/<template_id>/process-parameters/
+    POST /api/parts/templates/<template_id>/process-parameters/  → add process parameter (Supervisor/Admin)
+    """
+    serializer_class   = ProcessParameterSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        template_id = self.kwargs['template_id']
+        qs = ProcessParameter.objects.filter(template_id=template_id).order_by('sequence_order')
+
+        # Auto-provision default process parameter definitions in Master DB if none exist yet for this template
+        if not qs.exists():
+            try:
+                template = InspectionTemplate.objects.get(pk=template_id)
+                default_params = [
+                    {'parameter_code': 'PR-01', 'parameter_name': 'Spindle Speed', 'specification': '1000 - 1500 RPM', 'unit': 'RPM', 'sequence_order': 1},
+                    {'parameter_code': 'PR-02', 'parameter_name': 'Feed Rate', 'specification': '0.15 - 0.35 mm/rev', 'unit': 'mm/rev', 'sequence_order': 2},
+                    {'parameter_code': 'PR-03', 'parameter_name': 'Coolant Pressure', 'specification': '10 - 15 Bar', 'unit': 'Bar', 'sequence_order': 3},
+                    {'parameter_code': 'PR-04', 'parameter_name': 'Tool Setting', 'specification': 'T01 / Preset OK', 'unit': '', 'sequence_order': 4},
+                ]
+                for dp in default_params:
+                    ProcessParameter.objects.create(
+                        template=template,
+                        parameter_code=dp['parameter_code'],
+                        parameter_name=dp['parameter_name'],
+                        specification=dp['specification'],
+                        unit=dp['unit'],
+                        sequence_order=dp['sequence_order'],
+                        is_required=True,
+                        is_active=True,
+                    )
+                qs = ProcessParameter.objects.filter(template_id=template_id).order_by('sequence_order')
+            except Exception as e:
+                pass
+
+        return qs
+
+    def perform_create(self, serializer):
+        template = InspectionTemplate.objects.get(pk=self.kwargs['template_id'])
+        serializer.save(template=template)
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsSupervisorOrAbove()]
+        return [IsAuthenticated()]
+
+
+class ProcessParameterDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET/PUT/DELETE /api/parts/process-parameters/<id>/"""
+    serializer_class   = ProcessParameterSerializer
+    queryset           = ProcessParameter.objects.all()
+
+    def get_permissions(self):
+        if self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            return [IsSupervisorOrAbove()]
+        return [IsAuthenticated()]

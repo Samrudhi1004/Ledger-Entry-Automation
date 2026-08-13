@@ -12,8 +12,17 @@ venv/
 env/
 ENV/
 *.sqlite3
+
+# Media uploads — do NOT push audio or generated PDFs
 backend/media/audio/
 backend/media/transcriptions/
+backend/media/voice_uploads/
+backend/media/pdf_reports/
+*.m4a
+*.m4v
+
+# PDF files (generated reports & inspection docs)
+*.pdf
 
 # Node / Frontend (React / Vite)
 node_modules/

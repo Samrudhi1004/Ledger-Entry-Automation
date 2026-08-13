@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Header from '../components/layout/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Modal from '../components/common/Modal';
+import Badge from '../components/common/Badge';
 import { getUsers, registerUser, deleteUser, getPlants } from '../api/users';
 import { formatDateTime } from '../utils/formatters';
 
@@ -14,7 +15,12 @@ export default function UsersPage() {
   const [errorMsg, setErrorMsg]   = useState('');
   const [roleFilter, setRoleFilter] = useState('');
 
-  // Form state for creating operator/user
+  const [deleteTargetUser, setDeleteTargetUser] = useState(null);
+  const [deleting, setDeleting]                 = useState(false);
+  const [successBannerMsg, setSuccessBannerMsg] = useState('');
+  const [pageErrorBannerMsg, setPageErrorBannerMsg] = useState('');
+
+  // Form state for creating user accounts (Supervisor, Inspector, Operator)
   const [formData, setFormData] = useState({
     username: '',
     first_name: '',
@@ -64,7 +70,21 @@ export default function UsersPage() {
   const handleCreateUser = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+    setSuccessBannerMsg('');
+    setPageErrorBannerMsg('');
 
+    if (!formData.username.trim()) {
+      setErrorMsg('Username is required.');
+      return;
+    }
+    if (!formData.employee_id.trim()) {
+      setErrorMsg('Employee ID is required.');
+      return;
+    }
+    if (!formData.password) {
+      setErrorMsg('Password is required.');
+      return;
+    }
     if (formData.password !== formData.password2) {
       setErrorMsg('Passwords do not match.');
       return;
@@ -74,6 +94,7 @@ export default function UsersPage() {
     try {
       await registerUser(formData);
       setShowModal(false);
+      setSuccessBannerMsg(`✓ User account "${formData.username}" (${formData.role.toUpperCase()}) saved successfully to database! Login is enabled.`);
       // Reset form
       setFormData({
         username: '',
@@ -95,32 +116,93 @@ export default function UsersPage() {
         const firstErrVal = errData[firstErrKey];
         setErrorMsg(`${firstErrKey.toUpperCase()}: ${Array.isArray(firstErrVal) ? firstErrVal[0] : firstErrVal}`);
       } else {
-        setErrorMsg('Failed to create user account.');
+        setErrorMsg('Failed to save user account to database.');
       }
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDelete = async (userObj) => {
-    if (!window.confirm(`Are you sure you want to delete account "${userObj.username}" (${userObj.full_name || userObj.employee_id})?`)) {
-      return;
-    }
+  const handleDelete = (userObj) => {
+    setSuccessBannerMsg('');
+    setPageErrorBannerMsg('');
+    setDeleteTargetUser(userObj);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteTargetUser) return;
+    setDeleting(true);
+    setSuccessBannerMsg('');
+    setPageErrorBannerMsg('');
 
     try {
-      await deleteUser(userObj.id);
+      const res = await deleteUser(deleteTargetUser.id);
+      const data = res.data;
+      
+      const msg = data?.message || (data?.action === 'deactivated' 
+        ? `User account "${deleteTargetUser.username}" has historical inspection records and was deactivated instead.`
+        : `User account "${deleteTargetUser.username}" was deleted successfully.`);
+      
+      setSuccessBannerMsg(`✓ ${msg}`);
+      setDeleteTargetUser(null);
       fetchUsers();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to delete user account.');
+      const respData = err.response?.data;
+      let errMsg = 'Failed to delete user account.';
+      if (respData?.message) {
+        errMsg = respData.message;
+      } else if (respData?.detail) {
+        errMsg = respData.detail;
+      }
+      setPageErrorBannerMsg(errMsg);
+      setDeleteTargetUser(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const getRoleLabel = (role) => {
+    switch (role) {
+      case 'supervisor': return 'SUPERVISOR';
+      case 'quality_engineer': return 'INSPECTOR';
+      case 'operator': return 'OPERATOR';
+      case 'admin': return 'ADMIN';
+      default: return role ? role.toUpperCase() : 'USER';
+    }
+  };
+
+  const getRoleBadgeClass = (role) => {
+    switch (role) {
+      case 'supervisor': return 'badge-purple';
+      case 'quality_engineer': return 'badge-ok';
+      case 'operator': return 'badge-blue';
+      default: return 'badge-manual';
     }
   };
 
   return (
     <>
-      <Header title="User & Operator Management" subtitle="Create and manage shop-floor operator and supervisor accounts" />
+      <Header
+        title="User & Account Management"
+        subtitle="Manage accounts for Supervisors, Quality Inspectors, and Machine Operators"
+      />
 
       <div className="page-content bg-gradient-animated">
         <div className="card">
+          {successBannerMsg && (
+            <div className="badge badge-ok mb-16" style={{ width: '100%', padding: '12px 16px', borderRadius: 8, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{successBannerMsg}</span>
+              <button onClick={() => setSuccessBannerMsg('')} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+            </div>
+          )}
+
+          {pageErrorBannerMsg && (
+            <div className="badge badge-red mb-16" style={{ width: '100%', padding: '12px 16px', borderRadius: 8, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>⚠️ {pageErrorBannerMsg}</span>
+              <button onClick={() => setPageErrorBannerMsg('')} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+            </div>
+          )}
+
           <div className="section-header" style={{ marginBottom: 20 }}>
             <h3 className="section-title">
               <span className="dot" />
@@ -131,12 +213,12 @@ export default function UsersPage() {
                 className="form-select"
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
-                style={{ width: 160, padding: '6px 12px' }}
+                style={{ width: 170, padding: '6px 12px' }}
               >
                 <option value="">All Roles</option>
-                <option value="operator">Operators</option>
                 <option value="supervisor">Supervisors</option>
-                <option value="admin">Admins</option>
+                <option value="quality_engineer">Inspectors</option>
+                <option value="operator">Operators</option>
               </select>
 
               <button
@@ -147,17 +229,16 @@ export default function UsersPage() {
                   setShowModal(true);
                 }}
               >
-                + Create Operator / Account
+                + Create User / Account
               </button>
             </div>
           </div>
 
           {loading ? (
-            <LoadingSpinner message="Fetching user accounts..." />
+            <LoadingSpinner message="Fetching user accounts from database..." />
           ) : users.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-state-icon">👥</div>
-              <div className="empty-state-text">No accounts found. Click "+ Create Operator" to add one!</div>
+              <div className="empty-state-text">No accounts found. Click "+ Create User / Account" to add one!</div>
             </div>
           ) : (
             <div className="table-wrapper">
@@ -181,11 +262,11 @@ export default function UsersPage() {
                       <td>{u.full_name || u.username}</td>
                       <td className="font-mono">{u.username}</td>
                       <td>
-                        <span className={`badge badge-${u.role === 'operator' ? 'blue' : u.role === 'supervisor' ? 'purple' : 'ok'}`}>
-                          {u.role ? u.role.toUpperCase() : 'USER'}
+                        <span className={`badge ${getRoleBadgeClass(u.role)}`}>
+                          {getRoleLabel(u.role)}
                         </span>
                       </td>
-                      <td>{u.plant_name || '—'}</td>
+                      <td>{u.plant_name || 'Main Plant #1'}</td>
                       <td>
                         <span className={`badge badge-${u.is_active !== false ? 'ok' : 'red'}`}>
                           {u.is_active !== false ? 'ACTIVE' : 'INACTIVE'}
@@ -200,7 +281,7 @@ export default function UsersPage() {
                             title="Delete user account"
                             style={{ padding: '4px 10px', fontSize: 12 }}
                           >
-                            🗑️ Delete
+                            Delete
                           </button>
                         )}
                       </td>
@@ -213,10 +294,10 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Modal for Creating New Operator Account */}
+      {/* Modal for Creating New User Account (Supervisor, Inspector, Operator) */}
       {showModal && (
         <Modal
-          title="Create New Operator / User Account"
+          title="Create New User Account (Database Saved)"
           onClose={() => setShowModal(false)}
           footer={
             <>
@@ -233,26 +314,26 @@ export default function UsersPage() {
                 onClick={handleCreateUser}
                 disabled={submitting}
               >
-                {submitting ? 'Creating Account...' : 'Create Account'}
+                {submitting ? 'Saving to Database...' : 'Save Account & Enable Login'}
               </button>
             </>
           }
         >
           {errorMsg && (
             <div className="badge badge-red mb-16" style={{ width: '100%', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>
-              ⚠️ {errorMsg}
+              {errorMsg}
             </div>
           )}
 
           <form onSubmit={handleCreateUser}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
               <div className="form-group">
-                <label className="form-label">Username *</label>
+                <label className="form-label">Username * (Login Identifier)</label>
                 <input
                   type="text"
                   name="username"
                   className="form-input"
-                  placeholder="e.g. operator_rahul"
+                  placeholder="e.g. supervisor_rahul or inspector_sarah"
                   required
                   value={formData.username}
                   onChange={handleChange}
@@ -265,7 +346,7 @@ export default function UsersPage() {
                   type="text"
                   name="employee_id"
                   className="form-input"
-                  placeholder="e.g. EMP-102"
+                  placeholder="e.g. EMP-105"
                   required
                   value={formData.employee_id}
                   onChange={handleChange}
@@ -308,9 +389,9 @@ export default function UsersPage() {
                   value={formData.role}
                   onChange={handleChange}
                 >
-                  <option value="operator">Operator (Shop Floor)</option>
-                  <option value="supervisor">Supervisor (Quality Control)</option>
-                  <option value="admin">Admin</option>
+                  <option value="supervisor">Supervisor (Quality Control & Approvals)</option>
+                  <option value="quality_engineer">Inspector (Quality Inspector)</option>
+                  <option value="operator">Operator (Shop Floor Machine Operator)</option>
                 </select>
               </div>
 
@@ -322,23 +403,27 @@ export default function UsersPage() {
                   value={formData.plant}
                   onChange={handleChange}
                 >
-                  {plants.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.factory_name})
-                    </option>
-                  ))}
+                  {plants.length === 0 ? (
+                    <option value="1">Main Machining Plant #1</option>
+                  ) : (
+                    plants.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.factory_name})
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
               <div className="form-group">
-                <label className="form-label">Password *</label>
+                <label className="form-label">Login Password *</label>
                 <input
                   type="password"
                   name="password"
                   className="form-input"
-                  placeholder="Enter password..."
+                  placeholder="Enter login password..."
                   required
                   value={formData.password}
                   onChange={handleChange}
@@ -359,6 +444,63 @@ export default function UsersPage() {
               </div>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Modal for Confirming User Deletion / Deactivation */}
+      {deleteTargetUser && (
+        <Modal
+          title="Confirm User Account Removal"
+          onClose={() => setDeleteTargetUser(null)}
+          footer={
+            <>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setDeleteTargetUser(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                id="confirm-delete-user-btn"
+                className="btn btn-danger"
+                onClick={confirmDeleteUser}
+                disabled={deleting}
+              >
+                {deleting ? 'Removing Account...' : 'Confirm Remove Account'}
+              </button>
+            </>
+          }
+        >
+          <div style={{ padding: '4px 0' }}>
+            <p style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 16 }}>
+              Are you sure you want to remove this user account?
+            </p>
+
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', rowGap: 8, fontSize: 13, alignItems: 'center' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Full Name:</span>
+                <strong style={{ color: '#fff' }}>{deleteTargetUser.full_name || deleteTargetUser.username}</strong>
+
+                <span style={{ color: 'var(--text-muted)' }}>Employee ID:</span>
+                <strong style={{ color: 'var(--accent-blue)', fontFamily: 'monospace' }}>{deleteTargetUser.employee_id || `EMP-${deleteTargetUser.id}`}</strong>
+
+                <span style={{ color: 'var(--text-muted)' }}>Username:</span>
+                <strong style={{ color: '#fff', fontFamily: 'monospace' }}>{deleteTargetUser.username}</strong>
+
+                <span style={{ color: 'var(--text-muted)' }}>Role:</span>
+                <div>
+                  <span className={`badge ${getRoleBadgeClass(deleteTargetUser.role)}`}>
+                    {getRoleLabel(deleteTargetUser.role)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, background: 'rgba(59, 130, 246, 0.08)', padding: 12, borderRadius: 6, border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+              ℹ️ <strong>System Protection Rule:</strong> If this account has recorded historical inspection or audit logs, the system will safely <strong>deactivate</strong> the account instead of deleting historical inspection records.
+            </div>
+          </div>
         </Modal>
       )}
     </>

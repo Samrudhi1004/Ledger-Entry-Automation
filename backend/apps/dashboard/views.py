@@ -18,9 +18,13 @@ class LiveStatusView(APIView):
 
     def get(self, request):
         plant_id = request.query_params.get('plant')
+        today    = timezone.now().date()
         qs = InspectionSession.objects.select_related(
             'part', 'machine', 'operator'
-        ).filter(status=InspectionSession.Status.IN_PROGRESS)
+        ).filter(
+            started_at__date=today,
+            status=InspectionSession.Status.IN_PROGRESS
+        )
 
         if plant_id:
             qs = qs.filter(machine__plant_id=plant_id)

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
-import 'machine_select_screen.dart';
+import 'app_home_screen.dart';
+import 'supervisor_info_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,8 +13,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _usernameController = TextEditingController(text: 'admin');
-  final _passwordController = TextEditingController(text: 'admin123');
+  final _usernameController = TextEditingController(text: 'operator');
+  final _passwordController = TextEditingController(text: 'operator123');
   bool _obscurePassword = true;
 
   @override
@@ -21,7 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final auth = Provider.of<AuthProvider>(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF080C18),
+      backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -33,11 +34,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF131D30),
+                    color: Colors.white,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.blue.withValues(alpha: 0.2),
+                        color: Colors.blue.withValues(alpha: 0.15),
                         blurRadius: 20,
                         spreadRadius: 5,
                       )
@@ -46,14 +47,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: const Icon(
                     Icons.mic_external_on_rounded,
                     size: 64,
-                    color: Colors.blueAccent,
+                    color: Color(0xFF2563EB),
                   ),
                 ),
                 const SizedBox(height: 24),
                 const Text(
                   'VOICE INSPECTION',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: Color(0xFF0F172A),
                     fontSize: 26,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 1.5,
@@ -61,21 +62,28 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Mantri Metallics — Shop Floor Operator',
+                  'Mantri Metallics — Shop Floor Console',
                   style: TextStyle(
-                    color: Colors.blueGrey,
+                    color: Color(0xFF64748B),
                     fontSize: 14,
                   ),
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 36),
 
                 // Form Container
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0D1424),
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF1E293B)),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 15,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -83,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Text(
                         'Operator Authentication',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: Color(0xFF0F172A),
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                         ),
@@ -93,13 +101,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       // Username field
                       TextField(
                         controller: _usernameController,
-                        style: const TextStyle(color: Colors.white),
+                        style: const TextStyle(color: Color(0xFF0F172A)),
                         decoration: InputDecoration(
                           labelText: 'Employee ID / Username',
-                          labelStyle: const TextStyle(color: Colors.blueGrey),
-                          prefixIcon: const Icon(Icons.person_outline, color: Colors.blueAccent),
+                          labelStyle: const TextStyle(color: Color(0xFF64748B)),
+                          prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF2563EB)),
                           filled: true,
-                          fillColor: const Color(0xFF131D30),
+                          fillColor: const Color(0xFFF1F5F9),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                             borderSide: BorderSide.none,
@@ -112,15 +120,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
-                        style: const TextStyle(color: Colors.white),
+                        style: const TextStyle(color: Color(0xFF0F172A)),
                         decoration: InputDecoration(
                           labelText: 'Password',
-                          labelStyle: const TextStyle(color: Colors.blueGrey),
-                          prefixIcon: const Icon(Icons.lock_outline, color: Colors.blueAccent),
+                          labelStyle: const TextStyle(color: Color(0xFF64748B)),
+                          prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF2563EB)),
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                              color: Colors.blueGrey,
+                              color: const Color(0xFF64748B),
                             ),
                             onPressed: () {
                               setState(() {
@@ -129,42 +137,90 @@ class _LoginScreenState extends State<LoginScreen> {
                             },
                           ),
                           filled: true,
-                          fillColor: const Color(0xFF131D30),
+                          fillColor: const Color(0xFFF1F5F9),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                             borderSide: BorderSide.none,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
 
-                      // Submit Button
+                      // Quick role preset selection
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFF2563EB)),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                              ),
+                              onPressed: () {
+                                _usernameController.text = 'operator';
+                                _passwordController.text = 'operator123';
+                              },
+                              child: const Text('Operator Login', style: TextStyle(fontSize: 11, color: Color(0xFF2563EB))),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFF059669)),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                              ),
+                              onPressed: () {
+                                _usernameController.text = 'inspector';
+                                _passwordController.text = 'inspector123';
+                              },
+                              child: const Text('Inspector Login', style: TextStyle(fontSize: 11, color: Color(0xFF059669))),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Login Button
                       ElevatedButton(
                         onPressed: auth.isLoading
                             ? null
                             : () async {
-                                final success = await auth.login(
-                                  _usernameController.text.trim(),
-                                  _passwordController.text.trim(),
-                                );
-                                if (success && context.mounted) {
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const MachineSelectScreen(),
-                                    ),
-                                  );
-                                } else if (context.mounted) {
+                                final username = _usernameController.text.trim();
+                                final password = _passwordController.text.trim();
+
+                                if (username.isEmpty || password.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Invalid username or password'),
-                                      backgroundColor: Colors.redAccent,
-                                    ),
+                                    const SnackBar(content: Text('Please enter username and password')),
                                   );
+                                  return;
+                                }
+
+                                final success = await auth.login(username, password);
+
+                                if (context.mounted) {
+                                  if (success) {
+                                    Widget targetScreen = const AppHomeScreen();
+                                    if (auth.isSupervisor) {
+                                      targetScreen = const SupervisorInfoScreen();
+                                    }
+
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(builder: (_) => targetScreen),
+                                    );
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(auth.lastErrorMessage ?? 'Login failed. Please check credentials.'),
+                                        backgroundColor: Colors.redAccent,
+                                      ),
+                                    );
+                                  }
                                 }
                               },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
+                          backgroundColor: const Color(0xFF2563EB),
+                          foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -172,21 +228,22 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         child: auth.isLoading
                             ? const SizedBox(
-                                height: 20,
-                                width: 20,
+                                width: 24,
+                                height: 24,
                                 child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                               )
                             : const Text(
-                                'LOGIN TO TERMINAL',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
+                                'LOGIN TO CONSOLE',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                               ),
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'v1.0.0 — MMPL Real-Time Quality Systems',
+                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
                 ),
               ],
             ),

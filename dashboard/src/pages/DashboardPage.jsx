@@ -6,6 +6,8 @@ import OOCTrendChart from '../components/charts/OOCTrendChart';
 import ShiftDonutChart from '../components/charts/ShiftDonutChart';
 import Badge from '../components/common/Badge';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import LiveActivityStream from '../components/inspection/LiveActivityStream';
+import LiveSheetViewer from '../components/inspection/LiveSheetViewer';
 import { getLiveStatus, getShiftSummary } from '../api/dashboard';
 import { getOOCTrend } from '../api/analytics';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -25,6 +27,7 @@ export default function DashboardPage() {
   const [summary, setSummary]         = useState(null);
   const [trendData, setTrendData]     = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [activeLiveSheetSessionId, setActiveLiveSheetSessionId] = useState(null);
 
   // ── Alert events from WebSocket ─────────────────────────
   const wsEvents = ws?.events ?? [];
@@ -37,7 +40,7 @@ export default function DashboardPage() {
   // ── Fetch live sessions ──────────────────────────────────
   const fetchLive = useCallback(async () => {
     try {
-      const res = await getLiveStatus(PLANT_ID);
+      const res = await getLiveStatus();
       setSessions(res.data.active_sessions ?? []);
     } catch { /* silently retry */ } finally {
       setSessionsLoading(false);
@@ -76,19 +79,41 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [fetchLive]);
 
-  // Refresh live feed when a WebSocket session_completed event arrives
+  // Refresh live feed when WebSocket session events arrive
   useEffect(() => {
-    if (wsEvents[0]?.event === 'session_completed') {
+    const latestEvent = wsEvents[0]?.event;
+    if (['session_completed', 'session_started', 'rejection_alert'].includes(latestEvent)) {
       fetchLive();
       fetchSummary();
     }
-  }, [wsEvents[0]?.event]);
+  }, [wsEvents[0]?._receivedAt]);
+
+  // Update session progress or status live when a measurement event arrives
+  useEffect(() => {
+    const latest = wsEvents[0];
+    if (latest?.event === 'measurement_recorded' && latest.session_id) {
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.session_id === latest.session_id) {
+            return {
+              ...s,
+              progress: latest.progress ?? s.progress,
+              has_ooc: s.has_ooc || latest.status === 'out_of_spec',
+              has_critical_fail: s.has_critical_fail || latest.is_critical,
+              last_measurement_at: latest._receivedAt,
+            };
+          }
+          return s;
+        })
+      );
+    }
+  }, [wsEvents[0]?._receivedAt]);
 
   return (
     <>
       <Header
-        title="Live Dashboard"
-        subtitle={`Welcome, ${user?.first_name ?? user?.username ?? 'Supervisor'}`}
+        title="Supervisor Live Inspection Dashboard"
+        subtitle={`Real-Time Operator & Sheet Monitoring · Welcome ${user?.first_name ?? user?.username ?? 'Supervisor'}`}
         shift={shift}
         onShiftChange={setShift}
       />
@@ -98,7 +123,6 @@ export default function DashboardPage() {
         {escalationAlert && (
           <div className="card mb-20" style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#f87171', animation: 'critical-pulse 2s infinite' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 28 }}>🚨</span>
               <div style={{ flex: 1 }}>
                 <strong style={{ fontSize: 15, color: '#fca5a5', display: 'block' }}>
                   SUPERVISOR ESCALATION: OVERDUE MEASUREMENT REMINDER
@@ -119,55 +143,44 @@ export default function DashboardPage() {
         )}
 
         {/* ── KPI Stat Cards ─────────────────────────────── */}
-        <div className="stat-grid">
+        <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
           <StatCard
             label="Total Inspections"
             value={summary?.total ?? '—'}
             sub={`Shift ${shift} · Today`}
             accent="var(--accent-blue)"
-            icon="📋"
           />
           <StatCard
             label="Approved"
             value={summary?.approved ?? '—'}
             sub={summary ? `${summary.pass_rate}% pass rate` : ''}
             accent="var(--accent-green)"
-            icon="✅"
           />
           <StatCard
             label="Rejected"
             value={summary?.rejected ?? '—'}
             sub="Failed inspections"
             accent="var(--accent-red)"
-            icon="❌"
-          />
-          <StatCard
-            label="Pending Review"
-            value={summary?.pending ?? '—'}
-            sub="Awaiting supervisor"
-            accent="var(--accent-yellow)"
-            icon="⏳"
           />
           <StatCard
             label="OOC Count"
             value={summary?.ooc_count ?? '—'}
             sub="Out-of-spec parameters"
-            accent="var(--accent-red)"
+            accent="var(--accent-yellow)"
             alert={(summary?.ooc_count ?? 0) > 0}
-            icon="🔴"
           />
         </div>
 
-        {/* ── Live Feed + Trend Chart ─────────────────────── */}
+        {/* ── Active Operators Matrix + Live Mic Entry Stream ─────────────────────── */}
         <div className="grid-2-1 mb-20">
-          {/* Live Session Feed */}
+          {/* Active Operator-Machine Cards Grid */}
           <div className="card">
             <div className="section-header">
               <div className="section-title">
                 <span className="dot" />
-                Active Inspections
+                Active Operators & Machines
                 <span className="badge badge-progress" style={{ marginLeft: 4 }}>
-                  {sessions.length} Live
+                  {sessions.length} Live Sessions
                 </span>
               </div>
               <button
@@ -180,80 +193,125 @@ export default function DashboardPage() {
             </div>
 
             {sessionsLoading ? (
-              <LoadingSpinner message="Fetching live sessions..." />
+              <LoadingSpinner message="Fetching active operator sessions..." />
             ) : sessions.length === 0 ? (
               <div className="empty-state">
-                <div className="empty-state-icon">🏭</div>
-                <div className="empty-state-text">No active inspections right now</div>
+                <div className="empty-state-text">No active operator sessions right now</div>
+                <div className="text-xs text-muted mt-4">
+                  When operators start machine inspections on their mobile app, they will appear here live.
+                </div>
               </div>
             ) : (
               <div className="live-feed">
-                {sessions.map((s) => (
-                  <div
-                    key={s.session_id}
-                    id={`session-card-${s.session_id}`}
-                    className={`session-card${s.has_critical_fail ? ' has-critical' : s.has_ooc ? ' has-ooc' : ''}`}
-                    onClick={() => navigate(`/inspections/${s.session_id}`)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && navigate(`/inspections/${s.session_id}`)}
-                  >
-                    <div className="session-header">
-                      <div>
-                        <div className="session-machine">
-                          🏭 {s.machine_code}
+                {sessions.map((s) => {
+                  const isRecentlyUpdated =
+                    wsEvents[0]?.event === 'measurement_recorded' &&
+                    wsEvents[0]?.session_id === s.session_id;
+
+                  return (
+                    <div
+                      key={s.session_id}
+                      id={`session-card-${s.session_id}`}
+                      className={`session-card${s.has_critical_fail ? ' has-critical' : s.has_ooc ? ' has-ooc' : ''}`}
+                      style={{
+                        background: isRecentlyUpdated
+                          ? 'rgba(139, 92, 246, 0.15)'
+                          : 'var(--bg-elevated)',
+                        transition: 'background 0.4s ease',
+                      }}
+                    >
+                      <div className="session-header">
+                        <div>
+                          <div className="session-machine" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>{s.machine_code}</span>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>({s.machine_name || 'CNC'})</span>
+                          </div>
+                          <div className="session-part" style={{ fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
+                            Part: {s.part_number}
+                          </div>
                         </div>
-                        <div className="session-part">{s.part_number}</div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {isRecentlyUpdated && (
+                            <span className="badge badge-voice" style={{ animation: 'pulse-badge 1s infinite' }}>
+                              MIC ENTRY
+                            </span>
+                          )}
+                          {s.has_critical_fail && <Badge type="critical" />}
+                          {s.has_ooc && !s.has_critical_fail && <Badge type="ooc" />}
+                          <span className="badge badge-progress">{s.inspection_type}</span>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        {s.has_critical_fail && <Badge type="critical" />}
-                        {s.has_ooc && !s.has_critical_fail && <Badge type="ooc" />}
-                        <span className="text-xs text-muted">{s.inspection_type}</span>
-                      </div>
-                    </div>
 
-                    <div className="session-meta">
-                      <span className="session-operator">👤 {s.operator_name}</span>
-                      <span className="text-xs text-muted">· Shift {s.shift}</span>
-                      <span className="text-xs text-muted">· {formatTime(s.started_at)}</span>
-                    </div>
+                      <div className="session-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <span className="session-operator" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-blue)' }}>
+                            {s.operator_name || `Operator #${s.operator_id}`}
+                          </span>
+                          <span className="text-xs text-muted"> · Shift {s.shift}</span>
+                          <span className="text-xs text-muted"> · Started {formatTime(s.started_at)}</span>
+                        </div>
 
-                    {/* Progress bar */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div className="progress-bar" style={{ flex: 1 }}>
-                        <div
-                          className={`progress-fill${s.has_ooc ? ' ooc' : ''}`}
-                          style={{ width: `${s.progress ?? 0}%` }}
-                        />
+                        {/* Button to pop up Live Sheet */}
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveLiveSheetSessionId(s.session_id);
+                          }}
+                          style={{
+                            background: 'rgba(59, 130, 246, 0.15)',
+                            borderColor: 'var(--accent-blue)',
+                            color: 'var(--accent-blue)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          View Live Sheet
+                        </button>
                       </div>
-                      <span className="text-xs text-muted">{s.progress ?? 0}%</span>
+
+                      {/* Progress bar */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                        <div className="progress-bar" style={{ flex: 1 }}>
+                          <div
+                            className={`progress-fill${s.has_ooc ? ' ooc' : ''}`}
+                            style={{ width: `${s.progress ?? 0}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+                          {s.progress ?? 0}%
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* OOC Trend Chart */}
+          {/* Real-Time Voice Mic Data Entry Stream */}
           <div className="card">
             <div className="section-header">
               <div className="section-title">
-                <span className="dot" style={{ background: 'var(--accent-red)' }} />
-                7-Day OOC Trend
+                <span className="dot" style={{ background: 'var(--accent-purple)' }} />
+                Real-Time Mic Entry Ticker
+              </div>
+              <div className="ws-indicator">
+                <span className="ws-dot" />
+                <span>Live Feed</span>
               </div>
             </div>
-            <OOCTrendChart data={trendData} />
+            <LiveActivityStream maxItems={15} />
           </div>
         </div>
 
-        {/* ── Shift Donut + Recent Alerts ─────────────────── */}
+        {/* ── Shift Donut + 7-Day OOC Trend ─────────────────── */}
         <div className="grid-2">
           {/* Shift Donut */}
           <div className="card">
             <div className="section-header">
               <div className="section-title">
                 <span className="dot" style={{ background: 'var(--accent-yellow)' }} />
-                Shift {shift} Breakdown
+                Shift {shift} Summary
               </div>
               {summary && (
                 <span className="text-xs text-muted">
@@ -264,71 +322,26 @@ export default function DashboardPage() {
             <ShiftDonutChart summary={summary} />
           </div>
 
-          {/* Recent Alerts */}
+          {/* OOC Trend Chart */}
           <div className="card">
             <div className="section-header">
               <div className="section-title">
                 <span className="dot" style={{ background: 'var(--accent-red)' }} />
-                Recent Alerts
+                7-Day Out-of-Spec Trend
               </div>
-              {recentAlerts.length > 0 && (
-                <button
-                  id="clear-alerts"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => ws?.clearEvents?.()}
-                >
-                  Clear
-                </button>
-              )}
             </div>
-
-            {recentAlerts.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-state-icon">✅</div>
-                <div className="empty-state-text">No alerts · All systems normal</div>
-              </div>
-            ) : (
-              <div className="alert-list">
-                {recentAlerts.map((evt, i) => {
-                  const isEscalation = evt.event === 'SUPERVISOR_ESCALATION_ALERT';
-                  const isReminder   = evt.event === 'OPERATOR_REMINDER_DUE';
-                  const isOOC        = evt.event === 'out_of_spec_alert';
-
-                  return (
-                    <div
-                      key={i}
-                      className={`alert-item${isEscalation || isOOC ? ' critical' : ' info'}`}
-                    >
-                      <span className="alert-icon">
-                        {isEscalation ? '🚨' :
-                         isReminder   ? '⏰' :
-                         isOOC        ? '🔴' :
-                         evt.event === 'session_completed' ? '✅' : '📊'}
-                      </span>
-                      <div className="alert-body">
-                        <div className="alert-msg">
-                          {isEscalation
-                            ? `OVERDUE 75m: ${evt.data?.operator_name || evt.operator_name || 'Operator'} (${evt.data?.machine_code || evt.machine_code || ''})`
-                            : isReminder
-                            ? `REMINDER 60m: ${evt.data?.operator_name || evt.operator_name || 'Operator'} (${evt.data?.machine_code || evt.machine_code || ''})`
-                            : isOOC
-                            ? `OOC: ${evt.parameter_name ?? 'Parameter'} = ${evt.measured_value}`
-                            : evt.event === 'session_completed'
-                            ? `Session ${shortId(evt.session_id)} completed`
-                            : `Measurement recorded · ${evt.parameter_code ?? ''}`}
-                        </div>
-                        <div className="alert-time">
-                          {evt.data?.machine_code || evt.machine_code || ''} · {formatTime(evt._receivedAt)}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <OOCTrendChart data={trendData} />
           </div>
         </div>
       </div>
+
+      {/* Real-time Interactive Form F02 Live Sheet Viewer Modal */}
+      {activeLiveSheetSessionId && (
+        <LiveSheetViewer
+          sessionId={activeLiveSheetSessionId}
+          onClose={() => setActiveLiveSheetSessionId(null)}
+        />
+      )}
     </>
   );
 }

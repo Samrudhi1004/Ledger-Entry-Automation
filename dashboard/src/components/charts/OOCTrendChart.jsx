@@ -27,7 +27,6 @@ export default function OOCTrendChart({ data = [] }) {
   if (!data.length) {
     return (
       <div className="empty-state" style={{ height: 220 }}>
-        <div className="empty-state-icon">📈</div>
         <div className="empty-state-text">No trend data yet</div>
       </div>
     );

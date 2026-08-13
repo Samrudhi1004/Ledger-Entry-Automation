@@ -32,8 +32,7 @@ class InspectionReportView(APIView):
 
         stats = qs.aggregate(
             total=Count('id'),
-            approved=Count('id', filter=Q(status='approved')),
-            rejected=Count('id', filter=Q(status='rejected')),
+            approved=Count('id', filter=Q(status__in=['approved', 'finalized_passed']) | Q(is_setup_approved=True)),
             pending=Count('id', filter=Q(status='pending_review')),
             ooc_count=Count('id', filter=Q(has_ooc=True)),
             critical_fails=Count('id', filter=Q(has_critical_fail=True)),
@@ -41,7 +40,6 @@ class InspectionReportView(APIView):
 
         total = stats['total'] or 1
         stats['pass_rate']   = round((stats['approved'] / total) * 100, 2)
-        stats['reject_rate'] = round((stats['rejected'] / total) * 100, 2)
 
         return Response({
             'filters': {
@@ -171,3 +169,93 @@ class ParameterOOCRateView(APIView):
             r['ooc_rate'] = round(r.get('ooc_rate', 0), 2)
 
         return Response({'parameters': results})
+
+
+class DailyCompletedReportsView(APIView):
+    """
+    GET /api/analytics/daily-completed-reports/
+    Returns ONLY 100% completed daily reports (all required 11 inspection slots: 1PC#1..#3 + 1..8/HR).
+    Excludes drafts, in-progress, pending, partially completed, or rejected sessions.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        start_date     = request.query_params.get('start_date') or request.query_params.get('from')
+        end_date       = request.query_params.get('end_date') or request.query_params.get('to')
+        machine_code   = request.query_params.get('machine')
+        part_number    = request.query_params.get('part')
+        shift          = request.query_params.get('shift')
+        operator_name  = request.query_params.get('operator')
+        inspector_name = request.query_params.get('inspector')
+
+        qs = InspectionSession.objects.select_related(
+            'machine', 'part', 'operator', 'supervisor', 'finalized_by'
+        ).all()
+
+        # Strict completion filter
+        qs = qs.filter(
+            Q(status__in=['completed', 'finalized_passed', 'approved']) |
+            Q(is_setup_approved=True, hourly_unlocked_slot__gte=8)
+        ).exclude(
+            status__in=['draft', 'in_progress', 'pending_review', 'rejected', 'finalized_failed']
+        )
+
+        if start_date:
+            qs = qs.filter(started_at__date__gte=start_date)
+        if end_date:
+            qs = qs.filter(started_at__date__lte=end_date)
+        if machine_code:
+            qs = qs.filter(machine__machine_code__icontains=machine_code.strip())
+        if part_number:
+            qs = qs.filter(part__part_number__icontains=part_number.strip())
+        if shift:
+            qs = qs.filter(shift=shift)
+        if operator_name:
+            qs = qs.filter(
+                Q(operator__username__icontains=operator_name.strip()) |
+                Q(operator__first_name__icontains=operator_name.strip()) |
+                Q(operator__last_name__icontains=operator_name.strip())
+            )
+        if inspector_name:
+            qs = qs.filter(
+                Q(finalized_by__username__icontains=inspector_name.strip()) |
+                Q(finalized_by__first_name__icontains=inspector_name.strip()) |
+                Q(finalized_by__last_name__icontains=inspector_name.strip()) |
+                Q(supervisor__username__icontains=inspector_name.strip()) |
+                Q(supervisor__first_name__icontains=inspector_name.strip()) |
+                Q(supervisor__last_name__icontains=inspector_name.strip())
+            )
+
+        seen_keys = set()
+        reports = []
+        for s in qs.order_by('-started_at'):
+            date_str = s.started_at.strftime('%d %b %Y') if s.started_at else ''
+            key = (date_str, s.machine.machine_code if s.machine else '', s.part.part_number if s.part else '', s.shift)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+
+            operator_full = s.operator.get_full_name() if s.operator else '—'
+            inspector_full = (
+                s.finalized_by.get_full_name()
+                if s.finalized_by
+                else (s.supervisor.get_full_name() if s.supervisor else operator_full)
+            )
+
+            reports.append({
+                'report_id': str(s.session_id),
+                'session_id': str(s.session_id),
+                'date': date_str,
+                'raw_date': s.started_at.isoformat() if s.started_at else '',
+                'machine': s.machine.machine_code if s.machine else '—',
+                'part': f"{s.part.part_number} ({s.part.part_name})" if s.part and s.part.part_name else (s.part.part_number if s.part else '—'),
+                'part_number': s.part.part_number if s.part else '',
+                'shift': s.shift or 'A',
+                'operator': operator_full,
+                'inspector': inspector_full,
+                'status': 'Completed',
+                'pdf_url': f"/api/inspections/{s.session_id}/pdf/",
+            })
+
+        return Response({'reports': reports})
+

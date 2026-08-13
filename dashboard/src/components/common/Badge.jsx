@@ -3,18 +3,18 @@
  * type: 'ok' | 'ooc' | 'approved' | 'rejected' | 'pending' | 'progress' | 'critical' | 'voice' | 'manual'
  */
 const LABELS = {
-  ok:            '✓ OK',
-  out_of_spec:   '✗ OOC',
-  ooc:           '✗ OOC',
-  approved:      '✓ Approved',
-  rejected:      '✗ Rejected',
-  pending:       '⏳ Pending',
-  pending_review:'⏳ Pending Review',
-  in_progress:   '▶ In Progress',
-  progress:      '▶ In Progress',
-  critical:      '🔴 Critical',
-  voice:         '🎙 Voice',
-  manual:        '✏ Manual',
+  ok:            'OK',
+  out_of_spec:   'OOC',
+  ooc:           'OOC',
+  approved:      'Approved',
+  rejected:      'Rejected',
+  pending:       'Pending',
+  pending_review:'Pending Review',
+  in_progress:   'In Progress',
+  progress:      'In Progress',
+  critical:      'Critical',
+  voice:         'Voice',
+  manual:        'Manual',
 };
 
 export default function Badge({ type, label }) {
