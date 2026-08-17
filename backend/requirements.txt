@@ -43,3 +43,4 @@ Pillow==11.1.0
 # ─── Production Server ────────────────────────────────────────
 gunicorn
 uvicorn
+whitenoise==6.9.0
