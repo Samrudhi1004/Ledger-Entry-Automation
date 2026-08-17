@@ -72,7 +72,7 @@ class ApiService {
         Uri.parse('$baseUrl/users/token/refresh/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refresh': refresh}),
-      ).timeout(const Duration(seconds: 8));
+      ).timeout(const Duration(seconds: 35));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -117,7 +117,7 @@ class ApiService {
         Uri.parse('$baseUrl/users/login/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'username': username, 'password': password}),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 35));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
