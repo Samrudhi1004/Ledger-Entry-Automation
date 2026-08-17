@@ -243,7 +243,6 @@ export default function ParametersPage() {
           name: machineForm.name.trim() || `Machine ${machineForm.machine_code.trim()}`,
           machine_type: machineForm.machine_type,
           status: 'active',
-          plant: 1,
         });
         setSuccessMsg(`Machine ${res.data.machine_code} updated!`);
         setSelectedMachine(res.data);
@@ -253,7 +252,6 @@ export default function ParametersPage() {
           name: machineForm.name.trim() || `Machine ${machineForm.machine_code.trim()}`,
           machine_type: machineForm.machine_type,
           status: 'active',
-          plant: 1,
         });
         setSuccessMsg(`Machine ${res.data.machine_code} created!`);
         setSelectedMachine(res.data);

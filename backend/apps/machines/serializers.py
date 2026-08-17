@@ -20,6 +20,7 @@ class PlantSerializer(serializers.ModelSerializer):
 
 
 class MachineSerializer(serializers.ModelSerializer):
+    plant = serializers.PrimaryKeyRelatedField(queryset=Plant.objects.all(), required=False, allow_null=True)
     plant_name   = serializers.CharField(source='plant.name', read_only=True)
     factory_name = serializers.CharField(source='plant.factory.name', read_only=True)
 

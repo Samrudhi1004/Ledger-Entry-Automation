@@ -48,7 +48,7 @@ class Machine(models.Model):
         MAINTENANCE = 'maintenance', 'Under Maintenance'
         INACTIVE    = 'inactive',    'Inactive'
 
-    plant          = models.ForeignKey(Plant, on_delete=models.CASCADE, related_name='machines')
+    plant          = models.ForeignKey(Plant, on_delete=models.SET_NULL, null=True, blank=True, related_name='machines')
     name           = models.CharField(max_length=100)
     machine_code   = models.CharField(max_length=30, unique=True)  # e.g. MCH-001
     machine_type   = models.CharField(max_length=100, blank=True)  # e.g. CNC Lathe
