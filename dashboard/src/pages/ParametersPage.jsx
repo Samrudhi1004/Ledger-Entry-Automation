@@ -535,7 +535,7 @@ export default function ParametersPage() {
       setError('');
       await deleteParameter(paramId);
       setSuccessMsg('Parameter deleted.');
-      loadParameters();
+      await loadParameters();
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to delete parameter.'));
     }
@@ -604,7 +604,7 @@ export default function ParametersPage() {
         setSuccessMsg(`Process Parameter "${payload.parameter_name}" created!`);
       }
       setShowProcessParamModal(false);
-      loadParameters();
+      await loadParameters();
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to save process parameter.'));
     }
@@ -617,7 +617,7 @@ export default function ParametersPage() {
       setSuccessMsg('');
       await deleteProcessParameter(pp.id);
       setSuccessMsg(`Process Parameter "${pp.parameter_name}" deleted.`);
-      loadParameters();
+      await loadParameters();
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to delete process parameter.'));
     }
