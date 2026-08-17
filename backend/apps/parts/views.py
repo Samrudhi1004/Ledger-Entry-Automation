@@ -233,34 +233,7 @@ class ProcessParameterListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         template_id = self.kwargs['template_id']
-        qs = ProcessParameter.objects.filter(template_id=template_id).order_by('sequence_order')
-
-        # Auto-provision default process parameter definitions in Master DB if none exist yet for this template
-        if not qs.exists():
-            try:
-                template = InspectionTemplate.objects.get(pk=template_id)
-                default_params = [
-                    {'parameter_code': 'PR-01', 'parameter_name': 'Spindle Speed', 'specification': '1000 - 1500 RPM', 'unit': 'RPM', 'sequence_order': 1},
-                    {'parameter_code': 'PR-02', 'parameter_name': 'Feed Rate', 'specification': '0.15 - 0.35 mm/rev', 'unit': 'mm/rev', 'sequence_order': 2},
-                    {'parameter_code': 'PR-03', 'parameter_name': 'Coolant Pressure', 'specification': '10 - 15 Bar', 'unit': 'Bar', 'sequence_order': 3},
-                    {'parameter_code': 'PR-04', 'parameter_name': 'Tool Setting', 'specification': 'T01 / Preset OK', 'unit': '', 'sequence_order': 4},
-                ]
-                for dp in default_params:
-                    ProcessParameter.objects.create(
-                        template=template,
-                        parameter_code=dp['parameter_code'],
-                        parameter_name=dp['parameter_name'],
-                        specification=dp['specification'],
-                        unit=dp['unit'],
-                        sequence_order=dp['sequence_order'],
-                        is_required=True,
-                        is_active=True,
-                    )
-                qs = ProcessParameter.objects.filter(template_id=template_id).order_by('sequence_order')
-            except Exception as e:
-                pass
-
-        return qs
+        return ProcessParameter.objects.filter(template_id=template_id).order_by('sequence_order')
 
     def perform_create(self, serializer):
         template = InspectionTemplate.objects.get(pk=self.kwargs['template_id'])
