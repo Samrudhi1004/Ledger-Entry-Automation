@@ -24,7 +24,7 @@ python-dotenv==1.2.2
 # ─── Speech-to-Text (Whisper Local) ───────────────────────────
 openai-whisper
 ffmpeg-python
-
+reportlab
 # ─── Number Parsing ────────────────────────────────────────────
 word2number==1.1
 
