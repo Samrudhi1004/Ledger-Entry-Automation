@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/layout/Header';
-import api from '../api/axios';
+import api, { BASE_URL } from '../api/axios';
 import {
   BarChart3,
   Calendar,
@@ -90,12 +90,12 @@ export default function DailyProductionReportsPage() {
     if (partFilter) params.append('part', partFilter);
     if (shiftFilter) params.append('shift', shiftFilter);
 
-    window.open(`http://127.0.0.1:8000/api/inspections/daily-production-reports/export_excel/?${params.toString()}`, '_blank');
+    window.open(`${BASE_URL}/api/inspections/daily-production-reports/export_excel/?${params.toString()}`, '_blank');
   };
 
   // Export PDF
   const handleExportPDF = (reportId) => {
-    window.open(`http://127.0.0.1:8000/api/inspections/daily-production-reports/${reportId}/export_pdf/`, '_blank');
+    window.open(`${BASE_URL}/api/inspections/daily-production-reports/${reportId}/export_pdf/`, '_blank');
   };
 
   // Summary Metrics

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = 'http://127.0.0.1:8000';
+export const BASE_URL = (import.meta.env.VITE_API_URL || 'https://ledger-entry-backend.onrender.com').replace(/\/api\/?$/, '').replace(/\/$/, '');
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -81,5 +81,5 @@ api.interceptors.response.use(
   }
 );
 
-export const WS_BASE_URL = 'ws://127.0.0.1:8000';
+export const WS_BASE_URL = BASE_URL.replace(/^http/, 'ws');
 export default api;
