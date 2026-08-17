@@ -10,7 +10,7 @@ class ApiService {
   // Base API URL
   // For physical Android device via USB, run ADB port forwarding in your terminal:
   // & "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" reverse tcp:8000 tcp:8000
-  static String baseUrl = 'http://127.0.0.1:8000/api';
+  static String baseUrl = 'https://ledger-entry-backend.onrender.com/api';
 
   // Secure storage for JWT tokens — survives app uninstall on some platforms
   static const _secure = FlutterSecureStorage(
@@ -137,7 +137,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      return {'success': false, 'message': 'Cannot connect to backend server (http://127.0.0.1:8000). Verify adb reverse tcp:8000 tcp:8000'};
+      return {'success': false, 'message': 'Cannot connect to backend server ($baseUrl). Please check network connection.'};
     }
   }
 
