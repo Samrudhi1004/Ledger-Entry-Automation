@@ -42,5 +42,6 @@ Pillow==11.1.0
 
 # ─── Production Server ────────────────────────────────────────
 gunicorn
-uvicorn
+uvicorn[standard]
+websockets
 whitenoise==6.9.0
