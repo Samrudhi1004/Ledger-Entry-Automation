@@ -21,8 +21,8 @@ class PlantSerializer(serializers.ModelSerializer):
 
 class MachineSerializer(serializers.ModelSerializer):
     plant = serializers.PrimaryKeyRelatedField(queryset=Plant.objects.all(), required=False, allow_null=True)
-    plant_name   = serializers.CharField(source='plant.name', read_only=True)
-    factory_name = serializers.CharField(source='plant.factory.name', read_only=True)
+    plant_name   = serializers.SerializerMethodField()
+    factory_name = serializers.SerializerMethodField()
 
     class Meta:
         model  = Machine
@@ -32,6 +32,19 @@ class MachineSerializer(serializers.ModelSerializer):
             'manufacturer', 'model_number', 'status',
             'qr_code', 'is_active', 'created_at',
         ]
+
+    def get_plant_name(self, obj):
+        return obj.plant.name if obj.plant else None
+
+    def get_factory_name(self, obj):
+        return obj.plant.factory.name if (obj.plant and obj.plant.factory) else None
+
+    def create(self, validated_data):
+        if not validated_data.get('plant'):
+            default_plant = Plant.objects.first()
+            if default_plant:
+                validated_data['plant'] = default_plant
+        return super().create(validated_data)
 
 
 class MachineListSerializer(serializers.ModelSerializer):
