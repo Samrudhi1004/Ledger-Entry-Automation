@@ -447,22 +447,24 @@ class _SummaryScreenState extends State<SummaryScreen> {
               Expanded(
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: oocCount > 0 ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
-                    foregroundColor: Colors.black,
+                    backgroundColor: isInspector
+                        ? ((oocCount > 0 && provider.trialNumber < 3) ? const Color(0xFFF59E0B) : const Color(0xFF10B981))
+                        : const Color(0xFF10B981),
+                    foregroundColor: (isInspector && oocCount > 0 && provider.trialNumber < 3) ? Colors.black : Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   icon: Icon(
                     isInspector
-                        ? (oocCount > 0 ? Icons.build_circle_rounded : Icons.assignment_rounded)
+                        ? ((oocCount > 0 && provider.trialNumber < 3) ? Icons.build_circle_rounded : Icons.assignment_turned_in_rounded)
                         : Icons.fact_check_rounded,
                     size: 16,
                   ),
                   label: Text(
                     isInspector
-                        ? (oocCount > 0
-                            ? '1ST PC #${provider.trialNumber + 1}'
-                            : 'DAILY REPORT')
+                        ? ((oocCount > 0 && provider.trialNumber < 3)
+                            ? 'RETRIAL 1ST PC #${provider.trialNumber + 1} ($oocCount WRONG)'
+                            : 'FINALIZE 1ST PIECE REPORT')
                         : 'NEXT OPERATION',
                     style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                   ),
@@ -483,7 +485,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                           await provider.startSession(trial: nextTrial, inspectionType: 'first_piece');
                           messenger.showSnackBar(
                             SnackBar(
-                              content: Text('🎯 Auto-launched Corrective Trial 1ST PC #$nextTrial for $oocCount failed parameter(s).'),
+                              content: Text('⚠️ Wrong parameter entry detected in 1ST PC #$currentTrial! Starting 1ST PC #$nextTrial corrective retrial.'),
                               backgroundColor: const Color(0xFFF59E0B),
                               behavior: SnackBarBehavior.floating,
                             ),

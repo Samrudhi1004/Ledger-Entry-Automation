@@ -70,17 +70,19 @@ export default function MachinesPage() {
     }
   }, [wsEvents[0]?._receivedAt]);
 
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const todayLocal = new Date().toLocaleDateString('en-CA');
+  // Compare using local date (IST) — not raw UTC string slice
+  const todayLocal = new Date().toLocaleDateString('en-CA'); // "YYYY-MM-DD" in local TZ
 
   // Create a map from machine_code to active session started today
   const sessionMap = {};
   activeSessions.forEach((s) => {
-    const sDate = s.started_at ? s.started_at.slice(0, 10) : '';
-    if ((sDate === todayISO || sDate === todayLocal) && !sessionMap[s.machine_code]) {
+    if (!s.started_at) return;
+    const sDateLocal = new Date(s.started_at).toLocaleDateString('en-CA');
+    if (sDateLocal === todayLocal && !sessionMap[s.machine_code]) {
       sessionMap[s.machine_code] = s;
     }
   });
+
 
   const activeMachinesCount = Object.keys(sessionMap).length;
 

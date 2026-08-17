@@ -42,13 +42,16 @@ export default function MachineDetailPage() {
       setHistorySessions(Array.isArray(sessionsList) ? sessionsList : []);
 
       // 4. Find today's active inspection session for this machine
-      const todayISO = new Date().toISOString().slice(0, 10);
-      const todayLocal = new Date().toLocaleDateString('en-CA');
+      // Compare using local date (IST) — not raw UTC string slice
+      const todayLocal = new Date().toLocaleDateString('en-CA'); // "YYYY-MM-DD" in local TZ
 
       const activeOrLatest = (Array.isArray(sessionsList) ? sessionsList : []).find((s) => {
-        const sDate = s.started_at ? s.started_at.slice(0, 10) : '';
-        return (sDate === todayISO || sDate === todayLocal);
+        if (!s.started_at) return false;
+        // Parse the timestamp (honours +05:30 offset from Django) and get local date
+        const sDateLocal = new Date(s.started_at).toLocaleDateString('en-CA');
+        return sDateLocal === todayLocal;
       }) || (Array.isArray(sessionsList) && sessionsList.length > 0 ? sessionsList[0] : null);
+
 
       if (activeOrLatest) {
         const docRes = await getSessionDetail(activeOrLatest.session_id);

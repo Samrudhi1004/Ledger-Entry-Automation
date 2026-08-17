@@ -511,7 +511,8 @@ class ClearHistoryView(APIView):
     """
     DELETE /api/inspections/clear-history/?machine_code=CNC-01
     or DELETE /api/inspections/clear-history/?session_id=...
-    Supervisors can delete single session or clear machine history for a clean slate.
+    Supervisors can clear live monitoring view for a machine.
+    Finalized reports (First Piece, Setup Approval, Production) remain permanent in database.
     """
     permission_classes = [IsSupervisorOrAbove]
 
@@ -520,17 +521,36 @@ class ClearHistoryView(APIView):
         session_id   = request.query_params.get('session_id')
 
         if session_id:
-            InspectionSession.objects.filter(session_id=session_id).delete()
-            _service.collection.delete_one({'_id': str(session_id)})
-            return Response({'message': f'Session {session_id} deleted successfully.'})
+            session = InspectionSession.objects.filter(session_id=session_id).first()
+            if session:
+                if session.status in [
+                    InspectionSession.Status.APPROVED,
+                    InspectionSession.Status.FINALIZED_PASSED,
+                    InspectionSession.Status.FINALIZED_FAILED,
+                    InspectionSession.Status.COMPLETED,
+                ]:
+                    return Response({
+                        'message': f'Session {session_id} is a finalized historical report and remains permanently preserved.'
+                    })
+                session.delete()
+                _service.collection.delete_one({'_id': str(session_id)})
+            return Response({'message': f'Active live session {session_id} cleared.'})
 
         if machine_code:
-            sessions = InspectionSession.objects.filter(machine__machine_code=machine_code)
-            session_ids = [str(s.session_id) for s in sessions]
-            sessions.delete()
+            # Clear active/in-progress live sessions only so live monitoring has a clean slate
+            # All finalized First Piece, Setup Approval, and Production reports remain permanent.
+            active_sessions = InspectionSession.objects.filter(
+                machine__machine_code=machine_code,
+                status=InspectionSession.Status.IN_PROGRESS
+            )
+            session_ids = [str(s.session_id) for s in active_sessions]
+            active_sessions.delete()
             if session_ids:
                 _service.collection.delete_many({'_id': {'$in': session_ids}})
-            return Response({'message': f'All inspection history for machine {machine_code} cleared successfully.'})
+
+            return Response({
+                'message': f'Live monitor view cleared for machine {machine_code}. Finalized First Piece, Setup Approval, and Production reports remain permanently preserved.'
+            })
 
         return Response({'error': 'machine_code or session_id parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
 

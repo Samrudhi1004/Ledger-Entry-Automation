@@ -179,7 +179,9 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
   const isApproved = session.is_setup_approved || session.status === 'approved';
   const isRejected = session.status === 'rejected';
 
-  const masterParams = session.parameter_summary || session.parameters || session.template_parameters || [];
+  const productParams = session.parameter_summary || session.parameters || session.template_parameters || [];
+  const processParams = session.process_parameter_summary || session.process_parameters || [];
+  const masterParams = [...processParams, ...productParams];
   const paramMap = {};
 
   // 1. Initialize with Master Database Parameters

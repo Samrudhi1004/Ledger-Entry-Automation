@@ -398,6 +398,7 @@ class InspectionService:
         # Handle Process Parameter measurement recording & validation
         if process_parameter:
             dt = process_parameter.data_type
+            mtype = (process_parameter.measurement_type or '').lower()
             status_val = 'ok'
             dev = 0.0
             msg = f"Process parameter '{process_parameter.parameter_name}' recorded."
@@ -405,16 +406,35 @@ class InspectionService:
 
             if dt == 'numeric':
                 num_val = float(measured_value) if measured_value is not None else 0.0
-                if process_parameter.upper_limit is not None and process_parameter.lower_limit is not None:
-                    ll = float(process_parameter.lower_limit)
-                    ul = float(process_parameter.upper_limit)
-                    if not (ll <= num_val <= ul):
-                        status_val = 'out_of_spec'
-                        msg = f"Value {num_val} {process_parameter.unit} is outside specification [{ll}, {ul}]."
+                nom = float(process_parameter.nominal_value) if process_parameter.nominal_value is not None else 0.0
+                dev = round(num_val - nom, 6)
+                ll = float(process_parameter.lower_limit) if process_parameter.lower_limit is not None else None
+                ul = float(process_parameter.upper_limit) if process_parameter.upper_limit is not None else None
+
+                if mtype == 'visual':
+                    is_within = num_val >= 0.5
+                    msg = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
+                elif mtype == 'min_limit' or 'MIN' in (process_parameter.parameter_name or '').upper():
+                    min_bound = nom if nom > 0 else (ll if ll is not None else 0.0)
+                    is_within = num_val >= min_bound
+                    msg = f"Value {num_val} {process_parameter.unit} meets minimum limit of {min_bound}." if is_within else f"Value {num_val} {process_parameter.unit} is below minimum limit of {min_bound}."
+                elif mtype in ['max_limit', 'surface'] or 'MAX' in (process_parameter.parameter_name or '').upper():
+                    max_bound = nom if nom > 0 else (ul if ul is not None else 99999.0)
+                    is_within = num_val <= max_bound
+                    msg = f"Measurement {num_val} {process_parameter.unit} is within maximum allowed {max_bound}." if is_within else f"Measurement {num_val} {process_parameter.unit} exceeds maximum allowed {max_bound}."
+                else:
+                    # Dimensional / Weight / Range
+                    if ll is not None and ul is not None:
+                        is_within = ll <= num_val <= ul
+                    else:
+                        is_within = True
+                    msg = f"Value {num_val} {process_parameter.unit} is within specification." if is_within else f"Value {num_val} {process_parameter.unit} is outside specification."
+
+                status_val = 'ok' if is_within else 'out_of_spec'
             elif dt == 'yes_no':
                 str_val = str(voice_raw_text or measured_value or '').strip().upper()
                 exp_val = (process_parameter.specification or 'YES').strip().upper()
-                if str_val not in [exp_val, 'YES', '1', 'TRUE', 'OK']:
+                if str_val not in [exp_val, 'YES', '1', 'TRUE', 'OK', 'PASS']:
                     status_val = 'out_of_spec'
                     msg = f"Value '{str_val}' does not match expected '{exp_val}'."
             elif dt in ['text', 'selection']:
@@ -496,6 +516,13 @@ class InspectionService:
             self.collection.update_one(
                 {'_id': str(session_id)},
                 {'$set': {'process_param_entries': p_entries}}
+            )
+
+            # Push WebSocket event for Process Parameter
+            self._push_process_param_event(
+                session, process_parameter, status_val, measured_value,
+                voice_raw_text=voice_raw_text, method=method,
+                meas_type=meas_type, meas_trial=meas_trial, meas_slot=meas_slot,
             )
 
             return {
@@ -589,7 +616,11 @@ class InspectionService:
         session.save(update_fields=list(update_fields.keys()))
 
         # Push WebSocket event
-        self._push_measurement_event(session, parameter, result, measured_value, voice_raw_text=voice_raw_text, method=method)
+        self._push_measurement_event(
+            session, parameter, result, measured_value,
+            voice_raw_text=voice_raw_text, method=method,
+            meas_type=meas_type, meas_trial=meas_trial, meas_slot=meas_slot
+        )
 
         return {
             'parameter_code': parameter_code,
@@ -885,7 +916,8 @@ class InspectionService:
         return doc
 
     # ── WebSocket Push ────────────────────────────────────────────────────
-    def _push_measurement_event(self, session, parameter, result, value, voice_raw_text='', method='voice'):
+    def _push_measurement_event(self, session, parameter, result, value, voice_raw_text='', method='voice',
+                                meas_type=None, meas_trial=None, meas_slot=None):
         channel_layer = get_channel_layer()
         group_name    = f"plant_{session.machine.plant_id}"
         operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
@@ -914,9 +946,46 @@ class InspectionService:
                 'voice_raw_text':    voice_raw_text,
                 'method':             method,
                 'shift':              session.shift,
-                'trial_number':       session.trial_number,
-                'inspection_type':    session.inspection_type,
-                'hourly_slot':        session.hourly_unlocked_slot or 1,
+                'trial_number':       meas_trial if meas_trial is not None else (session.trial_number or 1),
+                'inspection_type':    meas_type if meas_type is not None else session.inspection_type,
+                'hourly_slot':        meas_slot if meas_slot is not None else (session.hourly_unlocked_slot or 1),
+            },
+        )
+
+    def _push_process_param_event(self, session, process_parameter, status_val, value, voice_raw_text='', method='voice',
+                                  meas_type='first_piece', meas_trial=1, meas_slot=0):
+        channel_layer = get_channel_layer()
+        group_name    = f"plant_{session.machine.plant_id}"
+        operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                'type':              'inspection.event',
+                'event':             'measurement_recorded',
+                'session_id':        str(session.session_id),
+                'parent_session_id': str(session.parent_session_id) if session.parent_session_id else '',
+                'machine_code':      session.machine.machine_code,
+                'part_number':       session.part.part_number,
+                'part_name':         session.part.part_name,
+                'operator_id':       session.operator_id,
+                'operator_name':     operator_name,
+                'parameter_code':    process_parameter.parameter_code,
+                'parameter_name':    process_parameter.parameter_name,
+                'nominal':           float(process_parameter.nominal_value) if process_parameter.nominal_value is not None else None,
+                'lower_limit':       float(process_parameter.lower_limit) if process_parameter.lower_limit is not None else None,
+                'upper_limit':       float(process_parameter.upper_limit) if process_parameter.upper_limit is not None else None,
+                'unit':              process_parameter.unit or '',
+                'measured_value':    value,
+                'status':            status_val,
+                'is_critical':       False,
+                'is_process_parameter': True,
+                'progress':          session.progress_percent,
+                'voice_raw_text':    voice_raw_text,
+                'method':            method,
+                'shift':             session.shift,
+                'trial_number':      meas_trial,
+                'inspection_type':   meas_type,
+                'hourly_slot':       meas_slot,
             },
         )
 

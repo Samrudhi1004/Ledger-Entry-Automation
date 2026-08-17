@@ -194,6 +194,14 @@ class ProcessParameter(models.Model):
         YES_NO    = 'yes_no',    'Yes / No'
         SELECTION = 'selection', 'Selection'
 
+    class MeasurementType(models.TextChoices):
+        DIMENSIONAL = 'dimensional', 'Dimensional'
+        VISUAL      = 'visual',      'Visual'
+        WEIGHT      = 'weight',      'Weight'
+        SURFACE     = 'surface',     'Surface Finish'
+        MIN_LIMIT   = 'min_limit',   'Min Limit'
+        MAX_LIMIT   = 'max_limit',   'Max Limit'
+
     template        = models.ForeignKey(
         InspectionTemplate,
         on_delete=models.CASCADE,
@@ -206,6 +214,13 @@ class ProcessParameter(models.Model):
         max_length=20,
         choices=DataType.choices,
         default=DataType.NUMERIC,
+    )
+    measurement_type = models.CharField(
+        max_length=20,
+        choices=MeasurementType.choices,
+        default=MeasurementType.DIMENSIONAL,
+        blank=True,
+        help_text='Controls how upper/lower limits are computed for numeric parameters.',
     )
     unit            = models.CharField(max_length=20, blank=True, default='')   # e.g. "RPM", "mm/rev", "°C"
 
@@ -238,6 +253,23 @@ class ProcessParameter(models.Model):
             nom = Decimal(str(self.nominal_value or '0'))
             upper_tol = Decimal(str(self.upper_tolerance or '0'))
             lower_tol = Decimal(str(self.lower_tolerance or '0'))
-            self.upper_limit = nom + upper_tol
-            self.lower_limit = nom + lower_tol
+
+            # Apply the same 3 limit-computation rules as InspectionParameter
+            mtype = (self.measurement_type or '').lower()
+            if mtype == 'min_limit':
+                # Value must be >= nominal; no upper bound
+                self.upper_limit = Decimal('99999.0000')
+                self.lower_limit = nom
+            elif mtype in ['max_limit', 'surface']:
+                # Value must be <= nominal; lower bound is 0
+                self.upper_limit = nom
+                self.lower_limit = Decimal('0.0000')
+            elif mtype == 'visual':
+                # Binary pass/fail: 1 = OK, 0 = Fail
+                self.upper_limit = Decimal('1.0000')
+                self.lower_limit = Decimal('0.0000')
+            else:
+                # Default (dimensional, weight, etc.): nominal ± tolerance
+                self.upper_limit = nom + upper_tol
+                self.lower_limit = nom + lower_tol
         super().save(*args, **kwargs)

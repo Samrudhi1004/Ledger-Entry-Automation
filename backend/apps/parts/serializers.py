@@ -7,12 +7,13 @@ class ProcessParameterSerializer(serializers.ModelSerializer):
         model  = ProcessParameter
         fields = [
             'id', 'template', 'parameter_code', 'parameter_name', 'description',
-            'data_type', 'unit', 'specification',
+            'data_type', 'measurement_type', 'unit', 'specification',
             'nominal_value', 'upper_tolerance', 'lower_tolerance',
             'upper_limit', 'lower_limit',
             'is_required', 'is_active', 'sequence_order',
         ]
         read_only_fields = ['upper_limit', 'lower_limit']
+
 
 
 class InspectionParameterSerializer(serializers.ModelSerializer):

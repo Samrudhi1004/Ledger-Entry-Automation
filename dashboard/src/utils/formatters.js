@@ -1,13 +1,17 @@
 function ensureUtcIso(iso) {
   if (!iso) return null;
   if (typeof iso === 'string') {
-    // If ISO string has no timezone offset (no 'Z' and no timezone offset like +05:30), append 'Z' for UTC
+    // Django serializes microseconds: "2026-08-13T13:31:17.031461+05:30"
+    // Some JS engines misparse 6-digit fractional seconds — strip to 3 digits (milliseconds)
+    iso = iso.replace(/(\.\d{3})\d+/, '$1');
+    // If no timezone offset and no 'Z', assume UTC
     if (!iso.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(iso)) {
       return iso + 'Z';
     }
   }
   return iso;
 }
+
 
 /** Format ISO date string → "22 Jul 2026, 11:30 am" in local timezone */
 export function formatDateTime(iso) {
@@ -28,6 +32,17 @@ export function formatDate(iso) {
     day: '2-digit', month: 'short', year: 'numeric',
   });
 }
+
+/**
+ * Returns the LOCAL calendar date of a timestamp as "YYYY-MM-DD".
+ * Correctly handles +05:30 offset from Django — use this instead of
+ * raw `.slice(0, 10)` which silently gives a UTC date.
+ */
+export function localDateStr(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-CA'); // "YYYY-MM-DD" in browser local TZ
+}
+
 
 /** Format ISO date → "11:30 am" */
 export function formatTime(iso) {

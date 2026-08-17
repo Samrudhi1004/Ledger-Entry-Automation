@@ -12,6 +12,7 @@ class AuthProvider with ChangeNotifier {
 
   bool get isAuthenticated => _isAuthenticated;
   String? get username => _username;
+  String? get userId => _username;
   String? get userRole => _userRole;
   String? get fullName => _fullName;
   bool get isLoading => _isLoading;

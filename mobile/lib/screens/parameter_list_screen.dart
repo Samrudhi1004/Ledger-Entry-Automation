@@ -53,8 +53,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
       final templateId = widget.template['id'];
 
       if (templateId != null) {
-        final loaded = await ApiService.getParameters(templateId);
-        List<dynamic> combined = List.from(loaded);
+        List<dynamic> combined = [];
         if (isInspector) {
           final procLoaded = await ApiService.getProcessParameters(templateId);
           for (var p in procLoaded) {
@@ -62,6 +61,8 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
           }
           combined.addAll(procLoaded);
         }
+        final loaded = await ApiService.getParameters(templateId);
+        combined.addAll(loaded);
         if (mounted) {
           setState(() {
             _parameters = combined;

@@ -81,19 +81,22 @@ class InspectionProvider with ChangeNotifier {
     List<dynamic> allCombined = [];
 
     if (categoryFilter == 'process') {
-      // Process parameters — ONLY loaded for Setup Approval screen.
-      // Never loaded in the normal FPI / Hourly inspection flow.
       final procParams = await ApiService.getProcessParameters(template['id']);
       for (var pp in procParams) {
         pp['is_process_parameter'] = true;
       }
       allCombined = procParams;
-    } else {
-      // Default: product parameters only.
-      // This covers both 'product' categoryFilter AND the normal FPI / hourly flow.
-      // Process Parameters MUST NOT be mixed into the First PC or Hourly inspection sessions.
+    } else if (categoryFilter == 'product') {
       final prodParams = await ApiService.getParameters(template['id']);
       allCombined = List.from(prodParams);
+    } else {
+      // Default / 'all': Process parameters FIRST, then product parameters for First Piece Inspection
+      final prodParams = await ApiService.getParameters(template['id']);
+      final procParams = await ApiService.getProcessParameters(template['id']);
+      for (var pp in procParams) {
+        pp['is_process_parameter'] = true;
+      }
+      allCombined = [...procParams, ...prodParams];
     }
 
     if (targetRejectedCodes != null && targetRejectedCodes.isNotEmpty) {
@@ -113,7 +116,12 @@ class InspectionProvider with ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
-    final allParams = await ApiService.getParameters(template['id']);
+    final prodParams = await ApiService.getParameters(template['id']);
+    final procParams = await ApiService.getProcessParameters(template['id']);
+    for (var pp in procParams) {
+      pp['is_process_parameter'] = true;
+    }
+    final allParams = [...procParams, ...prodParams];
     await fetchPendingRejections();
     List<dynamic> targetCodes = [];
 

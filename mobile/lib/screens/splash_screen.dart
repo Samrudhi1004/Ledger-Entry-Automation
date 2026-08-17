@@ -72,13 +72,6 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (auth.isAuthenticated) {
-      // Restore inspection provider state from local persistence (if available)
-      final inspProvider = Provider.of<InspectionProvider>(context, listen: false);
-      final userId = auth.userId;
-      if (userId != null) {
-        await inspProvider.tryRestoreFromLocal(userId);
-      }
-
       Widget home = const AppHomeScreen();
       if (auth.isSupervisor) {
         home = const SupervisorInfoScreen();

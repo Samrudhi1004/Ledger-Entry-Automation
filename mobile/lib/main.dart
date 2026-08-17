@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/inspection_provider.dart';
-import 'screens/login_screen.dart';
+import 'screens/splash_screen.dart';
 
 void main() {
   runApp(const VoiceInspectionApp());
@@ -34,7 +34,7 @@ class VoiceInspectionApp extends StatelessWidget {
           textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
           useMaterial3: true,
         ),
-        home: const LoginScreen(),
+        home: const SplashScreen(),
       ),
     );
   }

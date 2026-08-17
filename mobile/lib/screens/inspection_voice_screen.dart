@@ -512,61 +512,6 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                 const SizedBox(height: 16),
               ],
 
-              // Bottom Navigation Controls (PREV / NEXT)
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: provider.currentParamIndex > 0
-                          ? () {
-                              provider.previousParameter();
-                              setState(() => _lastResult = null);
-                              _scrollToCurrentParam();
-                            }
-                          : null,
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFF475569)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 18),
-                      label: const Text('PREV', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        if (provider.currentParamIndex < totalCount - 1) {
-                          provider.nextParameter();
-                          setState(() => _lastResult = null);
-                          _scrollToCurrentParam();
-                        } else {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (_) => const SummaryScreen()),
-                          );
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4F46E5),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 2,
-                      ),
-                      label: Text(
-                        provider.currentParamIndex < totalCount - 1 ? 'NEXT PARAM' : 'FINISH SESSION',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
-                      ),
-                      icon: Icon(
-                        provider.currentParamIndex < totalCount - 1 ? Icons.arrow_forward_rounded : Icons.check_circle_rounded,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
