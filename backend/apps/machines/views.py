@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from .models import Factory, Plant, Machine
 from .serializers import FactorySerializer, PlantSerializer, MachineSerializer, MachineListSerializer
-from apps.users.permissions import IsAdminUser
+from apps.users.permissions import IsAdminUser, IsSupervisorOrAbove
 
 
 # ─── Factory ──────────────────────────────────────────────────────────────
@@ -20,7 +20,7 @@ class FactoryListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsAdminUser()]
+            return [IsSupervisorOrAbove()]
         return [IsAuthenticated()]
 
 
@@ -28,7 +28,7 @@ class FactoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET/PUT/DELETE /api/machines/factories/<id>/"""
     queryset           = Factory.objects.all()
     serializer_class   = FactorySerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsSupervisorOrAbove]
 
 
 # ─── Plant ────────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ class PlantListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsAdminUser()]
+            return [IsSupervisorOrAbove()]
         return [IsAuthenticated()]
 
 
@@ -58,7 +58,7 @@ class PlantDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET/PUT/DELETE /api/machines/plants/<id>/"""
     queryset           = Plant.objects.all()
     serializer_class   = PlantSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsSupervisorOrAbove]
 
 
 # ─── Machine ──────────────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ class MachineListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsAdminUser()]
+            return [IsSupervisorOrAbove()]
         return [IsAuthenticated()]
 
 
