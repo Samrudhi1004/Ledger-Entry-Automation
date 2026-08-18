@@ -163,7 +163,7 @@ CELERY_TASK_SERIALIZER = 'json'
 
 
 # ─── Whisper STT ──────────────────────────────────────────────
-WHISPER_MODEL   = os.getenv('WHISPER_MODEL', 'base')
+WHISPER_MODEL   = os.getenv('WHISPER_MODEL', 'tiny')
 WHISPER_BACKEND = os.getenv('WHISPER_BACKEND', 'local')
 OPENAI_API_KEY  = os.getenv('OPENAI_API_KEY', '')
 

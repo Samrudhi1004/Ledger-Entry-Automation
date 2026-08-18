@@ -1,6 +1,6 @@
 """
 Whisper Speech-to-Text Engine.
-Supports local Whisper model (default) and OpenAI Whisper API (future).
+Supports Faster-Whisper (CTranslate2 optimized), standard local Whisper, and OpenAI Whisper API.
 Model is loaded once at startup and reused for all requests.
 """
 
@@ -14,18 +14,27 @@ logger = logging.getLogger(__name__)
 
 # ─── Lazy model loader (singleton) ───────────────────────────────────────
 _whisper_model = None
+_is_faster_whisper = False
 
 
 def _get_local_model():
-    """Load Whisper model once and cache it."""
-    global _whisper_model
+    """Load Faster-Whisper (or standard Whisper) once and cache it."""
+    global _whisper_model, _is_faster_whisper
     if _whisper_model is None:
-        import whisper
-        model_name = settings.WHISPER_MODEL  # e.g. 'base'
-        logger.info("Loading Whisper local model: %s ...", model_name)
-        _whisper_model = whisper.load_model(model_name)
-        logger.info("Whisper model '%s' loaded successfully.", model_name)
-    return _whisper_model
+        model_name = settings.WHISPER_MODEL  # e.g. 'tiny' or 'base'
+        try:
+            from faster_whisper import WhisperModel
+            logger.info("Loading Faster-Whisper engine model '%s' (CPU int8)...", model_name)
+            _whisper_model = WhisperModel(model_name, device="cpu", compute_type="int8")
+            _is_faster_whisper = True
+            logger.info("Faster-Whisper model '%s' loaded successfully.", model_name)
+        except ImportError:
+            import whisper
+            logger.info("Loading standard Whisper model '%s' ...", model_name)
+            _whisper_model = whisper.load_model(model_name)
+            _is_faster_whisper = False
+            logger.info("Standard Whisper model '%s' loaded successfully.", model_name)
+    return _whisper_model, _is_faster_whisper
 
 
 # ─── Whisper Engine ───────────────────────────────────────────────────────
@@ -49,7 +58,7 @@ class WhisperEngine:
             {
                 'text':     str,    # raw transcription
                 'language': str,    # detected language code
-                'backend':  str,    # 'local' | 'api'
+                'backend':  str,    # 'faster-whisper' | 'local-whisper' | 'api'
             }
         """
         if not Path(audio_file_path).exists():
@@ -62,20 +71,29 @@ class WhisperEngine:
         else:
             raise ValueError(f"Unknown WHISPER_BACKEND: {self.backend}")
 
-    # ── Local Whisper ─────────────────────────────────────────────────────
+    # ── Local Whisper (Faster-Whisper / Standard) ─────────────────────────
     def _transcribe_local(self, audio_file_path: str) -> dict:
-        model  = _get_local_model()
-        result = model.transcribe(
-            audio_file_path,
-            language=None,          # auto-detect
-            task='transcribe',
-            fp16=False,             # CPU-safe
-            verbose=False,
-        )
-        text = result.get('text', '').strip()
-        lang = result.get('language', 'en')
-        logger.info("Whisper local transcribed: '%s' (lang=%s)", text, lang)
-        return {'text': text, 'language': lang, 'backend': 'local'}
+        model, is_faster = _get_local_model()
+
+        if is_faster:
+            segments, info = model.transcribe(audio_file_path, beam_size=5)
+            text = " ".join([segment.text for segment in segments]).strip()
+            lang = info.language or 'en'
+            backend_label = 'faster-whisper'
+        else:
+            result = model.transcribe(
+                audio_file_path,
+                language=None,          # auto-detect
+                task='transcribe',
+                fp16=False,             # CPU-safe
+                verbose=False,
+            )
+            text = result.get('text', '').strip()
+            lang = result.get('language', 'en')
+            backend_label = 'local-whisper'
+
+        logger.info("[%s] Transcribed: '%s' (lang=%s)", backend_label, text, lang)
+        return {'text': text, 'language': lang, 'backend': backend_label}
 
     # ── API Whisper (for future) ───────────────────────────────────────────
     def _transcribe_api(self, audio_file_path: str) -> dict:

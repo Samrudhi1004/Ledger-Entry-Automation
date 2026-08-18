@@ -21,7 +21,8 @@ pymongo==4.10.1
 # ─── Environment Variables ─────────────────────────────────────
 python-dotenv==1.2.2
 
-# ─── Speech-to-Text (Whisper Local) ───────────────────────────
+# ─── Speech-to-Text (Whisper Local / Faster-Whisper) ───────────
+faster-whisper
 openai-whisper
 ffmpeg-python
 reportlab
