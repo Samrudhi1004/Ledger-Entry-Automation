@@ -523,25 +523,14 @@ class ClearHistoryView(APIView):
         if session_id:
             session = InspectionSession.objects.filter(session_id=session_id).first()
             if session:
-                if session.status in [
-                    InspectionSession.Status.APPROVED,
-                    InspectionSession.Status.FINALIZED_PASSED,
-                    InspectionSession.Status.FINALIZED_FAILED,
-                    InspectionSession.Status.COMPLETED,
-                ]:
-                    return Response({
-                        'message': f'Session {session_id} is a finalized historical report and remains permanently preserved.'
-                    })
                 session.delete()
                 _service.collection.delete_one({'_id': str(session_id)})
-            return Response({'message': f'Active live session {session_id} cleared.'})
+            return Response({'message': f'Session {session_id} deleted.'})
 
         if machine_code:
-            # Clear active/in-progress live sessions only so live monitoring has a clean slate
-            # All finalized First Piece, Setup Approval, and Production reports remain permanent.
+            # Clear ALL sessions for this machine unconditionally to provide a completely clean slate
             active_sessions = InspectionSession.objects.filter(
-                machine__machine_code=machine_code,
-                status=InspectionSession.Status.IN_PROGRESS
+                machine__machine_code=machine_code
             )
             session_ids = [str(s.session_id) for s in active_sessions]
             active_sessions.delete()
@@ -549,7 +538,7 @@ class ClearHistoryView(APIView):
                 _service.collection.delete_many({'_id': {'$in': session_ids}})
 
             return Response({
-                'message': f'Live monitor view cleared for machine {machine_code}. Finalized First Piece, Setup Approval, and Production reports remain permanently preserved.'
+                'message': f'All history completely cleared for machine {machine_code}.'
             })
 
         return Response({'error': 'machine_code or session_id parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
