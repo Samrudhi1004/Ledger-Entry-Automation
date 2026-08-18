@@ -61,7 +61,7 @@ class OOCTrendView(APIView):
     def get(self, request):
         days     = int(request.query_params.get('days', 7))
         plant_id = request.query_params.get('plant')
-        today    = timezone.now().date()
+        today    = timezone.localdate()
 
         trend = []
         for i in range(days - 1, -1, -1):

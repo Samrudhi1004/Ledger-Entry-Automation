@@ -342,7 +342,7 @@ class SetupStatusView(APIView):
 
         from django.db.models import Q
         from django.utils import timezone
-        today = timezone.now().date()
+        today = timezone.localdate()
 
         # Check for today's active session first
         session = None

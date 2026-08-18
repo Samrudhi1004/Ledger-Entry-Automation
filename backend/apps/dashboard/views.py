@@ -18,7 +18,7 @@ class LiveStatusView(APIView):
 
     def get(self, request):
         plant_id = request.query_params.get('plant')
-        today    = timezone.now().date()
+        today    = timezone.localdate()
         qs = InspectionSession.objects.select_related(
             'part', 'machine', 'operator'
         ).filter(
@@ -57,7 +57,7 @@ class ShiftSummaryView(APIView):
     def get(self, request):
         plant_id = request.query_params.get('plant')
         shift    = request.query_params.get('shift', 'A')
-        today    = timezone.now().date()
+        today    = timezone.localdate()
 
         qs = InspectionSession.objects.filter(
             started_at__date=today,

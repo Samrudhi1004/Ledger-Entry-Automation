@@ -82,7 +82,7 @@ export default function DashboardPage() {
   // Refresh live feed when WebSocket session events arrive
   useEffect(() => {
     const latestEvent = wsEvents[0]?.event;
-    if (['session_completed', 'session_started', 'rejection_alert'].includes(latestEvent)) {
+    if (['session_completed', 'session_started', 'rejection_alert', 'measurement_recorded'].includes(latestEvent)) {
       fetchLive();
       fetchSummary();
     }
