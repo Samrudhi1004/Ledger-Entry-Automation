@@ -155,6 +155,27 @@ else:
     }
 
 
+# ─── Cache (Redis in production, local memory in development) ─
+# Redis cache eliminates repeated heavy DB/MongoDB calculations.
+# Uses the same USE_REDIS flag and REDIS_URL already defined above,
+# so local development (USE_REDIS=false) works without any Redis setup.
+if USE_REDIS:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379'),
+            'TIMEOUT': 300,  # 5 minutes — default for analytics data
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'TIMEOUT': 300,
+        }
+    }
+
+
 # ─── Celery ───────────────────────────────────────────────────
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL

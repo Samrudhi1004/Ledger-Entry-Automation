@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from django.core.cache import cache
 from datetime import timedelta
 
 from apps.inspections.models import InspectionSession
@@ -59,6 +60,13 @@ class ShiftSummaryView(APIView):
         shift    = request.query_params.get('shift', 'A')
         today    = timezone.localdate()
 
+        # Cache shift summary for 2 minutes — shorter than analytics (5 min) because
+        # shift counts (approved, rejected, pending) change frequently during active shifts.
+        cache_key = f"shift_summary_{today}_{shift}_{plant_id or 'all'}"
+        cached = cache.get(cache_key)
+        if cached:
+            return Response(cached)
+
         qs = InspectionSession.objects.filter(
             started_at__date=today,
             shift=shift,
@@ -72,7 +80,7 @@ class ShiftSummaryView(APIView):
         pending  = qs.filter(status='pending_review').count()
         ooc      = qs.filter(has_ooc=True).count()
 
-        return Response({
+        result = {
             'date':     today.isoformat(),
             'shift':    shift,
             'summary': {
@@ -83,4 +91,6 @@ class ShiftSummaryView(APIView):
                 'ooc_count': ooc,
                 'pass_rate': round((approved / total) * 100, 1) if total else 0,
             }
-        })
+        }
+        cache.set(cache_key, result, timeout=120)  # 2-minute timeout
+        return Response(result)

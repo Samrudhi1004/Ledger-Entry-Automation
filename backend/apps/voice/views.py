@@ -3,6 +3,7 @@ import uuid
 import logging
 from pathlib import Path
 
+from celery.result import AsyncResult
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -11,31 +12,30 @@ from rest_framework.parsers import MultiPartParser, FormParser
 
 from django.conf import settings
 
-from .whisper_engine import WhisperEngine
 from .number_parser import parse_measurement
-from config.db import get_collection, Collections
 
 logger = logging.getLogger(__name__)
-_whisper = WhisperEngine()
 
 
 class VoiceTranscribeView(APIView):
     """
     POST /api/voice/transcribe/
 
-    Accepts an audio file, transcribes with Whisper,
-    parses the numeric measurement, and returns the result.
+    Accepts an audio file, saves it to disk, then dispatches a Celery
+    background task for transcription. Returns a job_id immediately
+    (< 0.5 s) so the user is never blocked waiting for Whisper.
+
+    The client polls GET /api/voice/status/<job_id>/ every 2 seconds
+    to check progress and retrieve the final result.
 
     Request: multipart/form-data
         audio_file: <audio file — WAV, M4A, MP3, WEBM>
 
-    Response:
+    Response (HTTP 202):
         {
-            "raw_text":      "twenty five point zero one",
-            "parsed_value":  25.01,
-            "is_parseable":  true,
-            "language":      "en",
-            "backend":       "local"
+            "job_id":     "<celery-task-id>",
+            "status":     "processing",
+            "audio_path": "voice_uploads/<filename>"
         }
     """
     permission_classes = [IsAuthenticated]
@@ -58,73 +58,67 @@ class VoiceTranscribeView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Save to media/voice_uploads/ temporarily
+        # Save audio to media/voice_uploads/ before handing off to Celery.
+        # The file must be on disk before the task runs because the worker
+        # process reads it from the filesystem path.
         upload_dir = Path(settings.MEDIA_ROOT) / 'voice_uploads'
         upload_dir.mkdir(parents=True, exist_ok=True)
 
-        filename     = f"{uuid.uuid4()}{ext}"
-        file_path    = upload_dir / filename
+        filename  = f"{uuid.uuid4()}{ext}"
+        file_path = upload_dir / filename
 
         with open(file_path, 'wb+') as dest:
             for chunk in audio_file.chunks():
                 dest.write(chunk)
 
-        try:
-            # ── Transcribe ─────────────────────────────────────────────
-            transcription = _whisper.transcribe(str(file_path))
-            raw_text      = transcription['text']
-            language      = transcription['language']
-            backend       = transcription['backend']
+        # Dispatch to Celery — returns immediately with a task ID.
+        # The actual Whisper transcription runs in a separate background process.
+        from .tasks import transcribe_audio_task
+        job = transcribe_audio_task.delay(str(file_path), request.user.id)
 
-            # ── Parse number ────────────────────────────────────────────
-            parsed_value  = parse_measurement(raw_text)
-            is_parseable  = parsed_value is not None
+        return Response(
+            {
+                'job_id':     job.id,
+                'status':     'processing',
+                'audio_path': f'voice_uploads/{filename}',
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
-            # ── Log to MongoDB ──────────────────────────────────────────
-            self._log_voice_entry(
-                user_id      = request.user.id,
-                raw_text     = raw_text,
-                parsed_value = parsed_value,
-                file_path    = str(file_path),
-                language     = language,
-                backend      = backend,
-            )
 
-            return Response({
-                'raw_text':     raw_text,
-                'parsed_value': parsed_value,
-                'is_parseable': is_parseable,
-                'language':     language,
-                'backend':      backend,
-                'audio_path':   f"voice_uploads/{filename}",
-                'message':      '' if is_parseable else 'Could not parse a number. Please try again or enter manually.',
-            })
+class VoiceStatusView(APIView):
+    """
+    GET /api/voice/status/<job_id>/
 
-        except Exception as e:
-            logger.error("Voice transcription error: %s", str(e))
-            # Clean up file on error
-            if file_path.exists():
-                os.remove(file_path)
+    Polls the Celery result backend (Redis) for the transcription job's
+    current state. The client calls this every 2 seconds after receiving
+    a job_id from POST /api/voice/transcribe/.
+
+    Responses:
+        PENDING  → {"status": "processing"}
+        SUCCESS  → {"status": "done", "raw_text": ..., "parsed_value": ..., ...}
+        FAILURE  → {"status": "failed", "error": "..."} HTTP 500
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, job_id):
+        result = AsyncResult(job_id)
+
+        if result.state == 'PENDING':
+            return Response({'status': 'processing'})
+
+        if result.state == 'FAILURE':
             return Response(
-                {'error': f'Transcription failed: {str(e)}'},
+                {'status': 'failed', 'error': 'Transcription failed. Please try again.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    def _log_voice_entry(self, user_id, raw_text, parsed_value, file_path, language, backend):
-        """Save voice log to MongoDB for audit trail."""
-        try:
-            from datetime import datetime, timezone
-            get_collection(Collections.VOICE_LOGS).insert_one({
-                'user_id':      user_id,
-                'raw_text':     raw_text,
-                'parsed_value': parsed_value,
-                'file_path':    file_path,
-                'language':     language,
-                'backend':      backend,
-                'timestamp':    datetime.now(timezone.utc),
-            })
-        except Exception as e:
-            logger.warning("Failed to log voice entry to MongoDB: %s", str(e))
+        if result.state == 'SUCCESS':
+            # Spread the task's return dict directly into the response
+            return Response({'status': 'done', **result.result})
+
+        # STARTED, RETRY, or any custom state — still working
+        return Response({'status': result.state.lower()})
 
 
 class ParseTextView(APIView):

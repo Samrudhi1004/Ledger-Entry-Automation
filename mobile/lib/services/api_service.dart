@@ -349,6 +349,9 @@ class ApiService {
   }
 
   // 7. Transcribe Voice Audio File
+  // Now non-blocking: the server dispatches Whisper to a Celery background task
+  // and returns a job_id immediately (HTTP 202). Call checkTranscriptionStatus()
+  // every 2 seconds to poll for the result.
   static Future<Map<String, dynamic>> transcribeVoice(String filePath) async {
     final request = http.MultipartRequest(
       'POST',
@@ -363,11 +366,29 @@ class ApiService {
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
 
-    if (response.statusCode == 200) {
+    if (response.statusCode == 202 || response.statusCode == 200) {
+      // 202 = job accepted (new async path), job_id is in the body
+      // 200 kept for backward compatibility if server is not yet updated
       return jsonDecode(response.body);
     } else {
       return {'error': 'Failed to transcribe audio'};
     }
+  }
+
+  // 7b. Poll transcription job status
+  // Call this every 2 seconds after transcribeVoice() returns a job_id.
+  // Returns: {"status": "processing"} | {"status": "done", "raw_text": ...}
+  //        | {"status": "failed", "error": ...}
+  static Future<Map<String, dynamic>> checkTranscriptionStatus(String jobId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/voice/status/$jobId/'),
+      headers: await _headers(),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 500) {
+      return jsonDecode(response.body);
+    }
+    return {'status': 'processing'}; // treat unknown responses as still pending
   }
 
   // 8. Transcribe Text / Parse Measurement Directly

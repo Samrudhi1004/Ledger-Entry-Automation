@@ -215,20 +215,72 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     if (_isRecording) {
       setState(() {
         _isRecording = false;
-        _isProcessing = true;
+        _isProcessing = true;  // spinner stays on while we poll
       });
 
       try {
         final path = await _audioRecorder.stop();
         if (path != null) {
-          final res = await ApiService.transcribeVoice(path);
-          final textResult = res['raw_text'] ?? res['text'];
-          if (textResult != null && (textResult as String).isNotEmpty) {
-            await _submitSpokenOrTypedValue(textResult);
-          } else {
+          // Step 1 — send audio, get job_id back immediately (< 0.5 s)
+          final submitRes = await ApiService.transcribeVoice(path);
+
+          // Backward-compat: old server returns raw_text directly (status 200)
+          if (submitRes.containsKey('raw_text')) {
+            final textResult = submitRes['raw_text'] ?? submitRes['text'];
+            if (textResult != null && (textResult as String).isNotEmpty) {
+              await _submitSpokenOrTypedValue(textResult);
+            } else {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No speech detected. Please try again or type manually.')),
+                );
+              }
+            }
+            return; // handled by old path
+          }
+
+          final jobId = submitRes['job_id'] as String?;
+          if (jobId == null) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('No speech detected. Please try again or type manually.')),
+                const SnackBar(content: Text('Transcription failed to start. Please try again.')),
+              );
+            }
+            return;
+          }
+
+          // Step 2 — poll every 2 s until done, failed, or 60 s timeout
+          const pollInterval = Duration(seconds: 2);
+          const maxWait      = Duration(seconds: 60);
+          final deadline     = DateTime.now().add(maxWait);
+
+          Map<String, dynamic> pollRes = {'status': 'processing'};
+          while (DateTime.now().isBefore(deadline)) {
+            await Future.delayed(pollInterval);
+            pollRes = await ApiService.checkTranscriptionStatus(jobId);
+
+            final st = pollRes['status'] as String? ?? 'processing';
+            if (st == 'done' || st == 'failed') break;
+          }
+
+          // Step 3 — handle result
+          final finalStatus = pollRes['status'] as String? ?? 'failed';
+          if (finalStatus == 'done') {
+            final textResult = pollRes['raw_text'] ?? pollRes['text'];
+            if (textResult != null && (textResult as String).isNotEmpty) {
+              await _submitSpokenOrTypedValue(textResult);
+            } else {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No speech detected. Please try again or type manually.')),
+                );
+              }
+            }
+          } else {
+            // failed or timed-out
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Transcription failed or timed out. Please try again.')),
               );
             }
           }
@@ -239,7 +291,7 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
         if (mounted) {
           setState(() {
             _isProcessing = false;
-            _isRecording = false;
+            _isRecording  = false;
           });
         }
       }

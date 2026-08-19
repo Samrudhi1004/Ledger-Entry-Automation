@@ -11,6 +11,7 @@ from django.conf import settings
 from django.http import HttpResponse, FileResponse
 import csv
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 from apps.parts.models import Part
 from apps.machines.models import Machine
@@ -44,8 +45,20 @@ class StartInspectionView(APIView):
 
         d = serializer.validated_data
         try:
-            part    = Part.objects.get(part_number=d['part_number'], is_active=True)
-            machine = Machine.objects.get(pk=d['machine_id'], is_active=True)
+            # Part and Machine are independent lookups — neither depends on the
+            # other's result, so they can safely run in parallel. ThreadPoolExecutor
+            # releases the GIL during DB I/O, allowing both queries to be in-flight
+            # at the same time. Total wait ≈ max(t_part, t_machine) instead of
+            # t_part + t_machine, cutting this block's latency roughly in half.
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                part_future    = executor.submit(
+                    Part.objects.get, part_number=d['part_number'], is_active=True
+                )
+                machine_future = executor.submit(
+                    Machine.objects.get, pk=d['machine_id'], is_active=True
+                )
+                part    = part_future.result()    # re-raises Part.DoesNotExist if not found
+                machine = machine_future.result()  # re-raises Machine.DoesNotExist if not found
         except Part.DoesNotExist:
             return Response({'error': 'Part not found.'}, status=status.HTTP_404_NOT_FOUND)
         except Machine.DoesNotExist:

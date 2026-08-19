@@ -121,16 +121,43 @@ class _SetupApprovalScreenState extends State<SetupApprovalScreen>
       try {
         final path = await _audioRecorder.stop();
         if (path != null) {
-          final res = await ApiService.transcribeVoice(path);
-          final textResult = res['raw_text'] ?? res['text'] ?? '';
+          // Step 1 — upload audio, receive job_id immediately (< 0.5 s)
+          final submitRes = await ApiService.transcribeVoice(path);
 
-          if (textResult.toString().isNotEmpty) {
-            final parsed = await ApiService.parseText(textResult.toString());
+          String textResult = '';
+
+          // Backward-compat: if server is old it still returns raw_text directly
+          if (submitRes.containsKey('raw_text')) {
+            textResult = (submitRes['raw_text'] ?? submitRes['text'] ?? '').toString();
+          } else {
+            // New async path — poll until done
+            final jobId = submitRes['job_id'] as String?;
+            if (jobId != null) {
+              const pollInterval = Duration(seconds: 2);
+              const maxWait      = Duration(seconds: 60);
+              final deadline     = DateTime.now().add(maxWait);
+
+              Map<String, dynamic> pollRes = {'status': 'processing'};
+              while (DateTime.now().isBefore(deadline)) {
+                await Future.delayed(pollInterval);
+                pollRes = await ApiService.checkTranscriptionStatus(jobId);
+                final st = pollRes['status'] as String? ?? 'processing';
+                if (st == 'done' || st == 'failed') break;
+              }
+
+              if ((pollRes['status'] as String? ?? '') == 'done') {
+                textResult = (pollRes['raw_text'] ?? pollRes['text'] ?? '').toString();
+              }
+            }
+          }
+
+          if (textResult.isNotEmpty) {
+            final parsed = await ApiService.parseText(textResult);
             String valStr = '';
             if (parsed['is_parseable'] == true && parsed['parsed_value'] != null) {
               valStr = parsed['parsed_value'].toString();
             } else {
-              valStr = textResult.toString().trim();
+              valStr = textResult.trim();
             }
 
             if (_processControllers[code]?[trial] != null) {
