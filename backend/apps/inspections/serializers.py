@@ -22,6 +22,25 @@ class RecordMeasurementSerializer(serializers.Serializer):
     inspection_type = serializers.CharField(required=False, allow_null=True, allow_blank=True, default=None)
 
 
+class SingleMeasurementSerializer(serializers.Serializer):
+    """One field entry within a batch-measure submission."""
+    parameter_code = serializers.CharField()
+    measured_value = serializers.FloatField(required=False, allow_null=True)
+    voice_raw_text = serializers.CharField(required=False, allow_blank=True, default='')
+    method         = serializers.CharField(required=False, default='form')
+
+
+class BatchMeasureSerializer(serializers.Serializer):
+    """
+    Accepts all measurements for one physical piece in a single POST.
+
+    The inspector fills every parameter on the form screen and taps
+    'Submit Piece' — this serializer validates the entire payload before
+    the view hands it off to InspectionService for field-level validation.
+    """
+    measurements = SingleMeasurementSerializer(many=True)
+
+
 class ReviewSerializer(serializers.Serializer):
     action              = serializers.ChoiceField(choices=['approve', 'reject'])
     remark              = serializers.CharField(required=False, allow_blank=True, default='')

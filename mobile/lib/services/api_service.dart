@@ -529,6 +529,25 @@ class ApiService {
     return null;
   }
 
+  // 9b. Batch Measure (All parameters for a piece submitted together)
+  static Future<Map<String, dynamic>?> batchMeasure({
+    required String sessionId,
+    required List<Map<String, dynamic>> measurements,
+  }) async {
+    final response = await authenticatedRequest((headers) => http.post(
+      Uri.parse('$baseUrl/inspections/$sessionId/batch-measure/'),
+      headers: headers,
+      body: jsonEncode({
+        'measurements': measurements,
+      }),
+    ));
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return null;
+  }
+
   // 10. Complete Session
   static Future<bool> completeSession(String sessionId) async {
     final response = await authenticatedRequest((headers) => http.post(

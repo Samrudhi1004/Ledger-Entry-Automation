@@ -20,6 +20,7 @@ from .models import InspectionSession, DailyProductionReport
 from .serializers import (
     StartInspectionSerializer,
     RecordMeasurementSerializer,
+    BatchMeasureSerializer,
     ReviewSerializer,
     InspectionSessionSerializer,
     DailyProductionReportSerializer,
@@ -115,6 +116,106 @@ class RecordMeasurementView(APIView):
             return Response(result, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ─── Batch Measure (Per-Piece Form Submission) ────────────────────────────
+class BatchMeasureView(APIView):
+    """
+    POST /api/inspections/<session_id>/batch-measure/
+
+    Accepts ALL field measurements for one physical piece in a single request.
+    The inspector fills the whole form and taps 'Submit Piece'.
+
+    Workflow:
+    1. Validate every measurement via InspectionService.record_measurement()
+    2. Collect per-field results (ok / out_of_spec)
+    3. All pass  -> auto-complete session, return piece_complete=True
+    4. Any fail  -> return piece_complete=False + failed_codes list
+                    (Flutter starts a new session with parent_session_id so
+                     the retry only reopens failed fields)
+
+    Response shape:
+    {
+      "piece_complete": bool,
+      "total": int,
+      "passed_count": int,
+      "failed_count": int,
+      "failed_codes": ["D-02", "PP-01"],
+      "results": [
+        {"parameter_code": "D-01", "status": "ok",          "message": "...", "measured_value": 25.02},
+        {"parameter_code": "D-02", "status": "out_of_spec", "message": "...", "measured_value": 12.3}
+      ]
+    }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, session_id):
+        serializer = BatchMeasureSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        measurements_data = serializer.validated_data['measurements']
+        if not measurements_data:
+            return Response(
+                {'error': 'measurements list cannot be empty.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        results = []
+        failed_codes = []
+
+        for m in measurements_data:
+            code     = m['parameter_code']
+            val      = m.get('measured_value') or 0.0
+            raw_text = m.get('voice_raw_text', '')
+            method   = m.get('method', 'form')
+
+            try:
+                field_result = _service.record_measurement(
+                    session_id      = session_id,
+                    parameter_code  = code,
+                    measured_value  = float(val),
+                    voice_raw_text  = raw_text,
+                    method          = method,
+                    inspection_type = 'first_piece',
+                )
+                field_status = field_result.get('status', 'ok')
+                results.append({
+                    'parameter_code': code,
+                    'status':         field_status,
+                    'measured_value': field_result.get('measured_value', val),
+                    'message':        field_result.get('message', ''),
+                })
+                if field_status == 'out_of_spec':
+                    failed_codes.append(code)
+            except Exception as exc:
+                # Unrecognised parameter — count as failure so the field re-opens
+                results.append({
+                    'parameter_code': code,
+                    'status':         'error',
+                    'measured_value': val,
+                    'message':        str(exc),
+                })
+                failed_codes.append(code)
+
+        passed_count   = len(results) - len(failed_codes)
+        piece_complete = len(failed_codes) == 0
+
+        # Auto-complete when every field passes — no separate /complete/ call needed.
+        if piece_complete:
+            try:
+                _service.complete_session(session_id)
+            except Exception:
+                pass  # may already be completed; ignore
+
+        return Response({
+            'piece_complete': piece_complete,
+            'total':          len(results),
+            'passed_count':   passed_count,
+            'failed_count':   len(failed_codes),
+            'failed_codes':   failed_codes,
+            'results':        results,
+        }, status=status.HTTP_200_OK)
 
 
 # ─── Complete Session ─────────────────────────────────────────────────────

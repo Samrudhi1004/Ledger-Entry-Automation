@@ -16,6 +16,7 @@ class InspectionProvider with ChangeNotifier {
   List<dynamic> activeRejections = [];
   Map<String, dynamic>? activeRejectionNotice;
   Map<String, Map<String, dynamic>> recordedResults = {};
+  Map<String, Map<String, dynamic>> pendingBatchValues = {};
   bool isLoading = false;
   String? errorMessage;
 
@@ -311,6 +312,46 @@ class InspectionProvider with ChangeNotifier {
       recordedResults[param['parameter_code']] = result;
       notifyListeners();
     }
+    return result;
+  }
+
+  void setPendingValue(String code, double value, String voiceRawText, {String method = 'voice'}) {
+    pendingBatchValues[code] = {
+      'parameter_code': code,
+      'measured_value': value,
+      'voice_raw_text': voiceRawText,
+      'method': method,
+    };
+    notifyListeners();
+  }
+
+  void clearPendingValues() {
+    pendingBatchValues.clear();
+    notifyListeners();
+  }
+
+  Future<Map<String, dynamic>?> submitBatchMeasurements() async {
+    if (sessionId == null) return null;
+
+    isLoading = true;
+    notifyListeners();
+
+    final measurementsList = pendingBatchValues.values.toList();
+    final result = await ApiService.batchMeasure(
+      sessionId: sessionId!,
+      measurements: measurementsList,
+    );
+
+    isLoading = false;
+    if (result != null && result['results'] is List) {
+      for (var r in (result['results'] as List)) {
+        final code = r['parameter_code'];
+        if (code != null) {
+          recordedResults[code.toString()] = r;
+        }
+      }
+    }
+    notifyListeners();
     return result;
   }
 

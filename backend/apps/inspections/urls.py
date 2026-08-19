@@ -3,6 +3,7 @@ from rest_framework.routers import SimpleRouter
 from .views import (
     StartInspectionView,
     RecordMeasurementView,
+    BatchMeasureView,
     CompleteInspectionView,
     SessionDetailView,
     PendingReviewView,
@@ -51,6 +52,7 @@ urlpatterns = [
     path('<str:session_id>/review/',        ApproveRejectView.as_view(),      name='approve-reject'),
 
     # Session detail (full MongoDB document) — wildcard route must be last
+    path('<str:session_id>/batch-measure/', BatchMeasureView.as_view(),      name='batch-measure'),
     path('<str:session_id>/',              SessionDetailView.as_view(),      name='session-detail'),
 ]
 
