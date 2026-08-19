@@ -15,6 +15,7 @@ urlpatterns = [
     path('login/',           LoginView.as_view(),          name='user-login'),
     path('logout/',          LogoutView.as_view(),         name='user-logout'),
     path('token/refresh/',   TokenRefreshView.as_view(),   name='token-refresh'),
+    path('refresh/',         TokenRefreshView.as_view(),   name='auth-refresh'),
 
     # Registration (Admin only)
     path('register/',        RegisterView.as_view(),       name='user-register'),

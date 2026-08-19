@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -8,100 +9,127 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Base API URL
-  // For physical Android device via USB, run ADB port forwarding in your terminal:
-  // & "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" reverse tcp:8000 tcp:8000
   static String baseUrl = 'https://ledger-entry-backend.onrender.com/api';
 
-  // Secure storage for JWT tokens — survives app uninstall on some platforms
+  // Secure storage for JWT tokens — EncryptedSharedPreferences on Android / Keychain on iOS
   static const _secure = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
+  /// Global callback triggered when silent token refresh fails on a 401 response.
+  /// AuthProvider hooks into this to clear auth state and navigate to LoginScreen.
+  static VoidCallback? onUnauthenticated;
+
+  // Single-flight mutex lock variables for thread-safe token refreshing.
+  // Prevents multiple concurrent 401 API requests from racing each other
+  // and triggering duplicate refresh calls (which would invalidate rotated tokens).
+  static bool _isRefreshing = false;
+  static Completer<bool>? _refreshCompleter;
+
   // ── Token Storage ──────────────────────────────────────────────────────────
 
-  /// Read access token. Checks secure storage first, falls back to SharedPreferences
-  /// (for backwards-compatibility with existing installs).
+  /// Read access token securely. Checks secure storage first, falls back to SharedPreferences.
   static Future<String?> getToken() async {
     try {
       final secure = await _secure.read(key: 'access_token');
       if (secure != null && secure.isNotEmpty) return secure;
     } catch (_) {}
-    // Fallback: SharedPreferences (old installs before secure storage migration)
+    // Fallback: SharedPreferences (for backwards compatibility)
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('access_token');
   }
 
-  static Future<void> _writeTokens(String access, String refresh) async {
+  /// Read refresh token securely. Checks secure storage first, falls back to SharedPreferences.
+  static Future<String?> getRefreshToken() async {
     try {
-      await _secure.write(key: 'access_token', value: access);
-      await _secure.write(key: 'refresh_token', value: refresh);
+      final secure = await _secure.read(key: 'refresh_token');
+      if (secure != null && secure.isNotEmpty) return secure;
     } catch (_) {}
-    // Also keep in SharedPreferences for backwards compat
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('access_token', access);
-    await prefs.setString('refresh_token', refresh);
+    return prefs.getString('refresh_token');
   }
 
+  /// Write access and refresh tokens to secure storage (and SharedPreferences for compat).
+  static Future<void> _writeTokens(String access, String? refresh) async {
+    try {
+      await _secure.write(key: 'access_token', value: access);
+      if (refresh != null && refresh.isNotEmpty) {
+        await _secure.write(key: 'refresh_token', value: refresh);
+      }
+    } catch (_) {}
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('access_token', access);
+    if (refresh != null && refresh.isNotEmpty) {
+      await prefs.setString('refresh_token', refresh);
+    }
+  }
+
+  /// Clear all stored tokens from secure storage and SharedPreferences.
   static Future<void> clearTokens() async {
     try {
       await _secure.delete(key: 'access_token');
       await _secure.delete(key: 'refresh_token');
     } catch (_) {}
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('access_token');
     await prefs.remove('refresh_token');
   }
 
   /// Silently refresh the access token using the stored refresh token.
-  /// Returns true if a new access token was obtained successfully.
-  /// Called by AuthProvider.checkLoginStatus() to extend sessions.
+  /// Uses a single-flight mutex/lock so concurrent requests waiting on 401
+  /// do not trigger multiple race-condition refresh requests.
   static Future<bool> refreshToken() async {
-    try {
-      // Read refresh token from secure storage or SharedPreferences
-      String? refresh;
-      try {
-        refresh = await _secure.read(key: 'refresh_token');
-      } catch (_) {}
-      if (refresh == null || refresh.isEmpty) {
-        final prefs = await SharedPreferences.getInstance();
-        refresh = prefs.getString('refresh_token');
-      }
-      if (refresh == null || refresh.isEmpty) return false;
+    if (_isRefreshing) {
+      // If a refresh is already in progress, wait for it to finish!
+      return await _refreshCompleter!.future;
+    }
 
+    _isRefreshing = true;
+    _refreshCompleter = Completer<bool>();
+
+    try {
+      final refresh = await getRefreshToken();
+      if (refresh == null || refresh.isEmpty) {
+        debugPrint('[ApiService] No refresh token found.');
+        _refreshCompleter!.complete(false);
+        _isRefreshing = false;
+        return false;
+      }
+
+      // Try refresh endpoint (using users/token/refresh/ or auth/refresh/)
       final response = await http.post(
         Uri.parse('$baseUrl/users/token/refresh/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refresh': refresh}),
-      ).timeout(const Duration(seconds: 35));
+      ).timeout(const Duration(seconds: 25));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final newAccess = data['access'] as String?;
+        final newRefresh = data['refresh'] as String?;
+
         if (newAccess != null && newAccess.isNotEmpty) {
-          // Write new access token; keep existing refresh token
-          try {
-            await _secure.write(key: 'access_token', value: newAccess);
-          } catch (_) {}
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('access_token', newAccess);
-          // If a new refresh token was also returned, persist it
-          final newRefresh = data['refresh'] as String?;
-          if (newRefresh != null && newRefresh.isNotEmpty) {
-            try {
-              await _secure.write(key: 'refresh_token', value: newRefresh);
-            } catch (_) {}
-            await prefs.setString('refresh_token', newRefresh);
-          }
-          debugPrint('[ApiService] Token refreshed successfully.');
+          await _writeTokens(newAccess, newRefresh ?? refresh);
+          debugPrint('[ApiService] Token rotated & refreshed successfully.');
+          _refreshCompleter!.complete(true);
+          _isRefreshing = false;
           return true;
         }
+      } else {
+        debugPrint('[ApiService] Token refresh failed with HTTP ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('[ApiService] refreshToken error: $e');
+      debugPrint('[ApiService] Token refresh exception: $e');
     }
+
+    _refreshCompleter!.complete(false);
+    _isRefreshing = false;
     return false;
   }
 
+  /// Build standard headers with Authorization Bearer token.
   static Future<Map<String, String>> _headers() async {
     final token = await getToken();
     return {
@@ -109,6 +137,33 @@ class ApiService {
       if (token != null) 'Authorization': 'Bearer $token',
     };
   }
+
+  /// Interceptor wrapper for authenticated HTTP requests.
+  /// Automatically attaches headers, catches 401 responses, performs thread-safe silent token refresh,
+  /// retries the request once if successful, or triggers logout if refresh fails.
+  static Future<http.Response> authenticatedRequest(
+    Future<http.Response> Function(Map<String, String> headers) requestFn,
+  ) async {
+    var headers = await _headers();
+    var response = await requestFn(headers);
+
+    if (response.statusCode == 401) {
+      debugPrint('[ApiService] Received HTTP 401. Attempting silent token refresh...');
+      final refreshed = await refreshToken();
+      if (refreshed) {
+        debugPrint('[ApiService] Token refresh succeeded. Retrying original request.');
+        headers = await _headers();
+        response = await requestFn(headers);
+      } else {
+        debugPrint('[ApiService] Token refresh failed. Triggering unauthenticated logout callback.');
+        await clearTokens();
+        onUnauthenticated?.call();
+      }
+    }
+    return response;
+  }
+
+  // ── Auth Endpoints ─────────────────────────────────────────────────────────
 
   // 1. Auth: Login
   static Future<Map<String, dynamic>> login(String username, String password) async {
@@ -123,7 +178,7 @@ class ApiService {
         final data = jsonDecode(response.body);
         // Persist tokens securely
         await _writeTokens(data['access'], data['refresh']);
-        // User info in SharedPreferences (not sensitive)
+        // User info in SharedPreferences (for UI display)
         if (data['user'] != null) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('user_info', jsonEncode(data['user']));
@@ -141,12 +196,39 @@ class ApiService {
     }
   }
 
+  // 1b. Auth: Logout
+  static Future<void> logout() async {
+    try {
+      final refresh = await getRefreshToken();
+      if (refresh != null && refresh.isNotEmpty) {
+        final token = await getToken();
+        await http.post(
+          Uri.parse('$baseUrl/users/logout/'),
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({'refresh': refresh}),
+        ).timeout(const Duration(seconds: 10));
+      }
+    } catch (e) {
+      debugPrint('[ApiService] Server logout notice: $e');
+    } finally {
+      await clearTokens();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('user_info');
+      await prefs.remove('username');
+    }
+  }
+
+  // ── Domain Endpoints (Protected by authenticatedRequest) ───────────────────
+
   // 2. Machine QR / Code Lookup
   static Future<Map<String, dynamic>?> getMachineByCode(String code) async {
-    final response = await http.get(
+    final response = await authenticatedRequest((headers) => http.get(
       Uri.parse('$baseUrl/machines/scan/$code/'),
-      headers: await _headers(),
-    );
+      headers: headers,
+    ));
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -157,10 +239,10 @@ class ApiService {
   // 2b. Get All Floor Machines
   static Future<List<dynamic>> getMachines() async {
     try {
-      final response = await http.get(
+      final response = await authenticatedRequest((headers) => http.get(
         Uri.parse('$baseUrl/machines/'),
-        headers: await _headers(),
-      );
+        headers: headers,
+      ));
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
@@ -173,10 +255,10 @@ class ApiService {
 
   // 3. Get Parts by Machine
   static Future<List<dynamic>> getPartsByMachine(int machineId) async {
-    final response = await http.get(
+    final response = await authenticatedRequest((headers) => http.get(
       Uri.parse('$baseUrl/parts/?machine=$machineId'),
-      headers: await _headers(),
-    );
+      headers: headers,
+    ));
 
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
@@ -188,10 +270,10 @@ class ApiService {
 
   // 4. Get Templates by Part
   static Future<List<dynamic>> getTemplatesByPart(String partNumber) async {
-    final response = await http.get(
+    final response = await authenticatedRequest((headers) => http.get(
       Uri.parse('$baseUrl/parts/$partNumber/templates/'),
-      headers: await _headers(),
-    );
+      headers: headers,
+    ));
 
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
@@ -204,10 +286,10 @@ class ApiService {
 
   // 5. Get Parameters for a Template
   static Future<List<dynamic>> getParameters(int templateId) async {
-    final response = await http.get(
+    final response = await authenticatedRequest((headers) => http.get(
       Uri.parse('$baseUrl/parts/templates/$templateId/parameters/'),
-      headers: await _headers(),
-    );
+      headers: headers,
+    ));
 
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
@@ -219,10 +301,10 @@ class ApiService {
 
   // 5b. Get Process Parameters for a Template (Setup Approval Only)
   static Future<List<dynamic>> getProcessParameters(int templateId) async {
-    final response = await http.get(
+    final response = await authenticatedRequest((headers) => http.get(
       Uri.parse('$baseUrl/parts/templates/$templateId/process-parameters/'),
-      headers: await _headers(),
-    );
+      headers: headers,
+    ));
 
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
@@ -243,9 +325,9 @@ class ApiService {
     int hourlySlot = 1,
     String? parentSessionId,
   }) async {
-    final response = await http.post(
+    final response = await authenticatedRequest((headers) => http.post(
       Uri.parse('$baseUrl/inspections/start/'),
-      headers: await _headers(),
+      headers: headers,
       body: jsonEncode({
         'part_number': partNumber,
         'machine_id': machineId,
@@ -256,7 +338,7 @@ class ApiService {
         'hourly_slot': hourlySlot,
         'parent_session_id': parentSessionId,
       }),
-    );
+    ));
 
     if (response.statusCode == 201 || response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -267,10 +349,10 @@ class ApiService {
   // Fetch session detail document
   static Future<Map<String, dynamic>?> getSessionDetail(String sessionId) async {
     try {
-      final response = await http.get(
+      final response = await authenticatedRequest((headers) => http.get(
         Uri.parse('$baseUrl/inspections/$sessionId/'),
-        headers: await _headers(),
-      );
+        headers: headers,
+      ));
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -281,13 +363,10 @@ class ApiService {
   // Download PDF Report file for Session
   static Future<String?> downloadSessionPDF(String sessionId) async {
     try {
-      final token = await getToken();
-      final response = await http.get(
+      final response = await authenticatedRequest((headers) => http.get(
         Uri.parse('$baseUrl/inspections/$sessionId/pdf/'),
-        headers: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      );
+        headers: headers,
+      ));
 
       if (response.statusCode == 200) {
         final dir = await getApplicationDocumentsDirectory();
@@ -305,10 +384,10 @@ class ApiService {
   static Future<List<dynamic>> getSessions({String? machineCode}) async {
     try {
       final query = machineCode != null ? '?machine=$machineCode' : '';
-      final response = await http.get(
+      final response = await authenticatedRequest((headers) => http.get(
         Uri.parse('$baseUrl/inspections/$query'),
-        headers: await _headers(),
-      );
+        headers: headers,
+      ));
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         if (decoded is List) return decoded;
@@ -321,10 +400,10 @@ class ApiService {
   // Fetch 1st Piece Setup Approval Status for Machine
   static Future<Map<String, dynamic>> checkSetupApproved(int machineId) async {
     try {
-      final response = await http.get(
+      final response = await authenticatedRequest((headers) => http.get(
         Uri.parse('$baseUrl/inspections/setup-status/?machine=$machineId'),
-        headers: await _headers(),
-      );
+        headers: headers,
+      ));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -335,10 +414,10 @@ class ApiService {
 
   // Fetch active supervisor rejections for operator
   static Future<List<dynamic>> getRejections() async {
-    final response = await http.get(
+    final response = await authenticatedRequest((headers) => http.get(
       Uri.parse('$baseUrl/inspections/rejections/'),
-      headers: await _headers(),
-    );
+      headers: headers,
+    ));
 
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
@@ -349,26 +428,37 @@ class ApiService {
   }
 
   // 7. Transcribe Voice Audio File
-  // Now non-blocking: the server dispatches Whisper to a Celery background task
-  // and returns a job_id immediately (HTTP 202). Call checkTranscriptionStatus()
-  // every 2 seconds to poll for the result.
   static Future<Map<String, dynamic>> transcribeVoice(String filePath) async {
+    // For multipart requests, check 401 manually or attach token
+    final token = await getToken();
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('$baseUrl/voice/transcribe/'),
     );
-    final token = await getToken();
     if (token != null) {
       request.headers['Authorization'] = 'Bearer $token';
     }
 
     request.files.add(await http.MultipartFile.fromPath('audio_file', filePath));
     final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
+    var response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode == 401) {
+      final refreshed = await refreshToken();
+      if (refreshed) {
+        final newToken = await getToken();
+        final retryReq = http.MultipartRequest('POST', Uri.parse('$baseUrl/voice/transcribe/'));
+        if (newToken != null) retryReq.headers['Authorization'] = 'Bearer $newToken';
+        retryReq.files.add(await http.MultipartFile.fromPath('audio_file', filePath));
+        final retryStream = await retryReq.send();
+        response = await http.Response.fromStream(retryStream);
+      } else {
+        await clearTokens();
+        onUnauthenticated?.call();
+      }
+    }
 
     if (response.statusCode == 202 || response.statusCode == 200) {
-      // 202 = job accepted (new async path), job_id is in the body
-      // 200 kept for backward compatibility if server is not yet updated
       return jsonDecode(response.body);
     } else {
       return {'error': 'Failed to transcribe audio'};
@@ -376,28 +466,25 @@ class ApiService {
   }
 
   // 7b. Poll transcription job status
-  // Call this every 2 seconds after transcribeVoice() returns a job_id.
-  // Returns: {"status": "processing"} | {"status": "done", "raw_text": ...}
-  //        | {"status": "failed", "error": ...}
   static Future<Map<String, dynamic>> checkTranscriptionStatus(String jobId) async {
-    final response = await http.get(
+    final response = await authenticatedRequest((headers) => http.get(
       Uri.parse('$baseUrl/voice/status/$jobId/'),
-      headers: await _headers(),
-    );
+      headers: headers,
+    ));
 
     if (response.statusCode == 200 || response.statusCode == 500) {
       return jsonDecode(response.body);
     }
-    return {'status': 'processing'}; // treat unknown responses as still pending
+    return {'status': 'processing'};
   }
 
   // 8. Transcribe Text / Parse Measurement Directly
   static Future<Map<String, dynamic>> parseText(String text) async {
-    final response = await http.post(
+    final response = await authenticatedRequest((headers) => http.post(
       Uri.parse('$baseUrl/voice/parse/'),
-      headers: await _headers(),
+      headers: headers,
       body: jsonEncode({'text': text}),
-    );
+    ));
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -415,9 +502,9 @@ class ApiService {
     int? hourlySlot,
     String? inspectionType,
   }) async {
-    final response = await http.post(
+    final response = await authenticatedRequest((headers) => http.post(
       Uri.parse('$baseUrl/inspections/$sessionId/measure/'),
-      headers: await _headers(),
+      headers: headers,
       body: jsonEncode({
         'parameter_code': parameterCode,
         'measured_value': value,
@@ -426,7 +513,7 @@ class ApiService {
         'hourly_slot': hourlySlot,
         'inspection_type': inspectionType,
       }),
-    );
+    ));
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -436,20 +523,20 @@ class ApiService {
 
   // 10. Complete Session
   static Future<bool> completeSession(String sessionId) async {
-    final response = await http.post(
+    final response = await authenticatedRequest((headers) => http.post(
       Uri.parse('$baseUrl/inspections/$sessionId/complete/'),
-      headers: await _headers(),
-    );
+      headers: headers,
+    ));
 
     return response.statusCode == 200;
   }
 
   // 11. Finalize First Piece Session (Inspector Workflow)
   static Future<Map<String, dynamic>?> finalizeFirstPiece(String sessionId) async {
-    final response = await http.post(
+    final response = await authenticatedRequest((headers) => http.post(
       Uri.parse('$baseUrl/inspections/$sessionId/finalize/'),
-      headers: await _headers(),
-    );
+      headers: headers,
+    ));
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -457,16 +544,16 @@ class ApiService {
     return null;
   }
 
-  // 12. Get Users (Filtered by role e.g. 'operator')
+  // 12. Get Users
   static Future<List<dynamic>> getUsers({String? role}) async {
     try {
       final url = (role != null && role.isNotEmpty)
           ? '$baseUrl/users/?role=$role'
           : '$baseUrl/users/';
-      final response = await http.get(
+      final response = await authenticatedRequest((headers) => http.get(
         Uri.parse(url),
-        headers: await _headers(),
-      );
+        headers: headers,
+      ));
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
@@ -477,24 +564,18 @@ class ApiService {
     return [];
   }
 
-  // 13. Submit Setup Approval — Process Parameters for 1PC#1, 1PC#2, 1PC#3
-  // Called from SetupApprovalScreen after Inspector enters all process param values.
-  // Stored as inspection_type='setup_approval' in the backend (separate from FPI sessions).
+  // 13. Submit Setup Approval
   static Future<Map<String, dynamic>?> submitSetupApproval({
     required int templateId,
     required int machineId,
     required String partNumber,
     required List<Map<String, dynamic>> processParamEntries,
-    // processParamEntries: [
-    //   { 'parameter_code': 'PR1', 'trial_1': '1200', 'trial_2': '1250', 'trial_3': '1200' },
-    //   ...
-    // ]
     required String inspectorName,
   }) async {
     try {
-      final response = await http.post(
+      final response = await authenticatedRequest((headers) => http.post(
         Uri.parse('$baseUrl/inspections/setup-approval/'),
-        headers: await _headers(),
+        headers: headers,
         body: jsonEncode({
           'template_id': templateId,
           'machine_id': machineId,
@@ -502,7 +583,7 @@ class ApiService {
           'process_param_entries': processParamEntries,
           'inspector_name': inspectorName,
         }),
-      );
+      ));
       if (response.statusCode == 200 || response.statusCode == 201) {
         return jsonDecode(response.body);
       }
@@ -512,14 +593,13 @@ class ApiService {
     return null;
   }
 
-  // 14. Get existing Setup Approval data for a template + machine
-  // Used to pre-populate Setup Approval screen with previously saved values.
+  // 14. Get Setup Approval Data
   static Future<Map<String, dynamic>?> getSetupApprovalData(int templateId, int machineId) async {
     try {
-      final response = await http.get(
+      final response = await authenticatedRequest((headers) => http.get(
         Uri.parse('$baseUrl/inspections/setup-approval/?template=$templateId&machine=$machineId'),
-        headers: await _headers(),
-      );
+        headers: headers,
+      ));
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -529,14 +609,14 @@ class ApiService {
     return null;
   }
 
-  // 15. Submit Daily Production Report (End of Day Entry)
+  // 15. Submit Daily Production Report
   static Future<Map<String, dynamic>> submitDailyProductionReport(Map<String, dynamic> reportData) async {
     try {
-      final response = await http.post(
+      final response = await authenticatedRequest((headers) => http.post(
         Uri.parse('$baseUrl/inspections/daily-production-reports/'),
-        headers: await _headers(),
+        headers: headers,
         body: jsonEncode(reportData),
-      );
+      ));
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, 'data': jsonDecode(response.body)};
       } else {
@@ -560,5 +640,3 @@ class ApiService {
     }
   }
 }
-
-

@@ -13,6 +13,7 @@ urlpatterns = [
 
     # API Routes
     path('api/users/',       include('apps.users.urls')),
+    path('api/auth/',        include('apps.users.urls')),
     path('api/machines/',    include('apps.machines.urls')),
     path('api/parts/',       include('apps.parts.urls')),
     path('api/inspections/', include('apps.inspections.urls')),

@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 
+/// AuthProvider — manages user authentication state, silent token refresh,
+/// persistent login, and server-side token blacklisting on logout.
 class AuthProvider with ChangeNotifier {
   bool _isAuthenticated = false;
   String? _username;
   String? _userRole;
   String? _fullName;
-  bool _isLoading = false;
+  bool _isLoading = true;
 
   bool get isAuthenticated => _isAuthenticated;
   String? get username => _username;
@@ -25,36 +27,68 @@ class AuthProvider with ChangeNotifier {
   String? get lastErrorMessage => _lastErrorMessage;
 
   AuthProvider() {
+    // Hook up ApiService 401 failure callback to trigger automatic logout
+    ApiService.onUnauthenticated = forceLogout;
     checkLoginStatus();
   }
 
+  /// Bootstrap auth state on app start:
+  /// Reads stored refresh token and silently mints a new access token.
+  /// If refresh succeeds → session extended, stays logged in.
+  /// If refresh fails → forces login screen.
   Future<void> checkLoginStatus() async {
-    final token = await ApiService.getToken();
-    final prefs = await SharedPreferences.getInstance();
-    if (token != null) {
-      _isAuthenticated = true;
-      _username = prefs.getString('username') ?? 'Operator';
-      final userInfoStr = prefs.getString('user_info');
-      if (userInfoStr != null) {
-        try {
-          final info = jsonDecode(userInfoStr);
-          _userRole = info['role'] ?? 'operator';
-          _fullName = (info['full_name'] != null && info['full_name'].toString().isNotEmpty)
-              ? info['full_name']
-              : _username;
-        } catch (_) {
-          _userRole = 'operator';
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final refreshToken = await ApiService.getRefreshToken();
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        // Attempt silent token refresh to extend session & get valid access token
+        final refreshed = await ApiService.refreshToken();
+        if (refreshed) {
+          _isAuthenticated = true;
+          final prefs = await SharedPreferences.getInstance();
+          _username = prefs.getString('username') ?? 'User';
+
+          final userInfoStr = prefs.getString('user_info');
+          if (userInfoStr != null) {
+            try {
+              final info = jsonDecode(userInfoStr);
+              _userRole = info['role'] ?? 'operator';
+              _fullName = (info['full_name'] != null && info['full_name'].toString().isNotEmpty)
+                  ? info['full_name']
+                  : _username;
+            } catch (_) {
+              _userRole = 'operator';
+            }
+          } else {
+            _userRole = 'operator';
+          }
+          debugPrint('[AuthProvider] Persistent session restored for $_username (role: $_userRole)');
+        } else {
+          debugPrint('[AuthProvider] Refresh token expired or revoked. Requiring login.');
+          await ApiService.clearTokens();
+          _isAuthenticated = false;
+          _username = null;
+          _userRole = null;
+          _fullName = null;
         }
       } else {
-        _userRole = 'operator';
+        _isAuthenticated = false;
+        _username = null;
+        _userRole = null;
+        _fullName = null;
       }
-    } else {
+    } catch (e) {
+      debugPrint('[AuthProvider] checkLoginStatus error: $e');
       _isAuthenticated = false;
-      _userRole = null;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
+  /// User explicit login with username & password.
   Future<bool> login(String username, String password) async {
     _isLoading = true;
     _lastErrorMessage = null;
@@ -94,14 +128,30 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// Explicit user logout: calls backend to blacklist refresh token,
+  /// deletes secure storage keys, clears local auth state.
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    _isLoading = true;
+    notifyListeners();
+
+    await ApiService.logout();
+
     _isAuthenticated = false;
     _username = null;
     _userRole = null;
     _fullName = null;
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  /// Triggered automatically when an unauthenticated 401 cannot be refreshed.
+  void forceLogout() async {
+    await ApiService.clearTokens();
+    _isAuthenticated = false;
+    _username = null;
+    _userRole = null;
+    _fullName = null;
+    _isLoading = false;
     notifyListeners();
   }
 }
-
