@@ -1,33 +1,42 @@
 """
-Celery background tasks for the voice / transcription app.
+Background transcription using Python threads + Redis cache.
 
-Why a separate task?
-    Whisper transcription on CPU takes 5–30 seconds. Running it
-    inside a synchronous HTTP request blocks the Daphne worker for
-    that entire time and freezes the user's screen. Moving it to a
-    Celery task lets the view return a job_id immediately (< 0.5 s)
-    while the heavy work happens in a separate background process.
+Why threading instead of Celery?
+    Celery requires a separately paid background worker process.
+    For Whisper transcription, a daemon thread inside the existing
+    Django/Daphne process is simpler and completely free.
+
+    The GIL is released during file I/O and model inference, so the
+    thread runs concurrently with other requests. The result is stored
+    in Django's Redis cache and polled by the client via
+    GET /api/voice/status/<job_id>/.
+
+Limitation vs Celery:
+    If the server restarts mid-transcription, the in-flight thread dies
+    and the job will never reach SUCCESS. The client's 60-second timeout
+    in the Flutter app will catch this and show an error gracefully.
 """
 
 import logging
+import threading
+import uuid
 from datetime import datetime, timezone
 
-from celery import shared_task
+from django.core.cache import cache
 
 from .whisper_engine import WhisperEngine
 from .number_parser import parse_measurement
 
 logger = logging.getLogger(__name__)
 
+# Cache timeout for job results — 10 minutes is plenty for a single voice entry
+JOB_CACHE_TIMEOUT = 600
 
-# ─── MongoDB helper ───────────────────────────────────────────────────────────
+
+# ─── MongoDB helper (shared with views) ──────────────────────────────────────
 
 def _log_to_mongodb(user_id, raw_text, parsed_value, file_path, language, backend):
-    """
-    Persist a voice transcription record to MongoDB for audit trail.
-    Extracted from the view into a standalone helper so both the task
-    and any future callers can reuse it without importing the view class.
-    """
+    """Persist voice log to MongoDB for audit trail."""
     try:
         from config.db import get_collection, Collections
         get_collection(Collections.VOICE_LOGS).insert_one({
@@ -43,19 +52,12 @@ def _log_to_mongodb(user_id, raw_text, parsed_value, file_path, language, backen
         logger.warning("Failed to log voice entry to MongoDB: %s", exc)
 
 
-# ─── Celery Task ──────────────────────────────────────────────────────────────
+# ─── Background runner ────────────────────────────────────────────────────────
 
-@shared_task(bind=True, max_retries=2)
-def transcribe_audio_task(self, file_path: str, user_id: int) -> dict:
+def _run_transcription(job_id: str, file_path: str, user_id: int):
     """
-    Run Whisper transcription + number parsing in a background Celery process.
-
-    The view dispatches this with .delay() and immediately returns a job_id
-    to the client. The client polls GET /api/voice/status/<job_id>/ every
-    2 seconds until state becomes SUCCESS or FAILURE.
-
-    Returns a dict that is stored by Celery's result backend (Redis) and
-    retrieved by VoiceStatusView.
+    Target function for the background thread.
+    Runs Whisper, stores result in Redis cache under the job_id key.
     """
     try:
         engine        = WhisperEngine()
@@ -67,7 +69,6 @@ def transcribe_audio_task(self, file_path: str, user_id: int) -> dict:
         parsed_value = parse_measurement(raw_text)
         is_parseable = parsed_value is not None
 
-        # Persist to MongoDB after transcription succeeds
         _log_to_mongodb(
             user_id      = user_id,
             raw_text     = raw_text,
@@ -77,7 +78,8 @@ def transcribe_audio_task(self, file_path: str, user_id: int) -> dict:
             backend      = backend,
         )
 
-        return {
+        # Store SUCCESS result in Redis
+        cache.set(f"voice_job_{job_id}", {
             'status':       'done',
             'raw_text':     raw_text,
             'parsed_value': parsed_value,
@@ -86,10 +88,45 @@ def transcribe_audio_task(self, file_path: str, user_id: int) -> dict:
             'backend':      backend,
             'audio_path':   file_path,
             'message':      '' if is_parseable else 'Could not parse a number. Please try again or enter manually.',
-        }
+        }, timeout=JOB_CACHE_TIMEOUT)
 
     except Exception as exc:
-        logger.error("Celery transcription task failed (attempt %s): %s",
-                     self.request.retries + 1, exc)
-        # Retry up to max_retries times with a 3-second gap before re-raising
-        raise self.retry(exc=exc, countdown=3)
+        logger.error("Background transcription failed (job=%s): %s", job_id, exc)
+        # Store FAILURE result so the client doesn't poll forever
+        cache.set(f"voice_job_{job_id}", {
+            'status': 'failed',
+            'error':  'Transcription failed. Please try again.',
+        }, timeout=JOB_CACHE_TIMEOUT)
+
+
+# ─── Public API (same interface as the old Celery task) ──────────────────────
+
+def dispatch_transcription(file_path: str, user_id: int) -> str:
+    """
+    Start a background thread for transcription and return a job_id immediately.
+
+    The caller stores nothing — progress is tracked via Redis cache.
+    Returns the job_id string to pass back to the client.
+    """
+    job_id = str(uuid.uuid4())
+
+    # Mark job as pending so status endpoint returns 'processing' immediately
+    cache.set(f"voice_job_{job_id}", {'status': 'processing'}, timeout=JOB_CACHE_TIMEOUT)
+
+    # daemon=True means the thread won't block server shutdown
+    thread = threading.Thread(
+        target=_run_transcription,
+        args=(job_id, file_path, user_id),
+        daemon=True,
+    )
+    thread.start()
+
+    return job_id
+
+
+def get_job_result(job_id: str) -> dict:
+    """
+    Read the current result for a job from Redis cache.
+    Returns {'status': 'processing'} if job is still running or not found.
+    """
+    return cache.get(f"voice_job_{job_id}", {'status': 'processing'})

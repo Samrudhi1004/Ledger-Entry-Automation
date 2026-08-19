@@ -3,7 +3,6 @@ import uuid
 import logging
 from pathlib import Path
 
-from celery.result import AsyncResult
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -13,6 +12,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
 
 from .number_parser import parse_measurement
+from .tasks import dispatch_transcription, get_job_result
 
 logger = logging.getLogger(__name__)
 
@@ -21,19 +21,16 @@ class VoiceTranscribeView(APIView):
     """
     POST /api/voice/transcribe/
 
-    Accepts an audio file, saves it to disk, then dispatches a Celery
-    background task for transcription. Returns a job_id immediately
-    (< 0.5 s) so the user is never blocked waiting for Whisper.
-
-    The client polls GET /api/voice/status/<job_id>/ every 2 seconds
-    to check progress and retrieve the final result.
+    Saves audio to disk, starts a background thread for Whisper transcription,
+    and returns a job_id immediately (< 0.5 s). The client polls
+    GET /api/voice/status/<job_id>/ every 2 seconds for the result.
 
     Request: multipart/form-data
         audio_file: <audio file — WAV, M4A, MP3, WEBM>
 
     Response (HTTP 202):
         {
-            "job_id":     "<celery-task-id>",
+            "job_id":     "<uuid>",
             "status":     "processing",
             "audio_path": "voice_uploads/<filename>"
         }
@@ -58,9 +55,8 @@ class VoiceTranscribeView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Save audio to media/voice_uploads/ before handing off to Celery.
-        # The file must be on disk before the task runs because the worker
-        # process reads it from the filesystem path.
+        # Save audio to disk before handing off to the background thread.
+        # The thread reads the file from this path after the request returns.
         upload_dir = Path(settings.MEDIA_ROOT) / 'voice_uploads'
         upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -71,14 +67,12 @@ class VoiceTranscribeView(APIView):
             for chunk in audio_file.chunks():
                 dest.write(chunk)
 
-        # Dispatch to Celery — returns immediately with a task ID.
-        # The actual Whisper transcription runs in a separate background process.
-        from .tasks import transcribe_audio_task
-        job = transcribe_audio_task.delay(str(file_path), request.user.id)
+        # Start background thread — returns job_id immediately, no waiting
+        job_id = dispatch_transcription(str(file_path), request.user.id)
 
         return Response(
             {
-                'job_id':     job.id,
+                'job_id':     job_id,
                 'status':     'processing',
                 'audio_path': f'voice_uploads/{filename}',
             },
@@ -90,35 +84,24 @@ class VoiceStatusView(APIView):
     """
     GET /api/voice/status/<job_id>/
 
-    Polls the Celery result backend (Redis) for the transcription job's
-    current state. The client calls this every 2 seconds after receiving
-    a job_id from POST /api/voice/transcribe/.
+    Reads the transcription job's current state from Redis cache.
+    The client calls this every 2 seconds after receiving a job_id
+    from POST /api/voice/transcribe/.
 
     Responses:
-        PENDING  → {"status": "processing"}
-        SUCCESS  → {"status": "done", "raw_text": ..., "parsed_value": ..., ...}
-        FAILURE  → {"status": "failed", "error": "..."} HTTP 500
+        processing → {"status": "processing"}
+        done       → {"status": "done", "raw_text": ..., "parsed_value": ..., ...}
+        failed     → {"status": "failed", "error": "..."} HTTP 500
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, job_id):
-        result = AsyncResult(job_id)
+        result = get_job_result(job_id)
 
-        if result.state == 'PENDING':
-            return Response({'status': 'processing'})
+        if result['status'] == 'failed':
+            return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        if result.state == 'FAILURE':
-            return Response(
-                {'status': 'failed', 'error': 'Transcription failed. Please try again.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        if result.state == 'SUCCESS':
-            # Spread the task's return dict directly into the response
-            return Response({'status': 'done', **result.result})
-
-        # STARTED, RETRY, or any custom state — still working
-        return Response({'status': result.state.lower()})
+        return Response(result)
 
 
 class ParseTextView(APIView):
