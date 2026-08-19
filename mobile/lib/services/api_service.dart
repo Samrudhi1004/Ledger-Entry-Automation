@@ -78,16 +78,17 @@ class ApiService {
   }
 
   /// Silently refresh the access token using the stored refresh token.
-  /// Uses a single-flight mutex/lock so concurrent requests waiting on 401
-  /// do not trigger multiple race-condition refresh requests.
-  static Future<bool> refreshToken() async {
+  /// Returns:
+  ///   true  -> Refresh succeeded (new access token saved)
+  ///   false -> Token explicitly rejected by backend (400/401 invalid/blacklisted)
+  ///   null  -> Network error or server unreachable (do NOT log out!)
+  static Future<bool?> refreshToken() async {
     if (_isRefreshing) {
-      // If a refresh is already in progress, wait for it to finish!
       return await _refreshCompleter!.future;
     }
 
     _isRefreshing = true;
-    _refreshCompleter = Completer<bool>();
+    _refreshCompleter = Completer<bool?>();
 
     try {
       final refresh = await getRefreshToken();
@@ -103,7 +104,7 @@ class ApiService {
         Uri.parse('$baseUrl/users/token/refresh/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refresh': refresh}),
-      ).timeout(const Duration(seconds: 25));
+      ).timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -117,16 +118,22 @@ class ApiService {
           _isRefreshing = false;
           return true;
         }
-      } else {
-        debugPrint('[ApiService] Token refresh failed with HTTP ${response.statusCode}');
+      } else if (response.statusCode == 400 || response.statusCode == 401) {
+        debugPrint('[ApiService] Refresh token rejected by server (HTTP ${response.statusCode}).');
+        _refreshCompleter!.complete(false);
+        _isRefreshing = false;
+        return false;
       }
     } catch (e) {
-      debugPrint('[ApiService] Token refresh exception: $e');
+      debugPrint('[ApiService] Token refresh network/timeout exception: $e');
+      _refreshCompleter!.complete(null);
+      _isRefreshing = false;
+      return null;
     }
 
-    _refreshCompleter!.complete(false);
+    _refreshCompleter!.complete(null);
     _isRefreshing = false;
-    return false;
+    return null;
   }
 
   /// Build standard headers with Authorization Bearer token.
@@ -140,7 +147,7 @@ class ApiService {
 
   /// Interceptor wrapper for authenticated HTTP requests.
   /// Automatically attaches headers, catches 401 responses, performs thread-safe silent token refresh,
-  /// retries the request once if successful, or triggers logout if refresh fails.
+  /// retries the request once if successful, or triggers logout if token is explicitly blacklisted/invalid.
   static Future<http.Response> authenticatedRequest(
     Future<http.Response> Function(Map<String, String> headers) requestFn,
   ) async {
@@ -149,16 +156,17 @@ class ApiService {
 
     if (response.statusCode == 401) {
       debugPrint('[ApiService] Received HTTP 401. Attempting silent token refresh...');
-      final refreshed = await refreshToken();
-      if (refreshed) {
+      final refreshStatus = await refreshToken();
+      if (refreshStatus == true) {
         debugPrint('[ApiService] Token refresh succeeded. Retrying original request.');
         headers = await _headers();
         response = await requestFn(headers);
-      } else {
-        debugPrint('[ApiService] Token refresh failed. Triggering unauthenticated logout callback.');
+      } else if (refreshStatus == false) {
+        debugPrint('[ApiService] Token refresh explicitly rejected. Triggering unauthenticated logout callback.');
         await clearTokens();
         onUnauthenticated?.call();
       }
+      // If refreshStatus == null (network error), do NOT log out — keep local session intact
     }
     return response;
   }

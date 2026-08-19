@@ -33,46 +33,51 @@ class AuthProvider with ChangeNotifier {
   }
 
   /// Bootstrap auth state on app start:
-  /// Reads stored refresh token and silently mints a new access token.
-  /// If refresh succeeds → session extended, stays logged in.
-  /// If refresh fails → forces login screen.
+  /// Reads stored access/refresh tokens and restores local session immediately.
+  /// Silently attempts a background token refresh to keep session warm.
+  /// ONLY forces logout if the backend explicitly rejects the refresh token (HTTP 400/401).
   Future<void> checkLoginStatus() async {
     _isLoading = true;
     notifyListeners();
 
     try {
+      final token = await ApiService.getToken();
       final refreshToken = await ApiService.getRefreshToken();
-      if (refreshToken != null && refreshToken.isNotEmpty) {
-        // Attempt silent token refresh to extend session & get valid access token
-        final refreshed = await ApiService.refreshToken();
-        if (refreshed) {
-          _isAuthenticated = true;
-          final prefs = await SharedPreferences.getInstance();
-          _username = prefs.getString('username') ?? 'User';
+      final prefs = await SharedPreferences.getInstance();
 
-          final userInfoStr = prefs.getString('user_info');
-          if (userInfoStr != null) {
-            try {
-              final info = jsonDecode(userInfoStr);
-              _userRole = info['role'] ?? 'operator';
-              _fullName = (info['full_name'] != null && info['full_name'].toString().isNotEmpty)
-                  ? info['full_name']
-                  : _username;
-            } catch (_) {
-              _userRole = 'operator';
-            }
-          } else {
+      if ((token != null && token.isNotEmpty) || (refreshToken != null && refreshToken.isNotEmpty)) {
+        // Restore local user session immediately so app opens home screen instantly
+        _username = prefs.getString('username') ?? 'Operator';
+        final userInfoStr = prefs.getString('user_info');
+        if (userInfoStr != null) {
+          try {
+            final info = jsonDecode(userInfoStr);
+            _userRole = info['role'] ?? 'operator';
+            _fullName = (info['full_name'] != null && info['full_name'].toString().isNotEmpty)
+                ? info['full_name']
+                : _username;
+          } catch (_) {
             _userRole = 'operator';
           }
-          debugPrint('[AuthProvider] Persistent session restored for $_username (role: $_userRole)');
         } else {
-          debugPrint('[AuthProvider] Refresh token expired or revoked. Requiring login.');
+          _userRole = 'operator';
+        }
+        _isAuthenticated = true;
+        debugPrint('[AuthProvider] Restored local session for $_username (role: $_userRole)');
+
+        // Silently attempt background refresh to get fresh access token & rotate refresh token
+        final refreshStatus = await ApiService.refreshToken();
+        if (refreshStatus == false) {
+          // Explicitly rejected by server (expired/blacklisted/revoked) -> force logout
+          debugPrint('[AuthProvider] Refresh token explicitly rejected by server. Requiring login.');
           await ApiService.clearTokens();
           _isAuthenticated = false;
           _username = null;
           _userRole = null;
           _fullName = null;
         }
+        // If refreshStatus == true -> tokens updated cleanly in background!
+        // If refreshStatus == null -> network timeout/error, local session STAYS LOGGED IN!
       } else {
         _isAuthenticated = false;
         _username = null;
@@ -81,7 +86,6 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       debugPrint('[AuthProvider] checkLoginStatus error: $e');
-      _isAuthenticated = false;
     } finally {
       _isLoading = false;
       notifyListeners();
