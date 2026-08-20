@@ -121,6 +121,15 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
       return;
     }
 
+    // If a session is already active (e.g. restored on login), skip creating a new one
+    // to prevent duplicate sessions and the double-submit bug.
+    if (provider.sessionId != null && trialNumber == provider.trialNumber) {
+      if (mounted) {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()));
+      }
+      return;
+    }
+
     final started = await provider.startSession(trial: trialNumber, inspectionType: 'first_piece');
     if (started && mounted) {
       if (trialNumber > 1) {
