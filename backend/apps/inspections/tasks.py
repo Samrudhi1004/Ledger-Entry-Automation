@@ -1,12 +1,29 @@
 """
 Celery Tasks for Inspection App.
 Handles async measurement processing, Redis caching, and idempotency guarantees.
+
+NOTE: Celery is intentionally NOT installed on Render (no broker available).
+      This module provides the same public API but dispatches via Python threads.
+      The @shared_task decorator is a no-op when celery is absent.
 """
 
 import logging
 import threading
 import time
-from celery import shared_task
+
+# Celery is optional — not installed on Render free tier.
+# Provide a no-op @shared_task decorator so the module loads cleanly.
+try:
+    from celery import shared_task
+    _CELERY_AVAILABLE = True
+except ImportError:
+    _CELERY_AVAILABLE = False
+    def shared_task(*args, **kwargs):           # noqa: E302
+        """No-op decorator — Celery not installed."""
+        def decorator(func):
+            return func
+        return decorator if args and callable(args[0]) else decorator
+
 from django.core.cache import cache
 from .services import InspectionService
 
