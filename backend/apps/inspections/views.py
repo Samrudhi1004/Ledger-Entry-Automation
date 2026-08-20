@@ -515,12 +515,14 @@ class SetupStatusView(APIView):
         if str(machine_id).isdigit():
             session = InspectionSession.objects.select_related('part', 'machine').filter(
                 Q(machine_id=int(machine_id)) | Q(machine__machine_code=machine_id),
-                started_at__date=today
+                started_at__date=today,
+                operator=request.user
             ).order_by('-started_at').first()
         else:
             session = InspectionSession.objects.select_related('part', 'machine').filter(
                 machine__machine_code=machine_id,
-                started_at__date=today
+                started_at__date=today,
+                operator=request.user
             ).order_by('-started_at').first()
 
         has_today = True

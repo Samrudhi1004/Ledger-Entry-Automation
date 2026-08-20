@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 
 class InspectionProvider with ChangeNotifier {
@@ -225,6 +227,22 @@ class InspectionProvider with ChangeNotifier {
             }
           }
         }
+        
+        // Restore unsubmitted batch drafts from SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        final draftStr = prefs.getString('draft_batch_$sessionId');
+        if (draftStr != null) {
+          try {
+            final decoded = jsonDecode(draftStr) as Map<String, dynamic>;
+            pendingBatchValues.clear();
+            decoded.forEach((key, value) {
+              pendingBatchValues[key] = Map<String, dynamic>.from(value);
+            });
+            debugPrint('[PROVIDER] Restored draft batch with ${pendingBatchValues.length} items');
+          } catch (e) {
+            debugPrint('[PROVIDER] Failed to parse draft batch: $e');
+          }
+        }
       } catch (e) {
         debugPrint('Error restoring recorded measurements: $e');
       }
@@ -315,6 +333,21 @@ class InspectionProvider with ChangeNotifier {
     return result;
   }
 
+  Future<void> _savePendingBatchToPrefs() async {
+    if (sessionId == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'draft_batch_$sessionId';
+      if (pendingBatchValues.isEmpty) {
+        await prefs.remove(key);
+      } else {
+        await prefs.setString(key, jsonEncode(pendingBatchValues));
+      }
+    } catch (e) {
+      debugPrint('[PROVIDER] Error saving draft batch: $e');
+    }
+  }
+
   void setPendingValue(String code, double value, String voiceRawText, {String method = 'voice'}) {
     pendingBatchValues[code] = {
       'parameter_code': code,
@@ -323,11 +356,13 @@ class InspectionProvider with ChangeNotifier {
       'method': method,
     };
     notifyListeners();
+    _savePendingBatchToPrefs();
   }
 
   void clearPendingValues() {
     pendingBatchValues.clear();
     notifyListeners();
+    _savePendingBatchToPrefs();
   }
 
   Future<Map<String, dynamic>?> submitBatchMeasurements() async {
