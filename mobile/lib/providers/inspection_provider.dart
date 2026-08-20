@@ -331,29 +331,50 @@ class InspectionProvider with ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> submitBatchMeasurements() async {
-    if (sessionId == null) return null;
+    debugPrint('[PROVIDER] submitBatchMeasurements() called. sessionId=$sessionId');
+
+    if (sessionId == null) {
+      debugPrint('[PROVIDER] ERROR: sessionId is null — aborting batch submit.');
+      return null;
+    }
 
     isLoading = true;
     notifyListeners();
 
     final measurementsList = pendingBatchValues.values.toList();
-    final result = await ApiService.batchMeasure(
-      sessionId: sessionId!,
-      measurements: measurementsList,
-    );
+    debugPrint('[PROVIDER] Submitting ${measurementsList.length} measurement(s): '
+        '${measurementsList.map((m) => "${m['parameter_code']}=${m['measured_value']}").join(", ")}');
 
-    isLoading = false;
-    if (result != null && result['results'] is List) {
-      for (var r in (result['results'] as List)) {
-        final code = r['parameter_code'];
-        if (code != null) {
-          recordedResults[code.toString()] = r;
+    try {
+      final result = await ApiService.batchMeasure(
+        sessionId: sessionId!,
+        measurements: measurementsList,
+      );
+      debugPrint('[PROVIDER] batchMeasure API response: $result');
+
+      // Populate recordedResults so the summary screen shows correct values
+      if (result != null && result['results'] is List) {
+        for (var r in (result['results'] as List)) {
+          final code = r['parameter_code'];
+          if (code != null) {
+            recordedResults[code.toString()] = r;
+            debugPrint('[PROVIDER] recordedResult saved: $code → status=${r['status']}');
+          }
         }
       }
+      return result;
+    } catch (e, stack) {
+      debugPrint('[PROVIDER] EXCEPTION in batchMeasure API call: $e');
+      debugPrint('[PROVIDER] Stack trace: $stack');
+      return null;
+    } finally {
+      // ← CRITICAL: always reset isLoading so the UI doesn't stay in loading state
+      isLoading = false;
+      notifyListeners();
+      debugPrint('[PROVIDER] isLoading reset to false.');
     }
-    notifyListeners();
-    return result;
   }
+
 
   void nextParameter() {
     if (currentParamIndex < parameters.length - 1) {

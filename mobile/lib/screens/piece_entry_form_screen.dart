@@ -250,8 +250,21 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
 
   Future<void> _submitPieceForm() async {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
+    debugPrint('[SUBMIT] _submitPieceForm() called. sessionId=${provider.sessionId}');
 
-    // Validate that all required fields have pending values or carried forward results
+    // ── Guard: session must exist ─────────────────────────────────────────
+    if (provider.sessionId == null) {
+      debugPrint('[SUBMIT] ERROR: sessionId is null — cannot submit without an active session.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No active session. Please restart the inspection.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
+
+    // ── Validate: collect values from text fields into pendingBatchValues ──
     final missingCodes = <String>[];
     for (var param in provider.parameters) {
       final code = param['parameter_code']?.toString() ?? '';
@@ -261,12 +274,15 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
       if (!isCarriedForward) {
         final textVal = _controllers[code]?.text.trim() ?? '';
         if (textVal.isEmpty && !provider.pendingBatchValues.containsKey(code)) {
+          debugPrint('[SUBMIT] MISSING: $code — text empty, not in pendingBatch');
           missingCodes.add(code);
         } else if (textVal.isNotEmpty) {
           final parsed = double.tryParse(textVal);
           if (parsed != null) {
+            debugPrint('[SUBMIT] setPendingValue: $code = $parsed (from text field)');
             provider.setPendingValue(code, parsed, textVal, method: 'form');
           } else {
+            debugPrint('[SUBMIT] MISSING: $code — text "$textVal" is not a valid number');
             missingCodes.add(code);
           }
         }
@@ -274,6 +290,7 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
     }
 
     if (missingCodes.isNotEmpty) {
+      debugPrint('[SUBMIT] Validation failed — ${missingCodes.length} missing: $missingCodes');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Please fill all ${missingCodes.length} remaining fields before submitting.'),
@@ -283,31 +300,58 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
       return;
     }
 
+    debugPrint('[SUBMIT] Validation passed. Pending values: ${provider.pendingBatchValues.keys.toList()}');
     setState(() => _isSubmitting = true);
 
-    final res = await provider.submitBatchMeasurements();
+    // ── API call — ALWAYS reset _isSubmitting in finally ──────────────────
+    try {
+      debugPrint('[SUBMIT] Calling submitBatchMeasurements()...');
+      final res = await provider.submitBatchMeasurements();
+      debugPrint('[SUBMIT] submitBatchMeasurements() returned: $res');
 
-    setState(() => _isSubmitting = false);
+      if (!mounted) return;
 
-    if (!mounted) return;
+      if (res != null) {
+        final bool complete  = res['piece_complete'] == true;
+        final int failedCount = res['failed_count'] ?? 0;
+        final List<dynamic> failedCodes = res['failed_codes'] ?? [];
+        debugPrint('[SUBMIT] piece_complete=$complete failedCount=$failedCount failedCodes=$failedCodes');
 
-    if (res != null) {
-      final bool complete = res['piece_complete'] == true;
-      final int failedCount = res['failed_count'] ?? 0;
-      final List<dynamic> failedCodes = res['failed_codes'] ?? [];
-
-      if (complete) {
-        _showSuccessModal();
+        if (complete) {
+          debugPrint('[SUBMIT] All params passed — showing success modal.');
+          _showSuccessModal();
+        } else {
+          debugPrint('[SUBMIT] ${failedCodes.length} param(s) failed — showing failure modal.');
+          _showFailureModal(failedCount, failedCodes, res['results'] ?? []);
+        }
       } else {
-        _showFailureModal(failedCount, failedCodes, res['results'] ?? []);
+        debugPrint('[SUBMIT] ERROR: submitBatchMeasurements returned null (API failure).');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Submission failed. Please check your network connection and try again.'),
+            backgroundColor: Color(0xFFEF4444),
+            duration: Duration(seconds: 4),
+          ),
+        );
       }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Submission failed. Please check network connection.'),
-          backgroundColor: Color(0xFFEF4444),
-        ),
-      );
+    } catch (e, stack) {
+      debugPrint('[SUBMIT] EXCEPTION in submitBatchMeasurements: $e');
+      debugPrint('[SUBMIT] Stack trace: $stack');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Submission error: ${e.toString()}'),
+            backgroundColor: const Color(0xFFEF4444),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      // ← CRITICAL: always reset _isSubmitting so button is never permanently disabled
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        debugPrint('[SUBMIT] _isSubmitting reset to false.');
+      }
     }
   }
 
