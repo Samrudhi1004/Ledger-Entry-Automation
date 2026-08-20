@@ -188,6 +188,13 @@ WHISPER_MODEL   = os.getenv('WHISPER_MODEL', 'tiny')
 WHISPER_BACKEND = os.getenv('WHISPER_BACKEND', 'local')
 OPENAI_API_KEY  = os.getenv('OPENAI_API_KEY', '')
 
+# Point HuggingFace cache at the .hf_cache folder baked into the build
+# artifact by build.sh.  This makes Faster-Whisper load from disk (~500 ms)
+# instead of re-downloading from HuggingFace on every Render cold start (~15 s).
+# Override via HF_HOME env var on Render if you mount a persistent disk instead.
+_HF_HOME_DEFAULT = str(BASE_DIR / '.hf_cache')
+os.environ.setdefault('HF_HOME', os.getenv('HF_HOME', _HF_HOME_DEFAULT))
+
 
 # ─── Password Validation ──────────────────────────────────────
 AUTH_PASSWORD_VALIDATORS = [

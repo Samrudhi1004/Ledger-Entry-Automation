@@ -43,3 +43,20 @@ factory, _ = Factory.objects.get_or_create(code='FAC-01', defaults={'name': 'Man
 plant, _ = Plant.objects.get_or_create(code='PLT-01', defaults={'factory': factory, 'name': 'Shop Floor Plant 1'})
 print(f'Default Factory ({factory.name}) and Plant ({plant.name}, ID: {plant.id}) created successfully!')
 "
+
+# ── Pre-download Faster-Whisper model so it is baked into the build artifact ──
+# HF_HOME points inside the project source so Render uploads the cached model
+# files as part of the build artifact. At runtime the same HF_HOME env var
+# makes the engine load from local disk (~500 ms) instead of re-downloading
+# from HuggingFace on every cold start (~15 s).
+echo "==> Pre-downloading Faster-Whisper 'tiny' model into build artifact..."
+export HF_HOME="$(pwd)/.hf_cache"
+python -c "
+from faster_whisper import WhisperModel
+import os
+print(f'HF_HOME = {os.environ.get(\"HF_HOME\")}')
+m = WhisperModel('tiny', device='cpu', compute_type='int8')
+print('Faster-Whisper tiny model cached successfully.')
+del m
+"
+echo "==> Model pre-download complete."

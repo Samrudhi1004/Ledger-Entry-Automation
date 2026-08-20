@@ -46,3 +46,6 @@ mobile/.metadata
 *.swo
 .DS_Store
 Thumbs.db
+
+# HuggingFace model cache (pre-downloaded in build.sh, not committed to git)
+.hf_cache/
