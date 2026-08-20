@@ -9,7 +9,8 @@ def _is_web_server() -> bool:
     if not argv:
         return False
     # gunicorn / uvicorn / daphne — never have manage.py in argv[0]
-    if not argv[0].endswith('manage.py'):
+    # Also exclude python -c commands
+    if not argv[0].endswith('manage.py') and argv[0] != '-c':
         return True
     # 'python manage.py runserver' is the dev server
     if len(argv) > 1 and argv[1] == 'runserver':
