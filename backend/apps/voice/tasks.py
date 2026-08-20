@@ -18,6 +18,7 @@ Limitation vs Celery:
 """
 
 import logging
+import time
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -54,21 +55,34 @@ def _log_to_mongodb(user_id, raw_text, parsed_value, file_path, language, backen
 
 # ─── Background runner ────────────────────────────────────────────────────────
 
-def _run_transcription(job_id: str, file_path: str, user_id: int):
+def _run_transcription(job_id: str, file_path: str, user_id: int, created_at_perf: float):
     """
     Target function for the background thread.
     Runs Whisper, stores result in Redis cache under the job_id key.
     """
+    t_start = time.perf_counter()
+    queue_wait_ms = (t_start - created_at_perf) * 1000
+
     try:
-        engine        = WhisperEngine()
+        engine = WhisperEngine()
+        
+        # 1. Transcribe audio
+        t_transcribe_start = time.perf_counter()
         transcription = engine.transcribe(file_path)
+        transcribe_ms = (time.perf_counter() - t_transcribe_start) * 1000
 
         raw_text     = transcription['text']
         language     = transcription['language']
         backend      = transcription['backend']
+        
+        # 2. Parse numbers
+        t_parse_start = time.perf_counter()
         parsed_value = parse_measurement(raw_text)
+        parse_ms     = (time.perf_counter() - t_parse_start) * 1000
         is_parseable = parsed_value is not None
 
+        # 3. Log to MongoDB
+        t_mongo_start = time.perf_counter()
         _log_to_mongodb(
             user_id      = user_id,
             raw_text     = raw_text,
@@ -77,8 +91,35 @@ def _run_transcription(job_id: str, file_path: str, user_id: int):
             language     = language,
             backend      = backend,
         )
+        mongo_ms = (time.perf_counter() - t_mongo_start) * 1000
 
-        # Store SUCCESS result in Redis
+        total_backend_ms = (time.perf_counter() - t_start) * 1000
+
+        timing_data = {
+            'queue_wait_ms':     round(queue_wait_ms, 2),
+            'whisper_infer_ms':  transcription.get('engine_duration_ms', round(transcribe_ms, 2)),
+            'model_load_ms':     transcription.get('model_load_ms', 0.0),
+            'model_was_cached':  transcription.get('model_was_cached', True),
+            'number_parse_ms':   round(parse_ms, 2),
+            'mongo_log_ms':      round(mongo_ms, 2),
+            'total_backend_ms':  round(total_backend_ms, 2),
+        }
+
+        logger.info(
+            "\n[PERF SERVER SUMMARY] Job ID: %s\n"
+            "  ├─ Queue Wait Time    : %.2f ms\n"
+            "  ├─ Model Load Time    : %.2f ms (Cached: %s)\n"
+            "  ├─ Whisper Inference  : %.2f ms (%s)\n"
+            "  ├─ Number Parser      : %.2f ms\n"
+            "  ├─ MongoDB Audit Log  : %.2f ms\n"
+            "  └─ TOTAL BACKEND EXEC : %.2f ms",
+            job_id, queue_wait_ms, timing_data['model_load_ms'],
+            timing_data['model_was_cached'], timing_data['whisper_infer_ms'],
+            backend, parse_ms, mongo_ms, total_backend_ms
+        )
+
+        # Store SUCCESS result in Redis with embedded timing breakdown
+        t_cache_start = time.perf_counter()
         cache.set(f"voice_job_{job_id}", {
             'status':       'done',
             'raw_text':     raw_text,
@@ -87,6 +128,7 @@ def _run_transcription(job_id: str, file_path: str, user_id: int):
             'language':     language,
             'backend':      backend,
             'audio_path':   file_path,
+            'timing':       timing_data,
             'message':      '' if is_parseable else 'Could not parse a number. Please try again or enter manually.',
         }, timeout=JOB_CACHE_TIMEOUT)
 
@@ -109,14 +151,18 @@ def dispatch_transcription(file_path: str, user_id: int) -> str:
     Returns the job_id string to pass back to the client.
     """
     job_id = str(uuid.uuid4())
+    created_at_perf = time.perf_counter()
 
     # Mark job as pending so status endpoint returns 'processing' immediately
-    cache.set(f"voice_job_{job_id}", {'status': 'processing'}, timeout=JOB_CACHE_TIMEOUT)
+    cache.set(f"voice_job_{job_id}", {
+        'status': 'processing',
+        'created_at_perf': created_at_perf,
+    }, timeout=JOB_CACHE_TIMEOUT)
 
     # daemon=True means the thread won't block server shutdown
     thread = threading.Thread(
         target=_run_transcription,
-        args=(job_id, file_path, user_id),
+        args=(job_id, file_path, user_id, created_at_perf),
         daemon=True,
     )
     thread.start()

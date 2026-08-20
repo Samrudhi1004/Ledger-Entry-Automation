@@ -220,3 +220,58 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Max audio file upload: 25 MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 25 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 25 * 1024 * 1024
+
+
+# ─── Essential Logging Configuration ───────────────────────────
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'console_fmt': {
+            'format': '[%(asctime)s] [%(levelname)s] %(name)s: %(message)s',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'console_fmt',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.server': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'apps': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'apps.voice': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'apps.inspections': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}

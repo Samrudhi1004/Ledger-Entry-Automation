@@ -5,6 +5,7 @@ Model is loaded once at startup and reused for all requests.
 """
 
 import os
+import time
 import logging
 from pathlib import Path
 
@@ -20,21 +21,26 @@ _is_faster_whisper = False
 def _get_local_model():
     """Load Faster-Whisper (or standard Whisper) once and cache it."""
     global _whisper_model, _is_faster_whisper
+    t_start = time.perf_counter()
+    was_cached = _whisper_model is not None
+
     if _whisper_model is None:
         model_name = settings.WHISPER_MODEL  # e.g. 'tiny' or 'base'
         try:
             from faster_whisper import WhisperModel
-            logger.info("Loading Faster-Whisper engine model '%s' (CPU int8)...", model_name)
+            logger.info("[PERF ENGINE] Loading Faster-Whisper engine model '%s' (CPU int8)...", model_name)
             _whisper_model = WhisperModel(model_name, device="cpu", compute_type="int8")
             _is_faster_whisper = True
-            logger.info("Faster-Whisper model '%s' loaded successfully.", model_name)
+            logger.info("[PERF ENGINE] Faster-Whisper model '%s' loaded in %.2f ms", model_name, (time.perf_counter() - t_start) * 1000)
         except ImportError:
             import whisper
-            logger.info("Loading standard Whisper model '%s' ...", model_name)
+            logger.info("[PERF ENGINE] Loading standard Whisper model '%s' ...", model_name)
             _whisper_model = whisper.load_model(model_name)
             _is_faster_whisper = False
-            logger.info("Standard Whisper model '%s' loaded successfully.", model_name)
-    return _whisper_model, _is_faster_whisper
+            logger.info("[PERF ENGINE] Standard Whisper model '%s' loaded in %.2f ms", model_name, (time.perf_counter() - t_start) * 1000)
+    
+    load_duration_ms = (time.perf_counter() - t_start) * 1000
+    return _whisper_model, _is_faster_whisper, load_duration_ms, was_cached
 
 
 # ─── Whisper Engine ───────────────────────────────────────────────────────
@@ -56,9 +62,12 @@ class WhisperEngine:
 
         Returns:
             {
-                'text':     str,    # raw transcription
-                'language': str,    # detected language code
-                'backend':  str,    # 'faster-whisper' | 'local-whisper' | 'api'
+                'text':                str,    # raw transcription
+                'language':            str,    # detected language code
+                'backend':             str,    # 'faster-whisper' | 'local-whisper' | 'api'
+                'model_load_ms':       float,  # model acquisition time
+                'model_was_cached':    bool,   # whether model was cached
+                'engine_duration_ms':  float,  # pure inference duration
             }
         """
         if not Path(audio_file_path).exists():
@@ -73,10 +82,15 @@ class WhisperEngine:
 
     # ── Local Whisper (Faster-Whisper / Standard) ─────────────────────────
     def _transcribe_local(self, audio_file_path: str) -> dict:
-        model, is_faster = _get_local_model()
+        model, is_faster, load_ms, was_cached = _get_local_model()
 
+        t_infer_start = time.perf_counter()
         if is_faster:
-            segments, info = model.transcribe(audio_file_path, beam_size=5)
+            segments, info = model.transcribe(
+                audio_file_path,
+                beam_size=1,
+                initial_prompt="Numeric measurement entry: 1800, 25.01, 0.25, 315, PASS, FAIL.",
+            )
             text = " ".join([segment.text for segment in segments]).strip()
             lang = info.language or 'en'
             backend_label = 'faster-whisper'
@@ -92,11 +106,23 @@ class WhisperEngine:
             lang = result.get('language', 'en')
             backend_label = 'local-whisper'
 
-        logger.info("[%s] Transcribed: '%s' (lang=%s)", backend_label, text, lang)
-        return {'text': text, 'language': lang, 'backend': backend_label}
+        infer_ms = (time.perf_counter() - t_infer_start) * 1000
+        logger.info(
+            "[PERF ENGINE] [%s] Inference took %.2f ms | Text: '%s' (lang=%s)",
+            backend_label, infer_ms, text, lang
+        )
+        return {
+            'text': text,
+            'language': lang,
+            'backend': backend_label,
+            'model_load_ms': round(load_ms, 2),
+            'model_was_cached': was_cached,
+            'engine_duration_ms': round(infer_ms, 2),
+        }
 
     # ── API Whisper (for future) ───────────────────────────────────────────
     def _transcribe_api(self, audio_file_path: str) -> dict:
+        t_infer_start = time.perf_counter()
         try:
             import openai
             openai.api_key = settings.OPENAI_API_KEY
@@ -108,8 +134,16 @@ class WhisperEngine:
                 )
             text = response.text.strip()
             lang = getattr(response, 'language', 'en')
-            logger.info("Whisper API transcribed: '%s'", text)
-            return {'text': text, 'language': lang, 'backend': 'api'}
+            infer_ms = (time.perf_counter() - t_infer_start) * 1000
+            logger.info("[PERF ENGINE] Whisper API took %.2f ms | Text: '%s'", infer_ms, text)
+            return {
+                'text': text,
+                'language': lang,
+                'backend': 'api',
+                'model_load_ms': 0.0,
+                'model_was_cached': True,
+                'engine_duration_ms': round(infer_ms, 2),
+            }
         except Exception as e:
             logger.error("Whisper API failed: %s. Falling back to local.", str(e))
             # Auto-fallback to local

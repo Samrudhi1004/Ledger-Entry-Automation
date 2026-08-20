@@ -193,9 +193,12 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  '$partNo · $machineCode',
-                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w600),
+                Expanded(
+                  child: Text(
+                    '$partNo · $machineCode',
+                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),

@@ -7,20 +7,72 @@ InspectionService   — orchestrates session creation, measurement recording,
 """
 
 import logging
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
+from django.core.cache import cache
+from django.db.models import F
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
 from config.db import get_collection, Collections
-from apps.parts.models import InspectionParameter, InspectionTemplate
+from apps.parts.models import InspectionParameter, InspectionTemplate, ProcessParameter
 from .models import InspectionSession
 
 logger = logging.getLogger(__name__)
+
+
+def _dispatch_async_websocket(group_name: str, payload: dict):
+    """Sends WebSocket group message in a background thread to prevent blocking HTTP response."""
+    def _send():
+        try:
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                async_to_sync(channel_layer.group_send)(group_name, payload)
+        except Exception as exc:
+            logger.warning("Failed to dispatch WebSocket event in background thread: %s", exc)
+
+    threading.Thread(target=_send, daemon=True).start()
+
+
+def _get_cached_parameter(part_id: int, parameter_code: str):
+    """Retrieves InspectionParameter from Redis cache (1 hour timeout) or DB."""
+    cache_key = f"param_spec_{part_id}_{parameter_code}"
+    cached_param = cache.get(cache_key)
+    if cached_param is not None:
+        return cached_param
+
+    param = InspectionParameter.objects.filter(
+        template__part_id=part_id,
+        parameter_code=parameter_code,
+        template__is_active=True,
+    ).first()
+
+    if param:
+        cache.set(cache_key, param, timeout=3600)
+    return param
+
+
+def _get_cached_process_parameter(part_id: int, parameter_code: str):
+    """Retrieves ProcessParameter from Redis cache (1 hour timeout) or DB."""
+    cache_key = f"proc_param_spec_{part_id}_{parameter_code}"
+    cached_proc_param = cache.get(cache_key)
+    if cached_proc_param is not None:
+        return cached_proc_param
+
+    proc_param = ProcessParameter.objects.filter(
+        template__part_id=part_id,
+        parameter_code=parameter_code,
+        template__is_active=True,
+    ).first()
+
+    if proc_param:
+        cache.set(cache_key, proc_param, timeout=3600)
+    return proc_param
 
 
 # ─── Validation Result ────────────────────────────────────────────────────
@@ -348,21 +400,12 @@ class InspectionService:
             'part', 'machine'
         ).get(session_id=session_id)
 
-        # Fetch parameter safely by part and parameter code across active templates
-        parameter = InspectionParameter.objects.filter(
-            template__part=session.part,
-            parameter_code=parameter_code,
-            template__is_active=True,
-        ).first()
+        # Fetch parameter safely from Redis cache or DB by part_id and parameter_code
+        parameter = _get_cached_parameter(session.part_id, parameter_code)
 
         process_parameter = None
         if not parameter:
-            from apps.parts.models import ProcessParameter
-            process_parameter = ProcessParameter.objects.filter(
-                template__part=session.part,
-                parameter_code=parameter_code,
-                template__is_active=True,
-            ).first()
+            process_parameter = _get_cached_process_parameter(session.part_id, parameter_code)
 
         if not parameter and not process_parameter:
             raise ValueError(f"Parameter '{parameter_code}' not found for part {session.part.part_number}.")
@@ -491,32 +534,25 @@ class InspectionService:
                     array_filters=[{'param.parameter_code': parameter_code}],
                 )
 
-            # Auto-sync reading into process_param_entries for Setup Approval Report
+            # Auto-sync reading into process_param_entries for Setup Approval Report atomically
             t_num = meas_trial if (meas_trial >= 1 and meas_trial <= 3) else 1
             t_key = f"trial_{t_num}"
             entry_val = str(voice_raw_text or measured_value or '').strip()
 
-            doc_snap = self.collection.find_one({'_id': str(session_id)})
-            p_entries = doc_snap.get('process_param_entries') or [] if doc_snap else []
-            match_found = False
-            for pe in p_entries:
-                if pe.get('parameter_code') == parameter_code or pe.get('parameter_name') == process_parameter.parameter_name:
-                    pe[t_key] = entry_val
-                    match_found = True
-                    break
-
-            if not match_found:
-                p_entries.append({
-                    'parameter_code': parameter_code,
-                    'parameter_name': process_parameter.parameter_name,
-                    'specification': process_parameter.specification or '',
-                    t_key: entry_val,
-                })
-
-            self.collection.update_one(
-                {'_id': str(session_id)},
-                {'$set': {'process_param_entries': p_entries}}
+            update_res = self.collection.update_one(
+                {'_id': str(session_id), 'process_param_entries.parameter_code': parameter_code},
+                {'$set': {f'process_param_entries.$.{t_key}': entry_val}}
             )
+            if update_res.matched_count == 0:
+                self.collection.update_one(
+                    {'_id': str(session_id)},
+                    {'$push': {'process_param_entries': {
+                        'parameter_code': parameter_code,
+                        'parameter_name': process_parameter.parameter_name,
+                        'specification': process_parameter.specification or '',
+                        t_key: entry_val,
+                    }}}
+                )
 
             # Push WebSocket event for Process Parameter
             self._push_process_param_event(
@@ -597,23 +633,26 @@ class InspectionService:
                 array_filters=[{'param.parameter_code': parameter_code}],
             )
 
-        # Update PostgreSQL counters and reminder timestamps
+        # Update PostgreSQL counters and reminder timestamps atomically
         from django.utils import timezone as django_timezone
         now_dt = django_timezone.now()
-        update_fields = {
-            'recorded_count': session.recorded_count + 1,
+
+        update_dict = {
+            'recorded_count': F('recorded_count') + 1,
             'last_measurement_at': now_dt,
             'operator_reminded': False,
             'supervisor_escalated': False,
         }
         if result.status == 'out_of_spec':
-            update_fields['has_ooc'] = True
+            update_dict['has_ooc'] = True
+            session.has_ooc = True
         if result.is_critical:
-            update_fields['has_critical_fail'] = True
+            update_dict['has_critical_fail'] = True
+            session.has_critical_fail = True
 
-        for field, value in update_fields.items():
-            setattr(session, field, value)
-        session.save(update_fields=list(update_fields.keys()))
+        session.recorded_count += 1
+        session.last_measurement_at = now_dt
+        InspectionSession.objects.filter(pk=session.pk).update(**update_dict)
 
         # Push WebSocket event
         self._push_measurement_event(
@@ -918,10 +957,9 @@ class InspectionService:
     # ── WebSocket Push ────────────────────────────────────────────────────
     def _push_measurement_event(self, session, parameter, result, value, voice_raw_text='', method='voice',
                                 meas_type=None, meas_trial=None, meas_slot=None):
-        channel_layer = get_channel_layer()
         group_name    = f"plant_{session.machine.plant_id}"
         operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
-        async_to_sync(channel_layer.group_send)(
+        _dispatch_async_websocket(
             group_name,
             {
                 'type':              'inspection.event',
@@ -954,10 +992,9 @@ class InspectionService:
 
     def _push_process_param_event(self, session, process_parameter, status_val, value, voice_raw_text='', method='voice',
                                   meas_type='first_piece', meas_trial=1, meas_slot=0):
-        channel_layer = get_channel_layer()
         group_name    = f"plant_{session.machine.plant_id}"
         operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
-        async_to_sync(channel_layer.group_send)(
+        _dispatch_async_websocket(
             group_name,
             {
                 'type':              'inspection.event',
@@ -990,10 +1027,9 @@ class InspectionService:
         )
 
     def _push_session_event(self, session, event_type: str):
-        channel_layer = get_channel_layer()
         group_name    = f"plant_{session.machine.plant_id}"
         operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
-        async_to_sync(channel_layer.group_send)(
+        _dispatch_async_websocket(
             group_name,
             {
                 'type':          'inspection.event',
@@ -1013,10 +1049,9 @@ class InspectionService:
         )
 
     def _push_rejection_alert(self, session, remark: str, rejected_parameters: list = None):
-        channel_layer = get_channel_layer()
         group_name    = f"plant_{session.machine.plant_id}"
         next_trial    = min(session.trial_number + 1, 3)
-        async_to_sync(channel_layer.group_send)(
+        _dispatch_async_websocket(
             group_name,
             {
                 'type':               'inspection.event',

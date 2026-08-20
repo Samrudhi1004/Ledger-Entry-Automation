@@ -1,7 +1,11 @@
+import time
+import logging
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+
+logger = logging.getLogger(__name__)
 
 from apps.parts.models import Part
 from apps.machines.models import Machine
@@ -90,32 +94,73 @@ class StartInspectionView(APIView):
 class RecordMeasurementView(APIView):
     """
     POST /api/inspections/<session_id>/measure/
-    Records a single voice/manual measurement for a parameter.
+    Records a single voice/manual measurement for a parameter asynchronously.
+    Returns HTTP 202 Accepted immediately (<100ms response time).
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, session_id):
+        t_start = time.perf_counter()
         serializer = RecordMeasurementSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        param_code = serializer.validated_data['parameter_code']
         val = serializer.validated_data.get('measured_value')
         if val is None:
             val = 0.0
+        float_val = float(val)
+        method = serializer.validated_data.get('method', 'voice')
 
-        try:
-            result = _service.record_measurement(
-                session_id      = session_id,
-                parameter_code  = serializer.validated_data['parameter_code'],
-                measured_value  = float(val),
-                voice_raw_text  = serializer.validated_data.get('voice_raw_text', ''),
-                method          = serializer.validated_data.get('method', 'voice'),
-                hourly_slot     = serializer.validated_data.get('hourly_slot'),
-                inspection_type = serializer.validated_data.get('inspection_type'),
+        # 1. Idempotency Key Extraction
+        idem_key = (
+            request.headers.get('X-Idempotency-Key')
+            or serializer.validated_data.get('idempotency_key')
+            or f"meas_{session_id}_{param_code}_{float_val}"
+        ).strip()
+
+        # 2. Check Redis Idempotency Cache
+        cache_key = f"idempotency_{idem_key}"
+        cached_result = cache.get(cache_key)
+        if cached_result is not None:
+            status_code = cached_result.get('status_code', 200)
+            duration_ms = (time.perf_counter() - t_start) * 1000
+            logger.info(
+                "[PERF MEASURE IDEMPOTENT] Code: %s | Val: %s | Idempotent Cache Hit: %.2f ms",
+                param_code, float_val, duration_ms
             )
-            return Response(result, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(cached_result, status=status_code)
+
+        # 3. Dispatch Async Task (Celery queue with thread fallback)
+        from .tasks import dispatch_measurement_task_async
+        dispatch_measurement_task_async(
+            session_id=session_id,
+            parameter_code=param_code,
+            measured_value=float_val,
+            voice_raw_text=serializer.validated_data.get('voice_raw_text', ''),
+            method=method,
+            hourly_slot=serializer.validated_data.get('hourly_slot'),
+            inspection_type=serializer.validated_data.get('inspection_type'),
+            idempotency_key=idem_key,
+        )
+
+        duration_ms = (time.perf_counter() - t_start) * 1000
+        logger.info(
+            "[PERF MEASURE QUEUED] Code: %s | Val: %s | Method: %s | HTTP 202 Time: %.2f ms",
+            param_code, float_val, method, duration_ms
+        )
+
+        return Response(
+            {
+                'status': 'queued',
+                'idempotency_key': idem_key,
+                'parameter_code': param_code,
+                'measured_value': float_val,
+                'message': f"Measurement for '{param_code}' queued successfully.",
+                'dispatch_ms': round(duration_ms, 2),
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 # ─── Batch Measure (Per-Piece Form Submission) ────────────────────────────
@@ -150,6 +195,7 @@ class BatchMeasureView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, session_id):
+        t_batch_start = time.perf_counter()
         serializer = BatchMeasureSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -207,6 +253,12 @@ class BatchMeasureView(APIView):
                 _service.complete_session(session_id)
             except Exception:
                 pass  # may already be completed; ignore
+
+        duration_ms = (time.perf_counter() - t_batch_start) * 1000
+        logger.info(
+            "[PERF BATCH MEASURE RECORDED] Count: %d fields | Passed: %d | Failed: %d | Total Duration: %.2f ms",
+            len(results), passed_count, len(failed_codes), duration_ms
+        )
 
         return Response({
             'piece_complete': piece_complete,

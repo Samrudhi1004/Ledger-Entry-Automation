@@ -218,11 +218,14 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
         _isProcessing = true;  // spinner stays on while we poll
       });
 
+      final e2eSw = Stopwatch()..start();
       try {
         final path = await _audioRecorder.stop();
         if (path != null) {
           // Step 1 — send audio, get job_id back immediately (< 0.5 s)
+          final uploadSw = Stopwatch()..start();
           final submitRes = await ApiService.transcribeVoice(path);
+          uploadSw.stop();
 
           // Backward-compat: old server returns raw_text directly (status 200)
           if (submitRes.containsKey('raw_text')) {
@@ -254,14 +257,33 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
           const maxWait      = Duration(seconds: 60);
           final deadline     = DateTime.now().add(maxWait);
 
+          final pollSw = Stopwatch()..start();
+          int pollCount = 0;
           Map<String, dynamic> pollRes = {'status': 'processing'};
+
           while (DateTime.now().isBefore(deadline)) {
             await Future.delayed(pollInterval);
+            pollCount++;
             pollRes = await ApiService.checkTranscriptionStatus(jobId);
 
             final st = pollRes['status'] as String? ?? 'processing';
             if (st == 'done' || st == 'failed') break;
           }
+          pollSw.stop();
+          e2eSw.stop();
+
+          final timingMeta = pollRes['timing'] as Map<String, dynamic>?;
+          debugPrint('''
+==================================================
+[PERF CLIENT SUMMARY] Voice Entry Job: $jobId
+  ├─ HTTP Upload Time  : ${uploadSw.elapsedMilliseconds} ms
+  ├─ Polling Attempts  : $pollCount attempt(s)
+  ├─ Polling Duration  : ${pollSw.elapsedMilliseconds} ms
+  ├─ Backend Whisper   : ${timingMeta?['whisper_infer_ms'] ?? 'N/A'} ms
+  ├─ Backend Total Exec: ${timingMeta?['total_backend_ms'] ?? 'N/A'} ms
+  └─ TOTAL E2E LATENCY : ${e2eSw.elapsedMilliseconds} ms
+==================================================
+''');
 
           // Step 3 — handle result
           final finalStatus = pollRes['status'] as String? ?? 'failed';

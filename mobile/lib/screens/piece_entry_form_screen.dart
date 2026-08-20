@@ -106,6 +106,7 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
         _isProcessingVoice = true;
       });
 
+      final e2eSw = Stopwatch()..start();
       try {
         final path = await _audioRecorder.stop();
         setState(() {
@@ -113,9 +114,12 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
         });
 
         if (path != null) {
+          final uploadSw = Stopwatch()..start();
           final submitRes = await ApiService.transcribeVoice(path);
+          uploadSw.stop();
 
           String? rawText;
+          Map<String, dynamic>? pollRes;
           if (submitRes.containsKey('raw_text')) {
             rawText = submitRes['raw_text'] ?? submitRes['text'];
           } else if (submitRes.containsKey('job_id')) {
@@ -124,15 +128,34 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
             const maxWait = Duration(seconds: 60);
             final deadline = DateTime.now().add(maxWait);
 
-            Map<String, dynamic> pollRes = {'status': 'processing'};
+            final pollSw = Stopwatch()..start();
+            int pollCount = 0;
+            pollRes = {'status': 'processing'};
             while (DateTime.now().isBefore(deadline)) {
               await Future.delayed(pollInterval);
+              pollCount++;
               pollRes = await ApiService.checkTranscriptionStatus(jobId);
-              final st = pollRes['status'] as String? ?? 'processing';
+              final st = pollRes?['status'] as String? ?? 'processing';
               if (st == 'done' || st == 'failed') break;
             }
-            if (pollRes['status'] == 'done') {
-              rawText = pollRes['raw_text'] ?? pollRes['text'];
+            pollSw.stop();
+            e2eSw.stop();
+
+            final timingMeta = pollRes?['timing'] as Map<String, dynamic>?;
+            debugPrint('''
+==================================================
+[PERF CLIENT SUMMARY] Form Field Voice ($code):
+  ├─ HTTP Upload Time  : ${uploadSw.elapsedMilliseconds} ms
+  ├─ Polling Attempts  : $pollCount attempt(s)
+  ├─ Polling Duration  : ${pollSw.elapsedMilliseconds} ms
+  ├─ Backend Whisper   : ${timingMeta?['whisper_infer_ms'] ?? 'N/A'} ms
+  ├─ Backend Total Exec: ${timingMeta?['total_backend_ms'] ?? 'N/A'} ms
+  └─ TOTAL E2E LATENCY : ${e2eSw.elapsedMilliseconds} ms
+==================================================
+''');
+
+            if (pollRes?['status'] == 'done') {
+              rawText = pollRes?['raw_text'] ?? pollRes?['text'];
             }
           }
 
@@ -150,11 +173,18 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
                 parsedVal = double.tryParse(rawText.replaceAll(RegExp(r'[^0-9.-]'), ''));
               }
             } else {
-              final parseResult = await ApiService.parseText(rawText);
-              if (parseResult['is_parseable'] == true && parseResult['parsed_value'] != null) {
-                parsedVal = (parseResult['parsed_value'] as num).toDouble();
+              // 1. Check if backend already parsed the value during STT task
+              if (pollRes?['parsed_value'] != null) {
+                parsedVal = (pollRes!['parsed_value'] as num).toDouble();
               } else {
+                // 2. Try direct local parse
                 parsedVal = double.tryParse(rawText.replaceAll(RegExp(r'[^0-9.-]'), ''));
+                if (parsedVal == null && rawText.isNotEmpty) {
+                  final parseResult = await ApiService.parseText(rawText);
+                  if (parseResult['is_parseable'] == true && parseResult['parsed_value'] != null) {
+                    parsedVal = (parseResult['parsed_value'] as num).toDouble();
+                  }
+                }
               }
             }
 
@@ -436,7 +466,7 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Attempt #${widget.attemptNumber + 1} will open only the failed parameter(s) for correction. All passed parameters are locked.',
                 style: TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontStyle: FontStyle.italic),
               ),

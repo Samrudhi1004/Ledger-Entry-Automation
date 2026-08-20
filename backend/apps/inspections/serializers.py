@@ -20,6 +20,7 @@ class RecordMeasurementSerializer(serializers.Serializer):
     method          = serializers.CharField(required=False, default='voice')
     hourly_slot     = serializers.IntegerField(required=False, allow_null=True, default=None)
     inspection_type = serializers.CharField(required=False, allow_null=True, allow_blank=True, default=None)
+    idempotency_key = serializers.CharField(required=False, allow_null=True, allow_blank=True, default=None)
 
 
 class SingleMeasurementSerializer(serializers.Serializer):

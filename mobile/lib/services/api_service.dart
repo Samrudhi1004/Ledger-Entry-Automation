@@ -24,7 +24,7 @@ class ApiService {
   // Prevents multiple concurrent 401 API requests from racing each other
   // and triggering duplicate refresh calls (which would invalidate rotated tokens).
   static bool _isRefreshing = false;
-  static Completer<bool>? _refreshCompleter;
+  static Completer<bool?>? _refreshCompleter;
 
   // ── Token Storage ──────────────────────────────────────────────────────────
 
@@ -437,7 +437,10 @@ class ApiService {
 
   // 7. Transcribe Voice Audio File
   static Future<Map<String, dynamic>> transcribeVoice(String filePath) async {
-    // For multipart requests, check 401 manually or attach token
+    final sw = Stopwatch()..start();
+    final file = File(filePath);
+    final fileSizeKb = file.existsSync() ? (file.lengthSync() / 1024).toStringAsFixed(2) : '0';
+
     final token = await getToken();
     final request = http.MultipartRequest(
       'POST',
@@ -453,7 +456,7 @@ class ApiService {
 
     if (response.statusCode == 401) {
       final refreshed = await refreshToken();
-      if (refreshed) {
+      if (refreshed == true) {
         final newToken = await getToken();
         final retryReq = http.MultipartRequest('POST', Uri.parse('$baseUrl/voice/transcribe/'));
         if (newToken != null) retryReq.headers['Authorization'] = 'Bearer $newToken';
@@ -466,8 +469,16 @@ class ApiService {
       }
     }
 
+    sw.stop();
+    print('[PERF CLIENT] HTTP POST /voice/transcribe/ took ${sw.elapsedMilliseconds} ms (File size: $fileSizeKb KB)');
+    debugPrint('[PERF CLIENT] HTTP POST /voice/transcribe/ took ${sw.elapsedMilliseconds} ms (File size: $fileSizeKb KB)');
+
     if (response.statusCode == 202 || response.statusCode == 200) {
-      return jsonDecode(response.body);
+      final data = jsonDecode(response.body);
+      if (data is Map<String, dynamic>) {
+        data['client_upload_ms'] = sw.elapsedMilliseconds;
+      }
+      return data;
     } else {
       return {'error': 'Failed to transcribe audio'};
     }
@@ -475,27 +486,36 @@ class ApiService {
 
   // 7b. Poll transcription job status
   static Future<Map<String, dynamic>> checkTranscriptionStatus(String jobId) async {
+    final sw = Stopwatch()..start();
     final response = await authenticatedRequest((headers) => http.get(
       Uri.parse('$baseUrl/voice/status/$jobId/'),
       headers: headers,
     ));
+    sw.stop();
 
     if (response.statusCode == 200 || response.statusCode == 500) {
-      return jsonDecode(response.body);
+      final data = jsonDecode(response.body);
+      print('[PERF CLIENT] GET /voice/status/$jobId/ -> Status: ${data['status']} (${sw.elapsedMilliseconds} ms)');
+      return data;
     }
+    print('[PERF CLIENT] GET /voice/status/$jobId/ -> Status: processing (${sw.elapsedMilliseconds} ms)');
     return {'status': 'processing'};
   }
 
   // 8. Transcribe Text / Parse Measurement Directly
   static Future<Map<String, dynamic>> parseText(String text) async {
+    final sw = Stopwatch()..start();
     final response = await authenticatedRequest((headers) => http.post(
       Uri.parse('$baseUrl/voice/parse/'),
       headers: headers,
       body: jsonEncode({'text': text}),
     ));
+    sw.stop();
 
     if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+      final data = jsonDecode(response.body);
+      print('[PERF CLIENT] POST /voice/parse/ ("$text") -> ${data['parsed_value']} (${sw.elapsedMilliseconds} ms)');
+      return data;
     }
     return {'is_parseable': false};
   }
@@ -510,6 +530,7 @@ class ApiService {
     int? hourlySlot,
     String? inspectionType,
   }) async {
+    final sw = Stopwatch()..start();
     final response = await authenticatedRequest((headers) => http.post(
       Uri.parse('$baseUrl/inspections/$sessionId/measure/'),
       headers: headers,
@@ -522,6 +543,8 @@ class ApiService {
         'inspection_type': inspectionType,
       }),
     ));
+    sw.stop();
+    print('[PERF CLIENT] POST /inspections/measure/ ($parameterCode = $value) took ${sw.elapsedMilliseconds} ms [HTTP ${response.statusCode}]');
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -534,6 +557,7 @@ class ApiService {
     required String sessionId,
     required List<Map<String, dynamic>> measurements,
   }) async {
+    final sw = Stopwatch()..start();
     final response = await authenticatedRequest((headers) => http.post(
       Uri.parse('$baseUrl/inspections/$sessionId/batch-measure/'),
       headers: headers,
@@ -541,6 +565,8 @@ class ApiService {
         'measurements': measurements,
       }),
     ));
+    sw.stop();
+    print('[PERF CLIENT] POST /inspections/batch-measure/ (${measurements.length} fields) took ${sw.elapsedMilliseconds} ms [HTTP ${response.statusCode}]');
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
