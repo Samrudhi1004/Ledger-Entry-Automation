@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -20,6 +20,8 @@ export default function MachineDetailPage() {
   const [lastUpdatedCode, setLastUpdatedCode] = useState(null);
   const [selectedHistorySessionId, setSelectedHistorySessionId] = useState(null);
   const updateTimeoutRef = useRef(null);
+  // Stable ref so WS effect can read current machine_code without depending on `machine` state
+  const machineCodeRef = useRef(null);
 
   const ws = useWebSocket();
   const wsEvents = ws?.events ?? [];
@@ -31,6 +33,7 @@ export default function MachineDetailPage() {
       const mRes = await api.get(`/api/machines/${machineId}/`);
       const mData = mRes.data;
       setMachine(mData);
+      machineCodeRef.current = mData.machine_code;
 
       // 2. Fetch performance stats
       const pRes = await getMachinePerformance(machineId, 30);
@@ -94,13 +97,17 @@ export default function MachineDetailPage() {
     fetchData();
   }, [fetchData]);
 
-  // Listen to WebSocket events for real-time measurement entries
+  // Listen to WebSocket events for real-time measurement entries.
+  // NOTE: We intentionally use machineCodeRef (not `machine` state) in this effect
+  // to avoid an infinite loop: fetchData sets `machine` → effect re-runs → fetchData
+  // called again → repeat. The ref is always kept in sync inside fetchData.
   useEffect(() => {
-    if (!wsEvents.length || !machine) return;
+    if (!wsEvents.length || !machineCodeRef.current) return;
     const latest = wsEvents[0];
+    const currentMachineCode = machineCodeRef.current;
 
     // If measurement recorded for this machine
-    if (latest.event === 'measurement_recorded' && latest.machine_code === machine.machine_code) {
+    if (latest.event === 'measurement_recorded' && latest.machine_code === currentMachineCode) {
       setActiveSessionDoc((prev) => {
         const base = prev || {
           session_id: latest.session_id,
@@ -153,19 +160,18 @@ export default function MachineDetailPage() {
         };
       });
 
-      // Highlight updated cell
+      // Highlight updated cell briefly
       setLastUpdatedCode(latest.parameter_code);
       if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current);
-      updateTimeoutRef.current = setTimeout(() => {
-        setLastUpdatedCode(null);
-      }, 3000);
+      updateTimeoutRef.current = setTimeout(() => setLastUpdatedCode(null), 3000);
     }
 
-    // Refresh if session started/completed
-    if (['session_started', 'session_completed'].includes(latest.event) && latest.machine_code === machine.machine_code) {
+    // Refresh full data only on session lifecycle events (not on every measurement)
+    if (['session_started', 'session_completed'].includes(latest.event) && latest.machine_code === currentMachineCode) {
       fetchData();
     }
-  }, [wsEvents[0]?._receivedAt, machine, fetchData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wsEvents[0]?._receivedAt]); // intentionally omit fetchData & machine — see note above
 
   if (loading) {
     return (
