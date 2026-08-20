@@ -42,6 +42,13 @@ from apps.machines.models import Factory, Plant
 factory, _ = Factory.objects.get_or_create(code='FAC-01', defaults={'name': 'Mantri Metallics', 'location': 'Main Factory'})
 plant, _ = Plant.objects.get_or_create(code='PLT-01', defaults={'factory': factory, 'name': 'Shop Floor Plant 1'})
 print(f'Default Factory ({factory.name}) and Plant ({plant.name}, ID: {plant.id}) created successfully!')
+
+from apps.parts.models import InspectionParameter, ProcessParameter
+for param in InspectionParameter.objects.all():
+    param.save()
+for param in ProcessParameter.objects.all():
+    param.save()
+print('All parameter limits successfully recalculated during build!')
 "
 
 # ── Pre-download Faster-Whisper model so it is baked into the build artifact ──
