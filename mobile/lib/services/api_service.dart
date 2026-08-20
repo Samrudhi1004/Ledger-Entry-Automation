@@ -546,7 +546,9 @@ class ApiService {
     sw.stop();
     print('[PERF CLIENT] POST /inspections/measure/ ($parameterCode = $value) took ${sw.elapsedMilliseconds} ms [HTTP ${response.statusCode}]');
 
-    if (response.statusCode == 200) {
+    // Backend returns 202 Accepted for async queued measurements (fast path)
+    // and 200 OK for idempotent cache hits. Both are success.
+    if (response.statusCode == 200 || response.statusCode == 202) {
       return jsonDecode(response.body);
     }
     return null;
@@ -568,7 +570,9 @@ class ApiService {
     sw.stop();
     print('[PERF CLIENT] POST /inspections/batch-measure/ (${measurements.length} fields) took ${sw.elapsedMilliseconds} ms [HTTP ${response.statusCode}]');
 
-    if (response.statusCode == 200) {
+    // Backend returns 202 Accepted for async queued measurements (fast path)
+    // and 200 OK for idempotent cache hits. Both are success.
+    if (response.statusCode == 200 || response.statusCode == 202) {
       return jsonDecode(response.body);
     }
     return null;
