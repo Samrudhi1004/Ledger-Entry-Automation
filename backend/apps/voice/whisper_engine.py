@@ -28,17 +28,52 @@ def _get_local_model():
         model_name = settings.WHISPER_MODEL  # e.g. 'tiny' or 'base'
         try:
             from faster_whisper import WhisperModel
-            logger.info("[PERF ENGINE] Loading Faster-Whisper engine model '%s' (CPU int8)...", model_name)
-            _whisper_model = WhisperModel(model_name, device="cpu", compute_type="int8")
+
+            # Determine whether a local cache directory exists.
+            # If yes, skip ALL HuggingFace network calls (local_files_only=True).
+            # This eliminates the ~8-10 s remote metadata check on every cold start.
+            hf_home = os.environ.get('HF_HOME', '')
+            cache_dir = Path(hf_home) / 'hub' if hf_home else None
+            has_local_cache = bool(cache_dir and cache_dir.exists() and any(cache_dir.iterdir()))
+
+            logger.info(
+                "[PERF ENGINE] Loading Faster-Whisper engine model '%s' (CPU int8) "
+                "[local_files_only=%s, hf_home=%s]...",
+                model_name, has_local_cache, hf_home or '(default)',
+            )
+
+            load_kwargs = dict(device="cpu", compute_type="int8")
+            if has_local_cache:
+                load_kwargs['local_files_only'] = True
+
+            try:
+                _whisper_model = WhisperModel(model_name, **load_kwargs)
+            except Exception as local_err:
+                if has_local_cache:
+                    # Cache present but failed (e.g. corrupted) — retry with download
+                    logger.warning(
+                        "[PERF ENGINE] local_files_only load failed (%s), retrying with download...", local_err
+                    )
+                    load_kwargs.pop('local_files_only', None)
+                    _whisper_model = WhisperModel(model_name, **load_kwargs)
+                else:
+                    raise
+
             _is_faster_whisper = True
-            logger.info("[PERF ENGINE] Faster-Whisper model '%s' loaded in %.2f ms", model_name, (time.perf_counter() - t_start) * 1000)
+            logger.info(
+                "[PERF ENGINE] Faster-Whisper model '%s' loaded in %.2f ms",
+                model_name, (time.perf_counter() - t_start) * 1000
+            )
         except ImportError:
             import whisper
             logger.info("[PERF ENGINE] Loading standard Whisper model '%s' ...", model_name)
             _whisper_model = whisper.load_model(model_name)
             _is_faster_whisper = False
-            logger.info("[PERF ENGINE] Standard Whisper model '%s' loaded in %.2f ms", model_name, (time.perf_counter() - t_start) * 1000)
-    
+            logger.info(
+                "[PERF ENGINE] Standard Whisper model '%s' loaded in %.2f ms",
+                model_name, (time.perf_counter() - t_start) * 1000
+            )
+
     load_duration_ms = (time.perf_counter() - t_start) * 1000
     return _whisper_model, _is_faster_whisper, load_duration_ms, was_cached
 
