@@ -271,5 +271,5 @@ class ProcessParameter(models.Model):
             else:
                 # Default (dimensional, weight, etc.): nominal ± tolerance
                 self.upper_limit = nom + upper_tol
-                self.lower_limit = nom + lower_tol
+                self.lower_limit = nom - lower_tol
         super().save(*args, **kwargs)
