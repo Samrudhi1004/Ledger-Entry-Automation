@@ -7,6 +7,7 @@ import '../services/persistence_service.dart';
 import 'login_screen.dart';
 import 'app_home_screen.dart';
 import 'supervisor_info_screen.dart';
+import 'operator_home_screen.dart';
 
 /// SplashScreen — shown at app startup.
 ///
@@ -64,7 +65,7 @@ class _SplashScreenState extends State<SplashScreen>
     // AuthProvider constructor already called checkLoginStatus().
     // Wait briefly for it to complete if still loading.
     int retries = 0;
-    while (auth.isLoading && retries < 20) {
+    while (auth.isLoading && retries < 100) {
       await Future.delayed(const Duration(milliseconds: 100));
       retries++;
     }
@@ -73,9 +74,26 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (auth.isAuthenticated) {
       Widget home = const AppHomeScreen();
+      
+      // If operator is authenticated, check if there's a saved state to resume
+      if (auth.isOperator && auth.userId != null) {
+        final provider = Provider.of<InspectionProvider>(context, listen: false);
+        provider.currentUserId = auth.userId!; // Set for future saves
+        
+        final hasSaved = await PersistenceService.hasSavedState(auth.userId!);
+        if (hasSaved) {
+          final savedState = await PersistenceService.loadState(auth.userId!);
+          if (savedState != null) {
+            provider.restoreFromLocalState(savedState, auth.userId!);
+            home = const OperatorHomeScreen();
+          }
+        }
+      }
+
       if (auth.isSupervisor) {
         home = const SupervisorInfoScreen();
       }
+      
       if (!mounted) return;
       Navigator.pushReplacement(
         context,

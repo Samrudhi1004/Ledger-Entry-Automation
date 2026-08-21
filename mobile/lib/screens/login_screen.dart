@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/inspection_provider.dart';
+import '../services/persistence_service.dart';
 import 'app_home_screen.dart';
+import 'operator_home_screen.dart';
 import 'supervisor_info_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -200,6 +203,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                 if (context.mounted) {
                                   if (success) {
                                     Widget targetScreen = const AppHomeScreen();
+                                    
+                                    if (auth.isOperator && auth.userId != null) {
+                                      final provider = Provider.of<InspectionProvider>(context, listen: false);
+                                      provider.currentUserId = auth.userId!;
+                                      
+                                      final hasSaved = await PersistenceService.hasSavedState(auth.userId!);
+                                      if (hasSaved) {
+                                        final savedState = await PersistenceService.loadState(auth.userId!);
+                                        if (savedState != null) {
+                                          provider.restoreFromLocalState(savedState, auth.userId!);
+                                          targetScreen = const OperatorHomeScreen();
+                                        }
+                                      }
+                                    }
+
                                     if (auth.isSupervisor) {
                                       targetScreen = const SupervisorInfoScreen();
                                     }
