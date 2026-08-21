@@ -866,24 +866,38 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
           : '${recorded['measured_value'] ?? recorded['value']} ${param['unit']}';
 
       final isOk = recorded['status'] == 'ok';
+      final isQueued = recorded['status'] == 'queued';
 
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: isOk ? const Color(0xFF064E3B).withValues(alpha: 0.3) : const Color(0xFF7F1D1D).withValues(alpha: 0.3),
+          color: isQueued 
+             ? const Color(0xFFB45309).withValues(alpha: 0.3) 
+             : (isOk ? const Color(0xFF064E3B).withValues(alpha: 0.3) : const Color(0xFF7F1D1D).withValues(alpha: 0.3)),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: isOk ? const Color(0xFF10B981) : const Color(0xFFEF4444), width: 1.5),
+          border: Border.all(
+            color: isQueued ? const Color(0xFFF59E0B) : (isOk ? const Color(0xFF10B981) : const Color(0xFFEF4444)), 
+            width: 1.5
+          ),
         ),
         child: Column(
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(isOk ? Icons.check_circle_rounded : Icons.cancel_rounded, color: isOk ? const Color(0xFF34D399) : const Color(0xFFF87171), size: 22),
+                Icon(
+                  isQueued ? Icons.hourglass_empty_rounded : (isOk ? Icons.check_circle_rounded : Icons.cancel_rounded), 
+                  color: isQueued ? const Color(0xFFFBBF24) : (isOk ? const Color(0xFF34D399) : const Color(0xFFF87171)), 
+                  size: 22
+                ),
                 const SizedBox(width: 8),
                 Text(
-                  isOk ? 'RECORDED: WITHIN SPEC' : 'RECORDED: OUT OF SPEC',
-                  style: TextStyle(color: isOk ? const Color(0xFF34D399) : const Color(0xFFF87171), fontWeight: FontWeight.w900, fontSize: 14),
+                  isQueued ? 'PROCESSING...' : (isOk ? 'RECORDED: WITHIN SPEC' : 'RECORDED: OUT OF SPEC'),
+                  style: TextStyle(
+                    color: isQueued ? const Color(0xFFFBBF24) : (isOk ? const Color(0xFF34D399) : const Color(0xFFF87171)), 
+                    fontWeight: FontWeight.w900, 
+                    fontSize: 14
+                  ),
                 ),
               ],
             ),

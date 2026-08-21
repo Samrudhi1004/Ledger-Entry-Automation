@@ -638,11 +638,15 @@ class InspectionService:
         now_dt = django_timezone.now()
 
         update_dict = {
-            'recorded_count': F('recorded_count') + 1,
             'last_measurement_at': now_dt,
             'operator_reminded': False,
             'supervisor_escalated': False,
         }
+        
+        if existing_idx is None:
+            update_dict['recorded_count'] = F('recorded_count') + 1
+            session.recorded_count += 1
+
         if result.status == 'out_of_spec':
             update_dict['has_ooc'] = True
             session.has_ooc = True
@@ -650,7 +654,6 @@ class InspectionService:
             update_dict['has_critical_fail'] = True
             session.has_critical_fail = True
 
-        session.recorded_count += 1
         session.last_measurement_at = now_dt
         InspectionSession.objects.filter(pk=session.pk).update(**update_dict)
 
