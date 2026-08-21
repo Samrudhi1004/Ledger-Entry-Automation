@@ -197,8 +197,15 @@ class InspectionProvider with ChangeNotifier {
 
       if (selectedPart == null && setupStatus['part_number'] != null) {
         selectedPart = {
+          'id': setupStatus['part_id'],
           'part_number': setupStatus['part_number'],
           'part_name': setupStatus['part_name'] ?? setupStatus['part_number'],
+        };
+      }
+
+      if (selectedMachine == null && setupStatus['machine_id'] != null) {
+        selectedMachine = {
+          'id': setupStatus['machine_id'],
         };
       }
 

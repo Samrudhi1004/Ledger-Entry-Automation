@@ -558,14 +558,18 @@ class SetupStatusView(APIView):
 
         is_approved = True
 
+        part_id = session.part.id if session.part else None
         part_no = session.part.part_number if session.part else None
         part_name = session.part.part_name if session.part else None
+        machine_id = session.machine.id if session.machine else None
 
         return Response({
             'has_today_report': has_today,
             'is_setup_approved': is_approved,
             'session_id': str(session.session_id),
             'status': session.status,
+            'machine_id': machine_id,
+            'part_id': part_id,
             'part_number': part_no,
             'part_name': part_name,
             'inspection_type': session.inspection_type,
