@@ -618,7 +618,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                           ? const Color(0xFF10B981).withValues(alpha: 0.15)
                                           : const Color(0xFF131D30),
                                       child: Text(
-                                        '$version',
+                                        '${index + 1}',
                                         style: TextStyle(
                                           color: isPublished ? const Color(0xFF10B981) : Colors.blueAccent,
                                           fontWeight: FontWeight.bold,
