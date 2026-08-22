@@ -77,23 +77,31 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
   }
 
   String _formatSpecSubtitle(Map<String, dynamic> param) {
+    final type = (param['measurement_type'] ?? '').toString().toLowerCase();
+    final name = (param['parameter_name'] ?? '').toString().toUpperCase();
+    final unit = param['unit'] ?? '';
+
+    if (type == 'visual') return 'Spec: Visual Pass/Fail Check';
+    if (type == 'min_limit' || name.contains('MIN')) {
+      final minVal = param['lower_limit'] ?? param['nominal_value'] ?? '—';
+      return 'Spec: ≥ $minVal $unit (MIN)';
+    }
+    if (type == 'max_limit' || type == 'surface' || name.contains('MAX')) {
+      final maxVal = param['upper_limit'] ?? param['nominal_value'] ?? '—';
+      return 'Spec: ≤ $maxVal $unit (MAX)';
+    }
+
     if (param['is_process_parameter'] == true) {
       final spec = param['specification'] ?? '';
-      final unit = param['unit'] ?? '';
-      if (spec.isNotEmpty) return 'Spec: $spec $unit';
+      if (spec.isNotEmpty && param['nominal_value'] == null) return 'Spec: $spec $unit';
       if (param['nominal_value'] != null) {
-        return 'Spec: ${param['nominal_value']} $unit [${param['lower_limit'] ?? '—'} to ${param['upper_limit'] ?? '—'}]';
+        final ll = param['lower_limit'] ?? '—';
+        final ul = param['upper_limit'] ?? '—';
+        return 'Spec: ${param['nominal_value']} $unit [$ll - $ul]';
       }
       return 'Process Parameter';
     }
 
-    final type = (param['measurement_type'] ?? '').toString().toLowerCase();
-    final name = (param['parameter_name'] ?? '').toString().toUpperCase();
-    final unit = param['unit'] ?? 'mm';
-
-    if (type == 'visual') return 'Spec: Visual Pass/Fail Check';
-    if (name.contains('MIN')) return 'Spec: ≥ ${param['lower_limit'] ?? param['nominal_value']} $unit (MIN)';
-    if (type == 'surface' || name.contains('MAX')) return 'Spec: ≤ ${param['upper_limit'] ?? param['nominal_value']} $unit (MAX)';
     return 'Spec: ${param['nominal_value']} $unit [${param['lower_limit']} - ${param['upper_limit']}]';
   }
 

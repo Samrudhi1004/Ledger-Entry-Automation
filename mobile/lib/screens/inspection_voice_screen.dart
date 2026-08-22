@@ -720,34 +720,39 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       final dataType = (param['data_type'] ?? 'numeric').toString().toUpperCase();
       final low = param['lower_limit'];
       final high = param['upper_limit'];
+      final nom = param['nominal_value'];
+      final mtype = (param['measurement_type'] ?? '').toString().toLowerCase();
 
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1B4B),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.settings_suggest_rounded, color: Color(0xFF818CF8), size: 24),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('PROCESS PARAMETER ($dataType)', style: const TextStyle(color: Color(0xFF818CF8), fontSize: 10, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 2),
-                  Text(
-                    low != null && high != null ? 'Spec: $spec  [$low – $high $unit]' : 'Specification: $spec $unit',
-                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
-                  ),
-                ],
+      // Non-numeric process parameters use dedicated Process Parameter card
+      if (dataType != 'NUMERIC' || (low == null && high == null && nom == null && mtype.isEmpty)) {
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1B4B),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.settings_suggest_rounded, color: Color(0xFF818CF8), size: 24),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('PROCESS PARAMETER ($dataType)', style: const TextStyle(color: Color(0xFF818CF8), fontSize: 10, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 2),
+                    Text(
+                      low != null && high != null ? 'Spec: $spec  [$low – $high $unit]' : 'Specification: $spec $unit',
+                      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      );
+            ],
+          ),
+        );
+      }
     }
 
     if (rule == 2) {

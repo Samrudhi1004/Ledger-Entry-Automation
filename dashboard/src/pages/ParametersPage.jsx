@@ -180,17 +180,23 @@ export default function ParametersPage() {
   const [processParameters, setProcessParameters] = useState([]);
   const [showProcessParamModal, setShowProcessParamModal] = useState(false);
   const [editingProcessParam, setEditingProcessParam] = useState(null);
+  const [processRuleMode, setProcessRuleMode] = useState('rule1'); // 'rule1', 'rule2', 'rule3'
   const [processParamForm, setProcessParamForm] = useState({
-    parameter_name: '',
     parameter_code: '',
+    parameter_name: '',
+    nominal_value: '10.00',
+    upper_tolerance: '0.10',
+    lower_tolerance: '-0.10',
+    unit: 'mm',
     data_type: 'numeric',
-    unit: '',
+    measurement_type: 'dimensional',
     specification: '',
-    nominal_value: '',
-    upper_tolerance: '',
-    lower_tolerance: '',
     is_required: true,
     is_active: true,
+    sequence_order: 1,
+    measurement_technique: 'VERNIER CALIPER',
+    sample_size: '5NOS/SHIFT',
+    control_method: '1st PIECE & INPROCESS INSP.',
   });
 
   const loadParameters = useCallback(async () => {
@@ -541,36 +547,85 @@ export default function ParametersPage() {
     }
   };
 
+  const selectProcessRuleMode = (mode) => {
+    setProcessRuleMode(mode);
+    if (mode === 'rule2') {
+      setProcessParamForm(prev => ({
+        ...prev,
+        measurement_type: 'visual',
+        unit: 'Pass',
+        nominal_value: '1.00',
+        upper_tolerance: '0.00',
+        lower_tolerance: '0.00',
+      }));
+    } else if (mode === 'rule3') {
+      setProcessParamForm(prev => ({
+        ...prev,
+        measurement_type: 'max_limit',
+        unit: prev.unit === 'Pass' ? 'mm' : prev.unit,
+        nominal_value: prev.nominal_value || '1.60',
+        upper_tolerance: '0.00',
+        lower_tolerance: '0.00',
+      }));
+    } else {
+      setProcessParamForm(prev => ({
+        ...prev,
+        measurement_type: 'dimensional',
+        unit: prev.unit === 'Pass' ? 'mm' : prev.unit,
+        nominal_value: prev.nominal_value || '10.00',
+        upper_tolerance: '0.10',
+        lower_tolerance: '-0.10',
+      }));
+    }
+  };
+
   const handleOpenAddProcessParam = () => {
     setEditingProcessParam(null);
+    setProcessRuleMode('rule1');
     setProcessParamForm({
-      parameter_name: '',
       parameter_code: `PR${processParameters.length + 1}`,
+      parameter_name: '',
+      nominal_value: '10.00',
+      upper_tolerance: '0.10',
+      lower_tolerance: '-0.10',
+      unit: 'mm',
       data_type: 'numeric',
-      unit: 'RPM',
+      measurement_type: 'dimensional',
       specification: '',
-      nominal_value: '',
-      upper_tolerance: '',
-      lower_tolerance: '',
       is_required: true,
       is_active: true,
+      sequence_order: processParameters.length + 1,
+      measurement_technique: 'VERNIER CALIPER',
+      sample_size: '5NOS/SHIFT',
+      control_method: '1st PIECE & INPROCESS INSP.',
     });
     setShowProcessParamModal(true);
   };
 
   const handleOpenEditProcessParam = (pp) => {
     setEditingProcessParam(pp);
+    let mode = 'rule1';
+    const mType = (pp.measurement_type || '').toLowerCase();
+    if (mType === 'visual') mode = 'rule2';
+    else if (['surface', 'min_limit', 'max_limit'].includes(mType)) mode = 'rule3';
+    setProcessRuleMode(mode);
+
     setProcessParamForm({
-      parameter_name: pp.parameter_name,
       parameter_code: pp.parameter_code || '',
+      parameter_name: pp.parameter_name || '',
       data_type: pp.data_type || 'numeric',
-      unit: pp.unit || '',
+      nominal_value: pp.nominal_value ?? '10.00',
+      upper_tolerance: pp.upper_tolerance ?? '0.10',
+      lower_tolerance: pp.lower_tolerance ?? '-0.10',
+      unit: pp.unit || 'mm',
+      measurement_type: pp.measurement_type || 'dimensional',
       specification: pp.specification || '',
-      nominal_value: pp.nominal_value ?? '',
-      upper_tolerance: pp.upper_tolerance ?? '',
-      lower_tolerance: pp.lower_tolerance ?? '',
       is_required: pp.is_required !== false,
       is_active: pp.is_active !== false,
+      sequence_order: pp.sequence_order || 1,
+      measurement_technique: pp.measurement_technique || '',
+      sample_size: pp.sample_size || '',
+      control_method: pp.control_method || '',
     });
     setShowProcessParamModal(true);
   };
@@ -581,19 +636,30 @@ export default function ParametersPage() {
     try {
       setError('');
       setSuccessMsg('');
+      const nominal = parseFloat(processParamForm.nominal_value) || 0;
+      const upperT = Math.abs(parseFloat(processParamForm.upper_tolerance) || 0);
+      const rawLower = parseFloat(processParamForm.lower_tolerance) || 0;
+      const lowerT = rawLower > 0 ? -rawLower : rawLower;
+
+      const seqOrder = editingProcessParam ? (editingProcessParam.sequence_order || 1) : (processParameters.length + 1);
+
       const payload = {
         template: selectedTemplate.id,
         parameter_name: processParamForm.parameter_name.trim(),
-        parameter_code: processParamForm.parameter_code.trim() || `PR${processParameters.length + 1}`,
+        parameter_code: processParamForm.parameter_code.trim() || `PR${seqOrder}`,
         data_type: processParamForm.data_type,
+        measurement_type: processParamForm.measurement_type || 'dimensional',
         unit: processParamForm.unit.trim(),
         specification: processParamForm.specification.trim(),
-        nominal_value: processParamForm.nominal_value !== '' && processParamForm.nominal_value !== null ? parseFloat(processParamForm.nominal_value) : null,
-        upper_tolerance: processParamForm.upper_tolerance !== '' && processParamForm.upper_tolerance !== null ? parseFloat(processParamForm.upper_tolerance) : null,
-        lower_tolerance: processParamForm.lower_tolerance !== '' && processParamForm.lower_tolerance !== null ? parseFloat(processParamForm.lower_tolerance) : null,
+        nominal_value: nominal,
+        upper_tolerance: upperT,
+        lower_tolerance: lowerT,
         is_required: processParamForm.is_required,
         is_active: processParamForm.is_active,
-        sequence_order: editingProcessParam ? editingProcessParam.sequence_order : processParameters.length + 1,
+        sequence_order: seqOrder,
+        measurement_technique: processParamForm.measurement_technique || '',
+        sample_size: processParamForm.sample_size || '',
+        control_method: processParamForm.control_method || '',
       };
 
       if (editingProcessParam) {
@@ -2160,131 +2226,318 @@ export default function ParametersPage() {
         )}
 
         {/* Modal: Add / Edit Process Parameter */}
-        {showProcessParamModal && (
+        {showProcessParamModal && selectedTemplate && (
           <div className="modal-overlay" onClick={() => setShowProcessParamModal(false)}>
-            <div className="modal-content" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content" style={{ maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
-                <h3>{editingProcessParam ? `Edit Process Parameter: ${editingProcessParam.parameter_name}` : 'Add New Process Parameter (Setup Approval)'}</h3>
+                <h3>{editingProcessParam ? `Edit Process Parameter Rule` : `Add Process Parameter Rule to [${selectedTemplate?.inspection_type?.toUpperCase()}]`}</h3>
                 <button type="button" className="btn-close" onClick={() => setShowProcessParamModal(false)}>×</button>
               </div>
               <form onSubmit={handleSaveProcessParam}>
                 <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <div>
-                      <label className="form-label">Parameter Name *</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="e.g. RPM, Feed, Tool Number, Coolant"
-                        value={processParamForm.parameter_name}
-                        onChange={(e) => setProcessParamForm({ ...processParamForm, parameter_name: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="form-label">Parameter Code</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="e.g. PR1"
-                        value={processParamForm.parameter_code}
-                        onChange={(e) => setProcessParamForm({ ...processParamForm, parameter_code: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <div>
-                      <label className="form-label">Data Type *</label>
-                      <select
-                        className="form-select"
-                        value={processParamForm.data_type}
-                        onChange={(e) => setProcessParamForm({ ...processParamForm, data_type: e.target.value })}
+                  
+                  {/* 3 SPECIFICATION RULES SELECTOR */}
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 'bold', marginBottom: 6, display: 'block' }}>
+                      Select Quality Inspection Rule *
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${processRuleMode === 'rule1' ? 'btn-primary' : 'btn-ghost'}`}
+                        style={{ padding: '8px 4px', fontSize: 11, fontWeight: 'bold', border: processRuleMode === 'rule1' ? '2px solid #38BDF8' : '1px solid #334155' }}
+                        onClick={() => selectProcessRuleMode('rule1')}
                       >
-                        <option value="numeric">Numeric (RPM, Feed, Pressure)</option>
-                        <option value="yes_no">Yes / No (Coolant, Fixture)</option>
-                        <option value="text">Text (Tool Number, Program #)</option>
-                        <option value="selection">Selection Dropdown</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="form-label">Unit</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="e.g. RPM, mm/rev, °C"
-                        value={processParamForm.unit}
-                        onChange={(e) => setProcessParamForm({ ...processParamForm, unit: e.target.value })}
-                      />
+                        Rule 1: Range (&gt; Limit &lt;)
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${processRuleMode === 'rule2' ? 'btn-primary' : 'btn-ghost'}`}
+                        style={{ padding: '8px 4px', fontSize: 11, fontWeight: 'bold', border: processRuleMode === 'rule2' ? '2px solid #10B981' : '1px solid #334155' }}
+                        onClick={() => selectProcessRuleMode('rule2')}
+                      >
+                        Rule 2: Visual (YES/NO)
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${processRuleMode === 'rule3' ? 'btn-primary' : 'btn-ghost'}`}
+                        style={{ padding: '8px 4px', fontSize: 11, fontWeight: 'bold', border: processRuleMode === 'rule3' ? '2px solid #F59E0B' : '1px solid #334155' }}
+                        onClick={() => selectProcessRuleMode('rule3')}
+                      >
+                        Rule 3: Limit (&le; or &ge;)
+                      </button>
                     </div>
                   </div>
 
                   <div>
-                    <label className="form-label">Specification / Expected Value</label>
+                    <label className="form-label">Parameter Name *</label>
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="e.g. 1200, 0.25, T05, YES"
-                      value={processParamForm.specification}
-                      onChange={(e) => setProcessParamForm({ ...processParamForm, specification: e.target.value })}
+                      placeholder={
+                        processRuleMode === 'rule1' ? 'e.g. RPM, Feed Rate, Pressure' :
+                        processRuleMode === 'rule2' ? 'e.g. Chamfer & Deburring Check' : 'e.g. Max Temperature (Ra/°C)'
+                      }
+                      value={processParamForm.parameter_name}
+                      onChange={(e) => setProcessParamForm({ ...processParamForm, parameter_name: e.target.value })}
+                      required
                     />
                   </div>
 
-                  {processParamForm.data_type === 'numeric' && (
-                    <div style={{ background: '#F8FAFC', padding: 12, borderRadius: 8, border: '1px solid #E2E8F0' }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Numeric Tolerance Limits (Optional)</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  {/* RULE 1 FIELDS */}
+                  {processRuleMode === 'rule1' && (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                         <div>
-                          <label className="form-label" style={{ fontSize: 11 }}>Nominal</label>
+                          <label className="form-label">Nominal Target *</label>
                           <input
-                            type="number" step="any" className="form-input" placeholder="e.g. 1200"
+                            type="number"
+                            step="any"
+                            className="form-input"
                             value={processParamForm.nominal_value}
                             onChange={(e) => setProcessParamForm({ ...processParamForm, nominal_value: e.target.value })}
+                            required
                           />
                         </div>
                         <div>
-                          <label className="form-label" style={{ fontSize: 11 }}>+ Upper Tol</label>
+                          <label className="form-label">Upper Tol (+)</label>
                           <input
-                            type="number" step="any" className="form-input" placeholder="e.g. 50"
+                            type="number"
+                            step="any"
+                            className="form-input"
                             value={processParamForm.upper_tolerance}
                             onChange={(e) => setProcessParamForm({ ...processParamForm, upper_tolerance: e.target.value })}
+                            required
                           />
                         </div>
                         <div>
-                          <label className="form-label" style={{ fontSize: 11 }}>- Lower Tol</label>
+                          <label className="form-label">Lower Tol (-)</label>
                           <input
-                            type="number" step="any" className="form-input" placeholder="e.g. -50"
+                            type="number"
+                            step="any"
+                            className="form-input"
                             value={processParamForm.lower_tolerance}
                             onChange={(e) => setProcessParamForm({ ...processParamForm, lower_tolerance: e.target.value })}
+                            required
                           />
                         </div>
+                      </div>
+                      <div style={{ background: '#0F172A', padding: 10, borderRadius: 6, fontSize: 13, color: '#38BDF8', fontWeight: 'bold' }}>
+                        Rule 1 Range: [{( (parseFloat(processParamForm.nominal_value) || 0) + (parseFloat(processParamForm.lower_tolerance) || 0) ).toFixed(4)} {processParamForm.unit}] to [{ ( (parseFloat(processParamForm.nominal_value) || 0) + Math.abs(parseFloat(processParamForm.upper_tolerance) || 0) ).toFixed(4)} {processParamForm.unit}]
+                      </div>
+                    </>
+                  )}
+
+                  {/* RULE 2 FIELDS */}
+                  {processRuleMode === 'rule2' && (
+                    <div>
+                      <label className="form-label">Master Value / Visual Specification *</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. 0.5 x 45° Chamfer, No burrs, Surface smooth"
+                        value={processParamForm.nominal_value || ''}
+                        onChange={(e) => setProcessParamForm({ ...processParamForm, nominal_value: e.target.value })}
+                        required
+                      />
+                      <div style={{ marginTop: 6, fontSize: 11, color: '#64748B' }}>
+                        Inspector sees this value and records <strong>YES (Pass)</strong> or <strong>NO (Fail)</strong>
                       </div>
                     </div>
                   )}
 
-                  <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  {/* RULE 3 FIELDS */}
+                  {processRuleMode === 'rule3' && (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                          <label className="form-label">Threshold Type</label>
+                          <select
+                            className="form-select"
+                            value={processParamForm.measurement_type}
+                            onChange={(e) => setProcessParamForm({ ...processParamForm, measurement_type: e.target.value })}
+                          >
+                            <option value="max_limit">≤ Maximum Limit (e.g. ≤ 1200 RPM)</option>
+                            <option value="min_limit">≥ Minimum Limit (e.g. ≥ 500 RPM)</option>
+                            <option value="surface">≤ Surface Finish (Ra)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="form-label">Threshold Value *</label>
+                          <input
+                            type="number"
+                            step="any"
+                            className="form-input"
+                            value={processParamForm.nominal_value}
+                            onChange={(e) => setProcessParamForm({
+                              ...processParamForm,
+                              nominal_value: e.target.value,
+                              upper_tolerance: '0.00',
+                              lower_tolerance: '0.00',
+                            })}
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div style={{ background: '#0F172A', padding: 10, borderRadius: 6, fontSize: 13, color: '#F59E0B', fontWeight: 'bold' }}>
+                        Rule 3 Threshold: {processParamForm.measurement_type === 'min_limit' ? `≥ ${(parseFloat(processParamForm.nominal_value) || 0).toFixed(4)} ${processParamForm.unit}` : `≤ ${(parseFloat(processParamForm.nominal_value) || 0).toFixed(4)} ${processParamForm.unit}`}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Unit + Type row */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label className="form-label">Unit</label>
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 6 }}>
+                        {['mm', '°', 'R', 'φ', 'µm', 'Ra', 'mm/rev', 'inch'].map((u) => {
+                          const isSelected = processParamForm.unit === u;
+                          return (
+                            <button
+                              key={u}
+                              type="button"
+                              onClick={() => setProcessParamForm({ ...processParamForm, unit: u })}
+                              style={{
+                                padding: '4px 10px', fontSize: 12, fontWeight: 700,
+                                borderRadius: 16, border: '1px solid',
+                                cursor: 'pointer', transition: 'all 0.15s ease',
+                                background: isSelected ? '#0F172A' : '#F8FAFC',
+                                color: isSelected ? '#FFFFFF' : '#475569',
+                                borderColor: isSelected ? '#0F172A' : '#CBD5E1',
+                                boxShadow: isSelected ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
+                              }}
+                            >{u}</button>
+                          );
+                        })}
+                      </div>
                       <input
-                        type="checkbox"
-                        checked={processParamForm.is_required}
-                        onChange={(e) => setProcessParamForm({ ...processParamForm, is_required: e.target.checked })}
+                        type="text"
+                        className="form-input"
+                        placeholder="Custom unit if not listed above..."
+                        value={processParamForm.unit}
+                        onChange={(e) => setProcessParamForm({ ...processParamForm, unit: e.target.value })}
+                        style={{ background: '#fff', border: '1px solid #CBD5E1', color: '#1E293B', borderRadius: 8, padding: '7px 10px', fontSize: 12, width: '100%', outline: 'none', boxSizing: 'border-box' }}
                       />
-                      <span>Required Entry</span>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                    </div>
+                    <div>
+                      <label className="form-label">Measurement Type Code</label>
                       <input
-                        type="checkbox"
-                        checked={processParamForm.is_active}
-                        onChange={(e) => setProcessParamForm({ ...processParamForm, is_active: e.target.checked })}
+                        type="text"
+                        className="form-input"
+                        value={processParamForm.measurement_type}
+                        readOnly
+                        style={{ opacity: 0.75, textTransform: 'uppercase', background: '#F1F5F9', border: '1px solid #CBD5E1', color: '#475569', borderRadius: 8, padding: '9px 12px', fontSize: 13, width: '100%' }}
                       />
-                      <span>Active</span>
-                    </label>
+                    </div>
+                  </div>
+
+                  {/* ── CONTROL PLAN COLUMNS ──────────────────── */}
+                  <div style={{ borderTop: '1.5px solid #E2E8F0', paddingTop: 14 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#0284C7', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 10 }}>
+                      Control Plan Details
+                    </div>
+
+                    {/* Measurement Technique */}
+                    <div style={{ marginBottom: 12 }}>
+                      <label className="form-label" style={{ marginBottom: 4 }}>Evaluation / Measurement Technique</label>
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 6 }}>
+                        {['DEPTH VERNIER', 'VERNIER CALIPER', 'VISUALLY', 'PLUGE GAUGE', 'PROFILE PROJECTOR', 'COMPARE WITH MASTER', 'HEIGHT GAUGE', 'MICROMETER'].map((t) => {
+                          const isSel = processParamForm.measurement_technique === t;
+                          return (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setProcessParamForm({ ...processParamForm, measurement_technique: t })}
+                              style={{
+                                padding: '4px 9px', fontSize: 11, fontWeight: isSel ? 700 : 500, borderRadius: 6, cursor: 'pointer',
+                                background: isSel ? '#0284C7' : '#F8FAFC',
+                                border: isSel ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                                color: isSel ? '#FFFFFF' : '#475569',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >{t}</button>
+                          );
+                        })}
+                      </div>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Or custom instrument..."
+                        value={processParamForm.measurement_technique}
+                        onChange={(e) => setProcessParamForm({ ...processParamForm, measurement_technique: e.target.value })}
+                        style={{ background: '#fff', border: '1px solid #CBD5E1', color: '#1E293B', borderRadius: 8, padding: '7px 10px', fontSize: 12, width: '100%', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    {/* Sample Size + Control Method in 2 cols */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label className="form-label" style={{ marginBottom: 4 }}>Sample Size / Frequency</label>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                          {['5NOS/SHIFT', '100%', 'LAYOUT INSPECTION', '1st PC/SHIFT'].map((s) => {
+                            const isSel = processParamForm.sample_size === s;
+                            return (
+                              <button
+                                key={s}
+                                type="button"
+                                onClick={() => setProcessParamForm({ ...processParamForm, sample_size: s })}
+                                style={{
+                                  padding: '3px 8px', fontSize: 10.5, fontWeight: isSel ? 700 : 500, borderRadius: 6, cursor: 'pointer',
+                                  background: isSel ? '#059669' : '#F8FAFC',
+                                  border: isSel ? '1px solid #059669' : '1px solid #CBD5E1',
+                                  color: isSel ? '#FFFFFF' : '#475569',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >{s}</button>
+                            );
+                          })}
+                        </div>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="e.g. 5NOS/SHIFT"
+                          value={processParamForm.sample_size}
+                          onChange={(e) => setProcessParamForm({ ...processParamForm, sample_size: e.target.value })}
+                          style={{ background: '#fff', border: '1px solid #CBD5E1', color: '#1E293B', borderRadius: 8, padding: '7px 10px', fontSize: 12, width: '100%', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div>
+                        <label className="form-label" style={{ marginBottom: 4 }}>Control Method</label>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                          {['1st PIECE & INPROCESS INSP.', 'LAYOUT INSPECTION'].map((c) => {
+                            const isSel = processParamForm.control_method === c;
+                            return (
+                              <button
+                                key={c}
+                                type="button"
+                                onClick={() => setProcessParamForm({ ...processParamForm, control_method: c })}
+                                style={{
+                                  padding: '3px 8px', fontSize: 10.5, fontWeight: isSel ? 700 : 500, borderRadius: 6, cursor: 'pointer',
+                                  background: isSel ? '#7C3AED' : '#F8FAFC',
+                                  border: isSel ? '1px solid #7C3AED' : '1px solid #CBD5E1',
+                                  color: isSel ? '#FFFFFF' : '#475569',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >{c}</button>
+                            );
+                          })}
+                        </div>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="e.g. 1st PIECE & INPROCESS INSP."
+                          value={processParamForm.control_method}
+                          onChange={(e) => setProcessParamForm({ ...processParamForm, control_method: e.target.value })}
+                          style={{ background: '#fff', border: '1px solid #CBD5E1', color: '#1E293B', borderRadius: 8, padding: '7px 10px', fontSize: 12, width: '100%', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 <div className="modal-footer">
                   <button type="button" className="btn btn-ghost" onClick={() => setShowProcessParamModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary">{editingProcessParam ? 'Save Changes' : 'Add Process Parameter'}</button>
+                  <button type="submit" className="btn btn-primary">{editingProcessParam ? 'Save Changes' : 'Add Process Parameter Rule'}</button>
                 </div>
               </form>
             </div>
