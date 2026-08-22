@@ -132,9 +132,9 @@ class RecordMeasurementView(APIView):
             )
             return Response(cached_result, status=status_code)
 
-        # 3. Dispatch Async Task (Celery queue with thread fallback)
-        from .tasks import dispatch_measurement_task_async
-        dispatch_measurement_task_async(
+        # 3. Process Synchronously (No WebSockets in mobile app)
+        from .tasks import process_measurement_in_background
+        result = process_measurement_in_background(
             session_id=session_id,
             parameter_code=param_code,
             measured_value=float_val,
@@ -147,21 +147,11 @@ class RecordMeasurementView(APIView):
 
         duration_ms = (time.perf_counter() - t_start) * 1000
         logger.info(
-            "[PERF MEASURE QUEUED] Code: %s | Val: %s | Method: %s | HTTP 202 Time: %.2f ms",
+            "[PERF MEASURE SYNC] Code: %s | Val: %s | Method: %s | HTTP 200 Time: %.2f ms",
             param_code, float_val, method, duration_ms
         )
 
-        return Response(
-            {
-                'status': 'queued',
-                'idempotency_key': idem_key,
-                'parameter_code': param_code,
-                'measured_value': float_val,
-                'message': f"Measurement for '{param_code}' queued successfully.",
-                'dispatch_ms': round(duration_ms, 2),
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
+        return Response(result, status=result.get('status_code', status.HTTP_200_OK))
 
 
 # ─── Batch Measure (Per-Piece Form Submission) ────────────────────────────
@@ -568,14 +558,18 @@ class SetupStatusView(APIView):
 
         is_approved = True
 
+        part_id = session.part.id if session.part else None
         part_no = session.part.part_number if session.part else None
         part_name = session.part.part_name if session.part else None
+        machine_id = session.machine.id if session.machine else None
 
         return Response({
             'has_today_report': has_today,
             'is_setup_approved': is_approved,
             'session_id': str(session.session_id),
             'status': session.status,
+            'machine_id': machine_id,
+            'part_id': part_id,
             'part_number': part_no,
             'part_name': part_name,
             'inspection_type': session.inspection_type,

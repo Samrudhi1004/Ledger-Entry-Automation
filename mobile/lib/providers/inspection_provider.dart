@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/persistence_service.dart';
 
 class InspectionProvider with ChangeNotifier {
   Map<String, dynamic>? selectedMachine;
@@ -29,6 +30,7 @@ class InspectionProvider with ChangeNotifier {
     trialNumber = 1;
     parentSessionId = null;
     recordedResults.clear();
+    saveCurrentState();
     notifyListeners();
   }
 
@@ -56,7 +58,49 @@ class InspectionProvider with ChangeNotifier {
     selectedPart = part;
     selectedTemplate = null;
     parameters = [];
+    saveCurrentState();
     notifyListeners();
+  }
+
+  String? currentUserId;
+
+  void restoreFromLocalState(Map<String, dynamic> state, String userId) {
+    currentUserId = userId;
+    sessionId = state['session_id'];
+    selectedMachine = state['machine'];
+    selectedPart = state['part'];
+    selectedTemplate = state['template'];
+    inspectionType = state['inspection_type'] ?? 'first_piece';
+    trialNumber = state['trial_number'] ?? 1;
+    hourlySlot = state['hourly_slot'] ?? 1;
+    completedHourlySlots = Set<int>.from(state['completed_slots'] ?? []);
+    parameters = state['parameters'] ?? [];
+    
+    if (state['recorded_results'] != null) {
+      final Map<String, dynamic> results = state['recorded_results'];
+      recordedResults.clear();
+      for (final entry in results.entries) {
+        recordedResults[entry.key] = Map<String, dynamic>.from(entry.value);
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> saveCurrentState() async {
+    if (currentUserId == null) return;
+    await PersistenceService.saveState(
+      userId: currentUserId!,
+      sessionId: sessionId,
+      machine: selectedMachine,
+      part: selectedPart,
+      template: selectedTemplate,
+      inspectionType: inspectionType,
+      trialNumber: trialNumber,
+      hourlySlot: hourlySlot,
+      completedHourlySlots: completedHourlySlots,
+      parameters: parameters,
+      recordedResults: recordedResults,
+    );
   }
 
   Future<void> fetchPendingRejections() async {
@@ -197,8 +241,15 @@ class InspectionProvider with ChangeNotifier {
 
       if (selectedPart == null && setupStatus['part_number'] != null) {
         selectedPart = {
+          'id': setupStatus['part_id'],
           'part_number': setupStatus['part_number'],
           'part_name': setupStatus['part_name'] ?? setupStatus['part_number'],
+        };
+      }
+
+      if (selectedMachine == null && setupStatus['machine_id'] != null) {
+        selectedMachine = {
+          'id': setupStatus['machine_id'],
         };
       }
 
@@ -270,6 +321,7 @@ class InspectionProvider with ChangeNotifier {
     isLoading = false;
     if (result != null && (result.containsKey('session_id') || result.containsKey('id'))) {
       sessionId = result['session_id'] ?? result['id'];
+      saveCurrentState(); // Persist session ID
       notifyListeners();
       return true;
     } else {
@@ -310,6 +362,7 @@ class InspectionProvider with ChangeNotifier {
     isLoading = false;
     if (result != null) {
       recordedResults[param['parameter_code']] = result;
+      saveCurrentState();
       notifyListeners();
     }
     return result;
@@ -361,6 +414,7 @@ class InspectionProvider with ChangeNotifier {
             debugPrint('[PROVIDER] recordedResult saved: $code → status=${r['status']}');
           }
         }
+        saveCurrentState(); // Persist recorded results
       }
       return result;
     } catch (e, stack) {
