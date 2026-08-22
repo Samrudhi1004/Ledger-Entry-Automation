@@ -2133,23 +2133,35 @@ export default function ParametersPage() {
                   </div>
                 </div>
 
-                {/* Parameters Breakdown */}
+                {/* Parameters Breakdown (Both Product & Process Parameters) */}
                 {(() => {
-                  const rule1Count = parameters.filter((p) => !p.measurement_type?.startsWith('rule2') && !p.measurement_type?.startsWith('rule3') && p.measurement_type !== 'visual').length;
-                  const rule2Count = parameters.filter((p) => p.measurement_type === 'visual' || p.measurement_type?.startsWith('rule2')).length;
-                  const rule3Count = parameters.filter((p) => p.measurement_type?.startsWith('rule3')).length;
-                  const criticalCount = parameters.filter((p) => p.is_critical).length;
+                  const allParams = [
+                    ...parameters.map(p => ({ ...p, is_process: false })),
+                    ...processParameters.map(p => ({ ...p, is_process: true }))
+                  ];
+                  const totalCount = allParams.length;
+
+                  const isRule2 = (p) => p.measurement_type === 'visual' || p.measurement_type?.startsWith('rule2') || p.data_type === 'yes_no';
+                  const isRule3 = (p) => ['min_limit', 'max_limit', 'surface'].includes(p.measurement_type?.toLowerCase()) || p.measurement_type?.startsWith('rule3');
+                  const isRule1 = (p) => !isRule2(p) && !isRule3(p);
+
+                  const rule1Count = allParams.filter(isRule1).length;
+                  const rule2Count = allParams.filter(isRule2).length;
+                  const rule3Count = allParams.filter(isRule3).length;
+                  const criticalCount = allParams.filter((p) => p.is_critical).length;
 
                   return (
-                    <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: '14px 16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: 12, fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase' }}>
                           Configured Parameters Summary
                         </span>
-                        <span style={{ background: '#1D4ED8', color: '#fff', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800 }}>
-                          {parameters.length} Total Parameters
+                        <span style={{ background: '#1D4ED8', color: '#fff', padding: '3px 12px', borderRadius: 20, fontSize: 11, fontWeight: 800 }}>
+                          {totalCount} Total Parameters ({parameters.length} Product + {processParameters.length} Process)
                         </span>
                       </div>
+
+                      {/* Rule Cards */}
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, textAlign: 'center' }}>
                         <div style={{ background: '#fff', borderRadius: 8, padding: '8px 4px', border: '1px solid #DBEAFE' }}>
                           <div style={{ fontSize: 14, fontWeight: 800, color: '#0284C7' }}>{rule1Count}</div>
@@ -2166,6 +2178,18 @@ export default function ParametersPage() {
                         <div style={{ background: '#fff', borderRadius: 8, padding: '8px 4px', border: '1px solid #DBEAFE' }}>
                           <div style={{ fontSize: 14, fontWeight: 800, color: '#DC2626' }}>{criticalCount}</div>
                           <div style={{ fontSize: 9.5, fontWeight: 700, color: '#64748B' }}>◑ Critical</div>
+                        </div>
+                      </div>
+
+                      {/* Category Breakdown Bar */}
+                      <div style={{ display: 'flex', gap: 8, fontSize: 11, fontWeight: 700 }}>
+                        <div style={{ flex: 1, background: '#DBEAFE', color: '#1E40AF', padding: '6px 10px', borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Product Parameters</span>
+                          <span style={{ background: '#1E40AF', color: '#fff', padding: '1px 8px', borderRadius: 10, fontSize: 10, fontWeight: 800 }}>{parameters.length}</span>
+                        </div>
+                        <div style={{ flex: 1, background: '#F3E8FF', color: '#6B21A8', padding: '6px 10px', borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Process Parameters</span>
+                          <span style={{ background: '#6B21A8', color: '#fff', padding: '1px 8px', borderRadius: 10, fontSize: 10, fontWeight: 800 }}>{processParameters.length}</span>
                         </div>
                       </div>
                     </div>
