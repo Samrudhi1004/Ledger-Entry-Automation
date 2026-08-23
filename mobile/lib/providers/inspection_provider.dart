@@ -51,7 +51,9 @@ class InspectionProvider with ChangeNotifier {
 
   void logout() {
     selectedMachine = null;
+    currentUserId = null; // prevent future saves after logout
     resetForNextOperation();
+    PersistenceService.clearState(); // wipe saved session from disk on explicit logout
   }
 
   void selectPart(Map<String, dynamic> part) {
@@ -83,11 +85,26 @@ class InspectionProvider with ChangeNotifier {
         recordedResults[entry.key] = Map<String, dynamic>.from(entry.value);
       }
     }
+    
+    // Automatically determine where the user left off
+    currentParamIndex = 0;
+    if (parameters.isNotEmpty) {
+      for (int i = 0; i < parameters.length; i++) {
+        final code = parameters[i]['parameter_code']?.toString();
+        if (code != null && !recordedResults.containsKey(code)) {
+          currentParamIndex = i;
+          break;
+        }
+      }
+    }
     notifyListeners();
   }
 
   Future<void> saveCurrentState() async {
-    if (currentUserId == null) return;
+    if (currentUserId == null) {
+      debugPrint('[InspectionProvider] WARNING: saveCurrentState() called but currentUserId is null — state NOT saved! Ensure provider.currentUserId is set at login/splash.');
+      return;
+    }
     await PersistenceService.saveState(
       userId: currentUserId!,
       sessionId: sessionId,
@@ -474,6 +491,9 @@ class InspectionProvider with ChangeNotifier {
     final currentSlot = hourlySlot;
     final success = await ApiService.completeSession(sessionId!);
     if (success) {
+      // Session fully submitted — clear local saved state so it doesn't
+      // appear as a resume-able session on next app open.
+      await PersistenceService.clearState();
       if (inspectionType == 'hourly') {
         if (!completedHourlySlots.contains(currentSlot)) {
           completedHourlySlots.add(currentSlot);
@@ -496,6 +516,9 @@ class InspectionProvider with ChangeNotifier {
 
     final result = await ApiService.finalizeFirstPiece(sessionId!);
     if (result != null) {
+      // Session finalized — clear local saved state so it doesn't
+      // appear as a resume-able session on next app open.
+      await PersistenceService.clearState();
       completedHourlySlots.add(hourlySlot);
       if (hourlySlot < 8) {
         hourlySlot = hourlySlot + 1;
