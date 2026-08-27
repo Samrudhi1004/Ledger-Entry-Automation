@@ -75,8 +75,31 @@ class AuthProvider with ChangeNotifier {
           _username = null;
           _userRole = null;
           _fullName = null;
+        } else if (refreshStatus == true) {
+          // Refresh succeeded — re-decode the new JWT to re-persist user_info.
+          // Protects against OS wiping SharedPreferences while SecureStorage survives.
+          try {
+            final newToken = await ApiService.getToken();
+            if (newToken != null) {
+              final parts = newToken.split('.');
+              if (parts.length == 3) {
+                final paddedPayload = base64Url.normalize(parts[1]);
+                final payloadBytes = base64Url.decode(paddedPayload);
+                final payload = jsonDecode(utf8.decode(payloadBytes)) as Map<String, dynamic>;
+                final roleFromJwt = payload['role']?.toString() ?? _userRole ?? 'operator';
+                _userRole = roleFromJwt;
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('user_info', jsonEncode({
+                  'role': roleFromJwt,
+                  'full_name': _fullName ?? _username,
+                }));
+                debugPrint('[AuthProvider] Re-persisted user_info from JWT (role: $roleFromJwt).');
+              }
+            }
+          } catch (e) {
+            debugPrint('[AuthProvider] JWT payload decode warning: $e');
+          }
         }
-        // If refreshStatus == true -> tokens updated cleanly in background!
         // If refreshStatus == null -> network timeout/error, local session STAYS LOGGED IN!
       } else {
         _isAuthenticated = false;
@@ -149,13 +172,18 @@ class AuthProvider with ChangeNotifier {
   }
 
   /// Triggered automatically when an unauthenticated 401 cannot be refreshed.
-  void forceLogout() async {
-    await ApiService.clearTokens();
+  /// Updates UI state synchronously first so navigation happens immediately,
+  /// then clears tokens in the background (fire-and-forget is safe here).
+  void forceLogout() {
+    // Update auth state and notify listeners immediately so the UI
+    // (router/splash) can react without waiting for the async token clear.
     _isAuthenticated = false;
     _username = null;
     _userRole = null;
     _fullName = null;
     _isLoading = false;
     notifyListeners();
+    // Clear tokens in background — non-critical if it's slightly delayed.
+    ApiService.clearTokens();
   }
 }
