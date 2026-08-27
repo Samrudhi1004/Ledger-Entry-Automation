@@ -420,7 +420,6 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
               <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: isApproved ? '#dcfce7' : '#f1f5f9' }}>6/Hr</th>
               <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: isApproved ? '#dcfce7' : '#f1f5f9' }}>7/Hr</th>
               <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: isApproved ? '#dcfce7' : '#f1f5f9' }}>8/Hr</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 2px', width: '6%' }}>REMARK</th>
             </tr>
           </thead>
           <tbody>
@@ -523,9 +522,6 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
                       </td>
                     );
                   })}
-
-                  {/* REMARK Column — Kept empty */}
-                  <td style={{ border: '1px solid #000000', padding: '2px 1px' }}></td>
                 </tr>
               );
             })}

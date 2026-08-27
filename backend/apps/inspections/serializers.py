@@ -93,12 +93,32 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
         return '—'
 
     def get_template_id(self, obj):
+        if obj.template_id:
+            return obj.template_id
         return getattr(obj, 'template_id', None)
 
     def get_template_name(self, obj):
-        return getattr(obj, 'template_name', None)
+        if obj.template and obj.template.name and obj.template.name.strip():
+            return obj.template.name.strip()
+        val = getattr(obj, 'template_name', None)
+        if val and str(val).strip():
+            return str(val).strip()
+        try:
+            from apps.parts.models import InspectionTemplate
+            t = InspectionTemplate.objects.filter(
+                part=obj.part,
+                inspection_type=obj.inspection_type,
+                is_active=True,
+            ).order_by('-version').first()
+            if t and t.name and t.name.strip():
+                return t.name.strip()
+        except Exception:
+            pass
+        return None
 
     def get_template_version(self, obj):
+        if obj.template:
+            return obj.template.version
         return getattr(obj, 'template_version', None)
 
     def get_inspector_name(self, obj):

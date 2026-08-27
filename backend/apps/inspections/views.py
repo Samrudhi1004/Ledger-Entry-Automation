@@ -347,10 +347,27 @@ class SessionListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        from django.db.models import Q
+        from django.db.models import Q, Subquery, OuterRef, Value
+        from django.db.models.functions import NullIf
+        from apps.parts.models import InspectionTemplate
+
+        # Annotate each session with the operation name from the matching
+        # InspectionTemplate (part + inspection_type) — same ORM pattern as
+        # part_number/part_name. NullIf converts blank names to NULL so the
+        # serializer's None-check works correctly.
+        template_name_subquery = Subquery(
+            InspectionTemplate.objects.filter(
+                part=OuterRef('part'),
+                inspection_type=OuterRef('inspection_type'),
+                is_active=True,
+            ).order_by('-version').annotate(
+                safe_name=NullIf('name', Value(''))
+            ).values('safe_name')[:1]
+        )
+
         qs = InspectionSession.objects.select_related(
-            'part', 'machine', 'operator', 'supervisor', 'finalized_by'
-        ).all()
+            'part', 'machine', 'operator', 'supervisor', 'finalized_by', 'template'
+        ).annotate(template_name=template_name_subquery)
 
         status_filter   = self.request.query_params.get('status')
         machine_code    = self.request.query_params.get('machine')

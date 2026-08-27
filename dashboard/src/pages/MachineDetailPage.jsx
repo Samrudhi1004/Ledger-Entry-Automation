@@ -566,59 +566,59 @@ export default function MachineDetailPage() {
                     <th>Trial Tag</th>
                     <th>Session ID</th>
                     <th>Part Number</th>
+                    <th>Operation Name</th>
                     <th>Operator</th>
                     <th>Shift</th>
-                    <th>Status</th>
-                    <th>Has OOC</th>
                     <th>Date & Time</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {historySessions.map((s) => (
-                    <tr key={s.session_id}>
-                      <td>
-                        <span className="badge badge-progress">
-                          {s.trial_number ? `1ST PC #${s.trial_number}` : '1ST PC #1'}
-                        </span>
-                      </td>
-                      <td className="font-mono font-bold">
-                        {s.session_id?.slice(0, 8)?.toUpperCase()}
-                      </td>
-                      <td className="font-mono">{s.part_number}</td>
-                      <td>{s.operator_name || `Operator #${s.operator_id}`}</td>
-                      <td>Shift {s.shift}</td>
-                      <td><Badge type={s.status} /></td>
-                      <td>
-                        {s.has_ooc ? (
-                          <span className="badge badge-ooc">OOC</span>
-                        ) : (
-                          <span className="badge badge-ok">✓ OK</span>
-                        )}
-                      </td>
-                      <td className="text-xs text-muted">
-                        {formatDateTime(s.started_at)}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => setSelectedHistorySessionId(s.session_id)}
-                          >
-                            View Report Sheet
-                          </button>
-                          <button
-                            className="btn btn-ghost btn-sm text-red"
-                            onClick={() => handleDeleteSession(s.session_id)}
-                            title="Delete test session"
-                            style={{ color: '#ef4444', padding: '4px 8px' }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {historySessions.map((s) => {
+                    const opLabel = s.template_name?.trim() ||
+                      ({ first_piece: '1st Piece Inspection', hourly: 'Hourly In-Process', final: 'Final Check', setup_approval: 'Setup Approval' }[s.inspection_type]
+                        ?? s.inspection_type?.replace('_', ' ') ?? '—');
+                    return (
+                      <tr key={s.session_id}>
+                        <td>
+                          <span className="badge badge-progress">
+                            {s.trial_number ? `1ST PC #${s.trial_number}` : '1ST PC #1'}
+                          </span>
+                        </td>
+                        <td className="font-mono font-bold">
+                          {s.session_id?.slice(0, 8)?.toUpperCase()}
+                        </td>
+                        <td className="font-mono">{s.part_number}</td>
+                        <td>
+                          <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{opLabel}</div>
+                          <div className="text-xs text-muted">{s.inspection_type?.replace('_', ' ')}</div>
+                        </td>
+                        <td>{s.operator_name || `Operator #${s.operator_id}`}</td>
+                        <td>Shift {s.shift}</td>
+                        <td className="text-xs text-muted">
+                          {formatDateTime(s.started_at)}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => setSelectedHistorySessionId(s.session_id)}
+                            >
+                              View Report Sheet
+                            </button>
+                            <button
+                              className="btn btn-ghost btn-sm text-red"
+                              onClick={() => handleDeleteSession(s.session_id)}
+                              title="Delete test session"
+                              style={{ color: '#ef4444', padding: '4px 8px' }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
