@@ -5,6 +5,7 @@ import { Search, Filter, Calendar, User, Settings2 } from 'lucide-react';
 export default function AdminParametersView() {
   const [allParams, setAllParams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   
   // Advanced Filters
   const [searchName, setSearchName] = useState('');
@@ -14,35 +15,43 @@ export default function AdminParametersView() {
   const [filterType, setFilterType] = useState('All'); // Product, Process
 
   useEffect(() => {
-    fetchData(); // Initial load
+    let abortController = new AbortController();
+    
+    const loadData = async (showLoader = true) => {
+      if (showLoader) setLoading(true);
+      setFetchError(null);
+      try {
+        const [prodRes, procRes] = await Promise.all([
+          getAllParameters({ signal: abortController.signal }),
+          getAllProcessParameters({ signal: abortController.signal })
+        ]);
+        
+        const products = (prodRes.data?.results || prodRes.data || []).map(p => ({ ...p, param_type: 'Product' }));
+        const processes = (procRes.data?.results || procRes.data || []).map(p => ({ ...p, param_type: 'Process' }));
+        
+        setAllParams([...products, ...processes]);
+      } catch (err) {
+        if (err.name !== 'CanceledError' && err.message !== 'canceled') {
+          console.error('Failed to fetch parameters', err);
+          setFetchError(err.message || 'Failed to fetch parameters');
+        }
+      } finally {
+        if (showLoader) setLoading(false);
+      }
+    };
+
+    loadData(); // Initial load
 
     // Silent Auto-Refresh polling every 10 seconds
     const interval = setInterval(() => {
-      fetchData(false);
+      loadData(false);
     }, 10000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      abortController.abort();
+    };
   }, []);
-
-  const fetchData = async (showLoader = true) => {
-    if (showLoader) setLoading(true);
-    try {
-      const [prodRes, procRes] = await Promise.all([
-        getAllParameters(),
-        getAllProcessParameters()
-      ]);
-      
-      const products = (prodRes.data?.results || prodRes.data || []).map(p => ({ ...p, param_type: 'Product' }));
-      const processes = (procRes.data?.results || procRes.data || []).map(p => ({ ...p, param_type: 'Process' }));
-      
-      // Combine both lists
-      setAllParams([...products, ...processes]);
-    } catch (err) {
-      console.error('Failed to fetch parameters', err);
-    } finally {
-      if (showLoader) setLoading(false);
-    }
-  };
 
   const uniqueMachines = ['All', ...new Set(allParams.map(p => p.machine_code).filter(Boolean))];
   const uniqueCreators = ['All', ...new Set(allParams.map(p => p.created_by_name).filter(Boolean))];
@@ -197,6 +206,11 @@ export default function AdminParametersView() {
             <tbody>
               {loading && allParams.length === 0 ? (
                 <tr><td colSpan="8" style={{ padding: 24, textAlign: 'center', color: '#64748B' }}>Loading parameters...</td></tr>
+              ) : fetchError && allParams.length === 0 ? (
+                <tr><td colSpan="8" style={{ padding: 24, textAlign: 'center', color: '#EF4444', background: '#FEF2F2' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Failed to load parameters</div>
+                  <div style={{ fontSize: 12, color: '#B91C1C' }}>{fetchError}</div>
+                </td></tr>
               ) : filteredParams.length === 0 ? (
                 <tr><td colSpan="8" style={{ padding: 24, textAlign: 'center', color: '#64748B' }}>No parameters found matching filters.</td></tr>
               ) : (

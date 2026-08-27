@@ -783,8 +783,8 @@ export default function ParametersPage() {
                 <div style={{ display: 'flex', gap: 4 }}>
                   {selectedMachine && (
                     <>
-                      <>{isAdmin ? null : <button style={{ padding: '2px 8px', fontSize: 11, background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: 6, color: '#475569', cursor: 'pointer' }} onClick={() => handleOpenEditMachine(selectedMachine)}>Edit</button>}</>
-                      <>{isAdmin ? null : <button style={{ padding: '2px 8px', fontSize: 11, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeleteMachine(selectedMachine.id)}>Delete</button>}</>
+                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: 6, color: '#475569', cursor: 'pointer' }} onClick={() => handleOpenEditMachine(selectedMachine)}>Edit</button>
+                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeleteMachine(selectedMachine.id)}>Delete</button>
                     </>
                   )}
                   <button style={{ padding: '2px 8px', fontSize: 11, background: '#EFF6FF', border: '1px solid #BAE6FD', borderRadius: 6, color: '#0284C7', cursor: 'pointer', fontWeight: 700 }} onClick={handleOpenAddMachine}>+ New</button>
@@ -814,8 +814,8 @@ export default function ParametersPage() {
                 <div style={{ display: 'flex', gap: 4 }}>
                   {selectedPart && (
                     <>
-                      <>{isAdmin ? null : <button style={{ padding: '2px 8px', fontSize: 11, background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: 6, color: '#475569', cursor: 'pointer' }} onClick={() => handleOpenEditPart(selectedPart)}>Edit</button>}</>
-                      <>{isAdmin ? null : <button style={{ padding: '2px 8px', fontSize: 11, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeletePartItem(selectedPart.part_number)}>Delete</button>}</>
+                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: 6, color: '#475569', cursor: 'pointer' }} onClick={() => handleOpenEditPart(selectedPart)}>Edit</button>
+                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeletePartItem(selectedPart.part_number)}>Delete</button>
                     </>
                   )}
                   <button style={{ padding: '2px 8px', fontSize: 11, background: '#F5F3FF', border: '1px solid #E9D5FF', borderRadius: 6, color: '#7C3AED', cursor: 'pointer', fontWeight: 700 }} onClick={handleOpenAddPart}>+ New</button>
@@ -848,7 +848,7 @@ export default function ParametersPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {selectedTemplate && (
-                    <>{isAdmin ? null : <button style={{ padding: '2px 8px', fontSize: 11, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeleteOperationItem(selectedTemplate.id)}>Delete</button>}</>
+                    <button style={{ padding: '2px 8px', fontSize: 11, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeleteOperationItem(selectedTemplate.id)}>Delete</button>
                   )}
                   {selectedPart && (
                     <button style={{ padding: '2px 8px', fontSize: 11, background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 6, color: '#059669', cursor: 'pointer', fontWeight: 700 }} onClick={() => setShowAddOpModal(true)}>+ New</button>
@@ -1250,8 +1250,8 @@ export default function ParametersPage() {
                           </td>
                           <td style={{ padding: '13px 16px', textAlign: 'right' }}>
                             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                              <>{isAdmin ? null : <button onClick={() => handleOpenEditParam(p)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#EFF6FF', border: '1px solid #BAE6FD', borderRadius: 7, color: '#0284C7', cursor: 'pointer' }}>Edit</button>}</>
-                              <>{isAdmin ? null : <button onClick={() => handleDeleteParam(p.id)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, color: '#DC2626', cursor: 'pointer' }}>Delete</button>}</>
+                              <button onClick={() => handleOpenEditParam(p)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#EFF6FF', border: '1px solid #BAE6FD', borderRadius: 7, color: '#0284C7', cursor: 'pointer' }}>Edit</button>
+                              <button onClick={() => handleDeleteParam(p.id)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, color: '#DC2626', cursor: 'pointer' }}>Delete</button>
                             </div>
                           </td>
                         </tr>
@@ -1422,8 +1422,8 @@ export default function ParametersPage() {
                           </td>
                           <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                              <>{isAdmin ? null : <button onClick={() => handleOpenEditProcessParam(pp)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 7, color: '#4338CA', cursor: 'pointer' }}>Edit</button>}</>
-                              <>{isAdmin ? null : <button onClick={() => handleDeleteProcessParam(pp)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, color: '#DC2626', cursor: 'pointer' }}>Delete</button>}</>
+                              <button onClick={() => handleOpenEditProcessParam(pp)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 7, color: '#4338CA', cursor: 'pointer' }}>Edit</button>
+                              <button onClick={() => handleDeleteProcessParam(pp)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, color: '#DC2626', cursor: 'pointer' }}>Delete</button>
                             </div>
                           </td>
                         </tr>

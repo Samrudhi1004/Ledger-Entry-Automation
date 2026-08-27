@@ -2,7 +2,7 @@ from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 
 from .models import Part, InspectionTemplate, InspectionParameter, ProcessParameter
 from .serializers import (
@@ -260,7 +260,8 @@ class AllParameterListView(generics.ListAPIView):
     """GET /api/parts/parameters/all/"""
     from .serializers import GlobalInspectionParameterSerializer
     serializer_class = GlobalInspectionParameterSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminUser]
+    pagination_class = None
     queryset = InspectionParameter.objects.select_related('template__part__machine', 'template__created_by').all().order_by('-id')
 
 
@@ -268,5 +269,6 @@ class AllProcessParameterListView(generics.ListAPIView):
     """GET /api/parts/process-parameters/all/"""
     from .serializers import GlobalProcessParameterSerializer
     serializer_class = GlobalProcessParameterSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminUser]
+    pagination_class = None
     queryset = ProcessParameter.objects.select_related('template__part__machine', 'template__created_by').all().order_by('-id')

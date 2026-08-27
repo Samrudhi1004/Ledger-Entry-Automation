@@ -62,8 +62,8 @@ export const deleteProcessParameter = (paramId) =>
   axios.delete(`/api/parts/process-parameters/${paramId}/`);
 
 // Global Admin Endpoints
-export const getAllParameters = () =>
-  axios.get('/api/parts/parameters/all/');
+export const getAllParameters = (config = {}) =>
+  axios.get('/api/parts/parameters/all/', config);
 
-export const getAllProcessParameters = () =>
-  axios.get('/api/parts/process-parameters/all/');
+export const getAllProcessParameters = (config = {}) =>
+  axios.get('/api/parts/process-parameters/all/', config);
