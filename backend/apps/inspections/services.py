@@ -279,6 +279,7 @@ class InspectionService:
             machine              = machine,
             operator             = operator,
             supervisor           = supervisor,
+            template             = template,
             inspection_type      = actual_inspection_type,
             shift                = shift,
             trial_number         = trial_number,
@@ -346,6 +347,20 @@ class InspectionService:
                     'is_process_parameter':  True,
                 })
 
+        # Resolve operation name: use template.name if set, else fall back to
+        # inspection_type display label so the dashboard always shows a meaningful name.
+        insp_type_labels = {
+            'first_piece': '1st Piece Cum In-Process Inspection',
+            'hourly':      'Hourly In-Process Inspection',
+            'final':       'Final Inspection',
+            'setup_approval': 'Setup Approval',
+        }
+        operation_name = (
+            template.name.strip()
+            if template and template.name and template.name.strip()
+            else insp_type_labels.get(actual_inspection_type, actual_inspection_type.replace('_', ' ').title())
+        )
+
         # 2. Initialise MongoDB document
         mongo_doc = {
             '_id':                       str(session_id),
@@ -358,6 +373,8 @@ class InspectionService:
             'operator_name':             operator.get_full_name(),
             'supervisor_id':             supervisor.id if supervisor else None,
             'inspection_type':           actual_inspection_type,
+            'template_id':               template.pk if template else None,
+            'operation_name':            operation_name,
             'hourly_slot':               hourly_slot if actual_inspection_type == 'hourly' else 0,
             'shift':                     shift,
             'status':                    'in_progress',

@@ -44,6 +44,10 @@ class InspectionSession(models.Model):
         'users.User', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='finalized_sessions',
     )
+    template = models.ForeignKey(
+        'parts.InspectionTemplate', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='sessions',
+    )
 
     # Session metadata
     inspection_type            = models.CharField(max_length=20)  # first_piece / hourly / final
