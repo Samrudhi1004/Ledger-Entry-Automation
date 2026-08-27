@@ -83,14 +83,18 @@ export default function Sidebar({ pendingCount = 0 }) {
           <Factory size={20} color="#ffffff" />
         </div>
         <div className="sidebar-logo-text">
-          <span className="sidebar-logo-title">Inspection Hub</span>
-          <span className="sidebar-logo-sub">Quality Control</span>
+          <span className="sidebar-logo-title">{user?.role === 'admin' ? 'Admin Hub' : 'Inspection Hub'}</span>
+          <span className="sidebar-logo-sub">{user?.role === 'admin' ? 'System Management' : 'Quality Control'}</span>
         </div>
       </div>
 
       {/* Nav */}
       <nav className="sidebar-nav">
-        {MODULES.map((module) => {
+        {MODULES.filter(m => user?.role === 'admin' ? m.key === 'master' : true).map((m) => {
+          let module = m;
+          if (module.key === 'master' && user?.role !== 'admin') {
+            module = { ...m, items: m.items.filter(item => item.to !== '/users') };
+          }
           const ModuleIcon = module.icon;
 
           if (module.to) {

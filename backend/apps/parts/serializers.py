@@ -96,3 +96,24 @@ class PartListSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Part
         fields = ['id', 'part_number', 'part_name', 'machine_code', 'revision']
+
+
+class GlobalInspectionParameterSerializer(InspectionParameterSerializer):
+    template_name = serializers.CharField(source='template.name', read_only=True)
+    part_number = serializers.CharField(source='template.part.part_number', read_only=True)
+    machine_code = serializers.CharField(source='template.part.machine.machine_code', read_only=True)
+    created_by_name = serializers.CharField(source='template.created_by.get_full_name', read_only=True)
+    created_at = serializers.DateTimeField(source='template.created_at', read_only=True, format='%d %b %Y, %I:%M %p')
+
+    class Meta(InspectionParameterSerializer.Meta):
+        fields = InspectionParameterSerializer.Meta.fields + ['template_name', 'part_number', 'machine_code', 'created_by_name', 'created_at']
+
+class GlobalProcessParameterSerializer(ProcessParameterSerializer):
+    template_name = serializers.CharField(source='template.name', read_only=True)
+    part_number = serializers.CharField(source='template.part.part_number', read_only=True)
+    machine_code = serializers.CharField(source='template.part.machine.machine_code', read_only=True)
+    created_by_name = serializers.CharField(source='template.created_by.get_full_name', read_only=True)
+    created_at = serializers.DateTimeField(source='template.created_at', read_only=True, format='%d %b %Y, %I:%M %p')
+
+    class Meta(ProcessParameterSerializer.Meta):
+        fields = ProcessParameterSerializer.Meta.fields + ['template_name', 'part_number', 'machine_code', 'created_by_name', 'created_at']
