@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -8,6 +9,7 @@ export default function LoginPage() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
 
@@ -58,15 +60,37 @@ export default function LoginPage() {
 
           <div className="form-group">
             <label className="form-label" htmlFor="login-password">Password</label>
-            <input
-              id="login-password"
-              className="form-input"
-              type="password"
-              placeholder="Enter password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                id="login-password"
+                className="form-input"
+                type={showPassword ? "text" : "password"}
+                placeholder="Enter password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                style={{ paddingRight: '40px' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted, #64748b)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: 0
+                }}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           <button
@@ -80,35 +104,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="quick-login mt-16" style={{ borderTop: '1px solid var(--border-color, #e2e8f0)', paddingTop: '12px' }}>
-          <p className="text-xs text-muted mb-8" style={{ textAlign: 'center' }}>Quick Demo Access:</p>
-          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-            <button
-              id="btn-login-supervisor"
-              type="button"
-              className="btn btn-secondary text-xs"
-              onClick={() => {
-                setUsername('supervisor');
-                setPassword('supervisor123');
-                handleLogin('supervisor', 'supervisor123');
-              }}
-            >
-              👔 Supervisor
-            </button>
-            <button
-              id="btn-login-admin"
-              type="button"
-              className="btn btn-secondary text-xs"
-              onClick={() => {
-                setUsername('admin');
-                setPassword('admin123');
-                handleLogin('admin', 'admin123');
-              }}
-            >
-              👑 Admin
-            </button>
-          </div>
-        </div>
+
 
         <p className="text-xs text-muted mt-16" style={{ textAlign: 'center' }}>
           Factory Quality Inspection System · v1.0

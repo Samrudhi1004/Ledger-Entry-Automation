@@ -40,6 +40,14 @@ function ProtectedLayout({ children, pendingCount, onPendingCountChange }) {
   );
 }
 
+function RootRedirect() {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingSpinner message="Redirecting..." />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'admin') return <Navigate to="/users" replace />;
+  return <Navigate to="/reports" replace />;
+}
+
 export default function App() {
   const { user } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
@@ -67,11 +75,11 @@ export default function App() {
       
       <Route
         path="/"
-        element={<Navigate to="/reports" replace />}
+        element={<RootRedirect />}
       />
       <Route
         path="/pending"
-        element={<Navigate to="/reports" replace />}
+        element={<RootRedirect />}
       />
       <Route
         path="/reports"

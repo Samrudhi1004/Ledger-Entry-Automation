@@ -254,3 +254,19 @@ class ProcessParameterDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in ['PUT', 'PATCH', 'DELETE']:
             return [IsSupervisorOrAbove()]
         return [IsAuthenticated()]
+
+
+class AllParameterListView(generics.ListAPIView):
+    """GET /api/parts/parameters/all/"""
+    from .serializers import GlobalInspectionParameterSerializer
+    serializer_class = GlobalInspectionParameterSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = InspectionParameter.objects.select_related('template__part__machine', 'template__created_by').all().order_by('-id')
+
+
+class AllProcessParameterListView(generics.ListAPIView):
+    """GET /api/parts/process-parameters/all/"""
+    from .serializers import GlobalProcessParameterSerializer
+    serializer_class = GlobalProcessParameterSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = ProcessParameter.objects.select_related('template__part__machine', 'template__created_by').all().order_by('-id')

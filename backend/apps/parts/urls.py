@@ -2,8 +2,8 @@ from django.urls import path
 from .views import (
     PartListCreateView, PartDetailView,
     TemplateListCreateView, TemplateDetailView, TemplatePublishView, ActiveTemplateView,
-    ParameterListCreateView, ParameterDetailView,
-    ProcessParameterListCreateView, ProcessParameterDetailView,
+    ParameterListCreateView, ParameterDetailView, AllParameterListView,
+    ProcessParameterListCreateView, ProcessParameterDetailView, AllProcessParameterListView,
 )
 
 urlpatterns = [
@@ -13,10 +13,12 @@ urlpatterns = [
     # 2. Fixed routes for Templates & Parameters (MUST COME BEFORE <path:part_number> catch-alls)
     path('templates/<int:pk>/publish/',              TemplatePublishView.as_view(),    name='template-publish'),
     path('templates/<int:pk>/',                       TemplateDetailView.as_view(),     name='template-detail'),
+    path('parameters/all/',                          AllParameterListView.as_view(),    name='parameter-all'),
     path('templates/<int:template_id>/parameters/',  ParameterListCreateView.as_view(), name='parameter-list'),
     path('parameters/<int:pk>/',                     ParameterDetailView.as_view(),     name='parameter-detail'),
 
     # Process Parameters (Setup Approval Only)
+    path('process-parameters/all/',                          AllProcessParameterListView.as_view(), name='process-parameter-all'),
     path('templates/<int:template_id>/process-parameters/', ProcessParameterListCreateView.as_view(), name='process-parameter-list'),
     path('process-parameters/<int:pk>/',                     ProcessParameterDetailView.as_view(),     name='process-parameter-detail'),
 
