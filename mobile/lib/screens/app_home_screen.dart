@@ -9,6 +9,7 @@ import 'machine_select_screen.dart';
 import 'operation_select_screen.dart';
 import 'daily_production_report_screen.dart';
 import 'inspection_voice_screen.dart';
+import 'setup_approval_report_screen.dart';
 
 class AppHomeScreen extends StatefulWidget {
   const AppHomeScreen({super.key});
@@ -662,37 +663,54 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                   },
                 ),
 
-                // Module 2: Process Inspection (Soft Emerald)
-                _buildSoftPastelCard(
-                  title: 'Process Inspection',
-                  description: 'Select & start process inspection operations',
-                  icon: Icons.fact_check_rounded,
-                  bgColor: const Color(0xFFECFDF5),
-                  borderColor: const Color(0xFFA7F3D0),
-                  iconColor: const Color(0xFF059669),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
-                    );
-                  },
-                ),
+                // Module 2: Process Inspection (Operator) OR Setup Approval Report (Inspector / Supervisor)
+                if (auth.isOperator)
+                  _buildSoftPastelCard(
+                    title: 'Process Inspection',
+                    description: 'Select & start process inspection operations',
+                    icon: Icons.fact_check_rounded,
+                    bgColor: const Color(0xFFECFDF5),
+                    borderColor: const Color(0xFFA7F3D0),
+                    iconColor: const Color(0xFF059669),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
+                      );
+                    },
+                  )
+                else
+                  _buildSoftPastelCard(
+                    title: 'Setup Approval Report',
+                    description: 'View official first piece setup approval report (Form F02)',
+                    icon: Icons.assignment_turned_in_rounded,
+                    bgColor: const Color(0xFFFAF5FF),
+                    borderColor: const Color(0xFFE9D5FF),
+                    iconColor: const Color(0xFF9333EA),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SetupApprovalReportScreen()),
+                      );
+                    },
+                  ),
 
-                // Module 3: Daily Production Report (Soft Orange - Form F19)
-                _buildSoftPastelCard(
-                  title: 'Daily Production Report',
-                  description: 'End of shift output, target & breakdown log (Form F19)',
-                  icon: Icons.bar_chart_rounded,
-                  bgColor: const Color(0xFFFFF7ED),
-                  borderColor: const Color(0xFFFFEDD5),
-                  iconColor: const Color(0xFFEA580C),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
-                    );
-                  },
-                ),
+                // Module 3: Daily Production Report (Operators Only)
+                if (auth.isOperator)
+                  _buildSoftPastelCard(
+                    title: 'Daily Production Report',
+                    description: 'End of shift output, target & breakdown log (Form F19)',
+                    icon: Icons.bar_chart_rounded,
+                    bgColor: const Color(0xFFFFF7ED),
+                    borderColor: const Color(0xFFFFEDD5),
+                    iconColor: const Color(0xFFEA580C),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
+                      );
+                    },
+                  ),
               ],
             ),
 

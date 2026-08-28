@@ -7,7 +7,6 @@ import '../services/api_service.dart';
 import 'app_home_screen.dart';
 import 'inspection_voice_screen.dart';
 import 'machine_select_screen.dart';
-import 'login_screen.dart';
 import 'parameter_list_screen.dart';
 import 'daily_production_report_screen.dart';
 
@@ -181,31 +180,6 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
               );
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.swap_horiz_rounded, color: Colors.blueAccent),
-            tooltip: 'Change Machine / Station',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-            tooltip: 'Logout',
-            onPressed: () async {
-              await auth.logout();
-              provider.logout();
-              if (context.mounted) {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
-              }
-            },
-          ),
         ],
       ),
       body: Padding(
@@ -257,31 +231,33 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
               ),
             ),
 
-            // Daily Production Report Button for Operator / Quality Engineer
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFEA580C),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 11),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  elevation: 2,
-                ),
-                icon: const Icon(Icons.assessment_rounded, size: 18),
-                label: const Text(
-                  'ADD DAILY PRODUCTION REPORT (END OF SHIFT)',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+            // Daily Production Report Button (Operators Only)
+            if (auth.isOperator) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFEA580C),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 2,
+                  ),
+                  icon: const Icon(Icons.assessment_rounded, size: 18),
+                  label: const Text(
+                    'ADD DAILY PRODUCTION REPORT (END OF SHIFT)',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                  ),
                 ),
               ),
-            ),
+            ],
 
             // Active Supervisor Rejection Banner (If any session was rejected)
             if (provider.activeRejections.isNotEmpty) ...[
