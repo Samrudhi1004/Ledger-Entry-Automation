@@ -7,7 +7,6 @@ import '../services/api_service.dart';
 import 'app_home_screen.dart';
 import 'inspection_voice_screen.dart';
 import 'machine_select_screen.dart';
-import 'login_screen.dart';
 import 'parameter_list_screen.dart';
 import 'daily_production_report_screen.dart';
 
@@ -179,31 +178,6 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 MaterialPageRoute(builder: (_) => const AppHomeScreen()),
                 (route) => false,
               );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.swap_horiz_rounded, color: Colors.blueAccent),
-            tooltip: 'Change Machine / Station',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-            tooltip: 'Logout',
-            onPressed: () async {
-              await auth.logout();
-              provider.logout();
-              if (context.mounted) {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
-              }
             },
           ),
         ],
