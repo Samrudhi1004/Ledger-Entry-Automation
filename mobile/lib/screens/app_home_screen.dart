@@ -6,13 +6,9 @@ import '../providers/inspection_provider.dart';
 import '../services/api_service.dart';
 import 'account_screen.dart';
 import 'machine_select_screen.dart';
-import 'operator_home_screen.dart';
-import 'inspector_home_screen.dart';
-import 'inspection_voice_screen.dart';
 import 'operation_select_screen.dart';
-import 'report_sheet_screen.dart';
-import 'setup_approval_report_screen.dart';
 import 'daily_production_report_screen.dart';
+import 'inspection_voice_screen.dart';
 
 class AppHomeScreen extends StatefulWidget {
   const AppHomeScreen({super.key});
@@ -538,314 +534,262 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
 
     final unreadNotifCount = _supervisorNotifications.where((n) => n['is_read'] == false).length;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: SafeArea(
-        child: RefreshIndicator(
-          color: const Color(0xFF4F46E5),
-          onRefresh: _loadDashboardData,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-            child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-
-              // 1. TOP GREETING HEADER & NOTIFICATION BELL WITH LIVE SUPERVISOR ALERTS
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hi $firstName,',
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: Color(0xFF64748B),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        roleTitle,
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF10B981),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Active Part: $partNumber',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF64748B),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-
-                  // Notification Bell Icon with Red Alert Counter for Supervisor Notifications
-                  GestureDetector(
-                    onTap: () => _showNotificationsModal(context),
-                    child: Stack(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              )
-                            ],
-                          ),
-                          child: const Icon(Icons.notifications_none_rounded, color: Color(0xFF0F172A), size: 24),
-                        ),
-                        if (unreadNotifCount > 0)
-                          Positioned(
-                            right: 2,
-                            top: 2,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFEF4444),
-                                shape: BoxShape.circle,
-                              ),
-                              constraints: const BoxConstraints(
-                                minWidth: 18,
-                                minHeight: 18,
-                              ),
-                              child: Text(
-                                '$unreadNotifCount',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 28),
-
-              // 2. "HERE ARE SOME THINGS YOU CAN DO" SECTION TITLE
-              const Text(
-                'Here are some things you can do',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF64748B),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // 3. 2x2 SOFT PASTEL FEATURE CARDS GRID
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
-                childAspectRatio: 1.05,
-                children: [
-
-                  // Card 1: Select Machine (Soft Blue/Purple)
-                  _buildSoftPastelCard(
-                    title: 'Machine',
-                    description: 'Choose or switch active floor machine',
-                    icon: Icons.precision_manufacturing_rounded,
-                    bgColor: const Color(0xFFF0F3FF),
-                    borderColor: const Color(0xFFE0E7FF),
-                    iconColor: const Color(0xFF4F46E5),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
-                      );
-                    },
-                  ),
-
-                  // Card 2: Process Operations (Operator) OR Live Daily Report (Inspector / Supervisor)
-                  if (auth.isOperator)
-                    _buildSoftPastelCard(
-                      title: 'Process Operations',
-                      description: 'Select & start process inspection operations',
-                      icon: Icons.fact_check_rounded,
-                      bgColor: const Color(0xFFECFDF5),
-                      borderColor: const Color(0xFFA7F3D0),
-                      iconColor: const Color(0xFF059669),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
-                        );
-                      },
-                    )
-                  else
-                    _buildSoftPastelCard(
-                      title: 'Live Daily Report',
-                      description: 'View real-time Form F02 report filling (1PC & 1..8/HR)',
-                      icon: Icons.table_chart_rounded,
-                      bgColor: const Color(0xFFEFF6FF),
-                      borderColor: const Color(0xFFBFDBFE),
-                      iconColor: const Color(0xFF2563EB),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const ReportSheetScreen()),
-                        );
-                      },
-                    ),
-
-                  // Card 3: Setup Approval Report (First Piece Setup Approval Sheet - Inspectors/Supervisors Only)
-                  if (!auth.isOperator)
-                    _buildSoftPastelCard(
-                      title: 'Setup Approval Report',
-                      description: 'View official first piece setup approval report (Form F02)',
-                      icon: Icons.assignment_turned_in_rounded,
-                      bgColor: const Color(0xFFFAF5FF),
-                      borderColor: const Color(0xFFE9D5FF),
-                      iconColor: const Color(0xFF9333EA),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const SetupApprovalReportScreen()),
-                        );
-                      },
-                    ),
-
-                  // Card 4: Daily Production Report (End of Day Entry - Operators Only)
-                  if (auth.isOperator)
-                    _buildSoftPastelCard(
-                      title: 'Daily Production Report',
-                      description: 'End of day production output, target & rejection log',
-                      icon: Icons.bar_chart_rounded,
-                      bgColor: const Color(0xFFFFF7ED),
-                      borderColor: const Color(0xFFFFEDD5),
-                      iconColor: const Color(0xFFEA580C),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
-                        );
-                      },
-                    ),
-                ],
-              ),
-
-              const SizedBox(height: 28),
-
-              // 4. "YOUR TEAM & OPERATORS" AVATAR ROW (Visible to Supervisors & Inspectors)
-              if (!auth.isOperator) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    Widget homeTabContent = RefreshIndicator(
+      color: const Color(0xFF4F46E5),
+      onRefresh: _loadDashboardData,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. TOP GREETING HEADER & NOTIFICATION BELL
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Your station team',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                    Text(
+                      'Hi $firstName,',
+                      style: const TextStyle(
+                        fontSize: 15,
                         color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '${_teamMembers.length} Operators Connected',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF10B981),
-                        ),
+                    const SizedBox(height: 2),
+                    Text(
+                      roleTitle,
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        letterSpacing: -0.5,
                       ),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 14),
-
-                SizedBox(
-                  height: 76,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
+                // Notification Bell Icon
+                GestureDetector(
+                  onTap: () => _showNotificationsModal(context),
+                  child: Stack(
                     children: [
-                      // Add Button
-                      _buildAvatarItem(
-                        isAdd: true,
-                        label: 'Add',
-                        onTap: () => _showAddOperatorModal(context),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            )
+                          ],
+                        ),
+                        child: const Icon(Icons.notifications_none_rounded, color: Color(0xFF0F172A), size: 24),
                       ),
-
-                      const SizedBox(width: 14),
-
-                      // Connected Operators List from Backend
-                      ..._teamMembers.map((member) {
-                        final initials = _getInitials(member);
-                        final name = _getShortName(member);
-                        final roleColor = _getRoleColor(member['role']);
-                        final imageBg = _getRoleBg(member['role']);
-
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 14.0),
-                          child: GestureDetector(
-                            onTap: () => _showTeamMemberModal(context, member),
-                            child: _buildAvatarItem(
-                              initials: initials,
-                              name: name,
-                              roleColor: roleColor,
-                              imageBg: imageBg,
+                      if (unreadNotifCount > 0)
+                        Positioned(
+                          right: 2,
+                          top: 2,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFEF4444),
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 18,
+                              minHeight: 18,
+                            ),
+                            child: Text(
+                              '$unreadNotifCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
                           ),
-                        );
-                      }),
+                        ),
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 16),
               ],
+            ),
+
+            const SizedBox(height: 24),
+
+            // 2. FEATURE MODULES TITLE
+            const Text(
+              'Consoles & Inspection Modules',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF64748B),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // 3. CORE MODULE CARDS GRID
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              crossAxisSpacing: 14,
+              mainAxisSpacing: 14,
+              childAspectRatio: 1.05,
+              children: [
+                // Module 1: Machine Selection (Soft Indigo)
+                _buildSoftPastelCard(
+                  title: 'Machine',
+                  description: 'Choose or switch active floor machine',
+                  icon: Icons.precision_manufacturing_rounded,
+                  bgColor: const Color(0xFFF0F3FF),
+                  borderColor: const Color(0xFFE0E7FF),
+                  iconColor: const Color(0xFF4F46E5),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+                    );
+                  },
+                ),
+
+                // Module 2: Process Inspection (Soft Emerald)
+                _buildSoftPastelCard(
+                  title: 'Process Inspection',
+                  description: 'Select & start process inspection operations',
+                  icon: Icons.fact_check_rounded,
+                  bgColor: const Color(0xFFECFDF5),
+                  borderColor: const Color(0xFFA7F3D0),
+                  iconColor: const Color(0xFF059669),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
+                    );
+                  },
+                ),
+
+                // Module 3: Daily Production Report (Soft Orange - Form F19)
+                _buildSoftPastelCard(
+                  title: 'Daily Production Report',
+                  description: 'End of shift output, target & breakdown log (Form F19)',
+                  icon: Icons.bar_chart_rounded,
+                  bgColor: const Color(0xFFFFF7ED),
+                  borderColor: const Color(0xFFFFEDD5),
+                  iconColor: const Color(0xFFEA580C),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
+                    );
+                  },
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 28),
+
+            // 4. "YOUR TEAM & OPERATORS" ROW
+            if (!auth.isOperator) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Your station team',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${_teamMembers.length} Operators Connected',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF10B981),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 14),
+
+              SizedBox(
+                height: 76,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    _buildAvatarItem(
+                      isAdd: true,
+                      label: 'Add',
+                      onTap: () => _showAddOperatorModal(context),
+                    ),
+
+                    const SizedBox(width: 14),
+
+                    ..._teamMembers.map((member) {
+                      final initials = _getInitials(member);
+                      final name = _getShortName(member);
+                      final roleColor = _getRoleColor(member['role']);
+                      final imageBg = _getRoleBg(member['role']);
+
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 14.0),
+                        child: GestureDetector(
+                          onTap: () => _showTeamMemberModal(context, member),
+                          child: _buildAvatarItem(
+                            initials: initials,
+                            name: name,
+                            roleColor: roleColor,
+                            imageBg: imageBg,
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
             ],
-          ),
+          ],
         ),
       ),
-    ),
+    );
 
-      // 6. FLOATING CLEAN BOTTOM NAVIGATION BAR
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: SafeArea(
+        child: IndexedStack(
+          index: _currentIndex == 1 ? 1 : 0,
+          children: [
+            homeTabContent,
+            const AccountScreen(),
+          ],
+        ),
+      ),
+
+      // FLOATING 2-TAB BOTTOM NAVIGATION BAR (Home & About)
       bottomNavigationBar: Container(
-        margin: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        margin: const EdgeInsets.only(left: 24, right: 24, bottom: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(30),
@@ -860,32 +804,59 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _buildBottomNavItem(icon: Icons.home_rounded, isSelected: _currentIndex == 0, onTap: () => setState(() => _currentIndex = 0)),
-            // Center Action Icon
-            GestureDetector(
-              onTap: () {
-                final screen = auth.isInspector ? const InspectorHomeScreen() : const OperatorHomeScreen();
-                Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-              },
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF4F46E5),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color(0x664F46E5),
-                      blurRadius: 12,
-                      offset: Offset(0, 4),
-                    )
+            // Tab 1: Home
+            InkWell(
+              onTap: () => setState(() => _currentIndex = 0),
+              borderRadius: BorderRadius.circular(20),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.home_rounded,
+                      color: _currentIndex == 0 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                      size: 22,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Home',
+                      style: TextStyle(
+                        color: _currentIndex == 0 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                        fontWeight: _currentIndex == 0 ? FontWeight.bold : FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                 ),
-                child: const Icon(Icons.fact_check_rounded, color: Colors.white, size: 22),
               ),
             ),
-            _buildBottomNavItem(icon: Icons.person_outline_rounded, isSelected: _currentIndex == 4, onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountScreen()));
-            }),
+
+            // Tab 2: About (Profile & Station details)
+            InkWell(
+              onTap: () => setState(() => _currentIndex = 1),
+              borderRadius: BorderRadius.circular(20),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.person_rounded,
+                      color: _currentIndex == 1 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                      size: 22,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'About',
+                      style: TextStyle(
+                        color: _currentIndex == 1 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                        fontWeight: _currentIndex == 1 ? FontWeight.bold : FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
