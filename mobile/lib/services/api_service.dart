@@ -8,10 +8,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Base API URL - Use local backend on Android emulator in debug mode, fallback to Render production
-  static String baseUrl = kDebugMode
-      ? 'http://10.0.2.2:8000/api'
-      : 'https://ledger-entry-backend.onrender.com/api';
+  static String baseUrl = const String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: kDebugMode
+        ? 'http://10.0.2.2:8000/api'
+        : 'https://ledger-entry-backend.onrender.com/api',
+  );
 
   // Secure storage for JWT tokens — EncryptedSharedPreferences on Android / Keychain on iOS
   static const _secure = FlutterSecureStorage(
