@@ -88,18 +88,23 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 1,
+        elevation: 0,
+        scrolledUnderElevation: 0.5,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(color: const Color(0xFFE2E8F0), height: 1.0),
+        ),
         iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                color: const Color(0xFFEFF6FF),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.3)),
+                border: Border.all(color: const Color(0xFFDBEAFE)),
               ),
-              child: const Icon(Icons.precision_manufacturing_rounded, color: Color(0xFF0284C7), size: 20),
+              child: const Icon(Icons.precision_manufacturing_rounded, color: Color(0xFF2563EB), size: 20),
             ),
             const SizedBox(width: 12),
             const Column(
@@ -119,7 +124,7 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.home_rounded, color: Color(0xFF2563EB)),
+            icon: const Icon(Icons.home_rounded, color: Color(0xFF64748B)),
             tooltip: 'Go to Home',
             onPressed: () {
               Navigator.pushAndRemoveUntil(
@@ -130,7 +135,7 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF0284C7)),
+            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF2563EB)),
             onPressed: () {
               setState(() => _isLoading = true);
               _loadMachines();
@@ -144,20 +149,27 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Search Input Bar
+              // Search Input Bar - Enterprise Clean Style
               Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFF1E293B)),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x060F172A),
+                      blurRadius: 6,
+                      offset: Offset(0, 2),
+                    )
+                  ],
                 ),
                 child: TextField(
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w500),
                   onChanged: (val) => setState(() => _searchQuery = val),
                   decoration: const InputDecoration(
                     hintText: 'Search machine by code or name...',
-                    hintStyle: TextStyle(color: Color(0xFF64748B), fontSize: 13),
-                    prefixIcon: Icon(Icons.search_rounded, color: Color(0xFF38BDF8)),
+                    hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                    prefixIcon: Icon(Icons.search_rounded, color: Color(0xFF2563EB)),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   ),
@@ -172,24 +184,24 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.sensors_rounded, color: Color(0xFF10B981), size: 16),
+                      Icon(Icons.sensors_rounded, color: Color(0xFF059669), size: 16),
                       SizedBox(width: 6),
                       Text(
                         'ACTIVE MACHINES ON FLOOR',
-                        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.1),
+                        style: TextStyle(color: Color(0xFF475569), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.0),
                       ),
                     ],
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      color: const Color(0xFFECFDF5),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                      border: Border.all(color: const Color(0xFFA7F3D0)),
                     ),
                     child: Text(
                       '${filteredMachines.length} Ready',
-                      style: const TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Color(0xFF059669), fontSize: 11, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
@@ -202,18 +214,18 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
                   padding: const EdgeInsets.all(12),
                   margin: const EdgeInsets.only(bottom: 14),
                   decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.15),
+                    color: const Color(0xFFFEF2F2),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.redAccent),
+                    border: Border.all(color: const Color(0xFFFCA5A5)),
                   ),
-                  child: Text(_selectError!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                  child: Text(_selectError!, style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
                 ),
               ],
 
               if (_isLoading)
                 const Expanded(
                   child: Center(
-                    child: CircularProgressIndicator(color: Color(0xFF38BDF8)),
+                    child: CircularProgressIndicator(color: Color(0xFF2563EB)),
                   ),
                 )
               else if (filteredMachines.isEmpty)
@@ -222,9 +234,9 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.search_off_rounded, color: Color(0xFF64748B), size: 48),
+                        Icon(Icons.search_off_rounded, color: Color(0xFF94A3B8), size: 48),
                         SizedBox(height: 12),
-                        Text('No matching machines found', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 15)),
+                        Text('No matching machines found', style: TextStyle(color: Color(0xFF64748B), fontSize: 15, fontWeight: FontWeight.w500)),
                       ],
                     ),
                   ),
@@ -240,16 +252,16 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
                       final mType = machine['machine_type'] ?? machine['type'] ?? 'CNC';
 
                       return Container(
-                        margin: const EdgeInsets.only(bottom: 14),
+                        margin: const EdgeInsets.only(bottom: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFF1E293B)),
-                          boxShadow: [
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          boxShadow: const [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.2),
+                              color: Color(0x0A0F172A),
                               blurRadius: 10,
-                              offset: const Offset(0, 4),
+                              offset: Offset(0, 3),
                             )
                           ],
                         ),
@@ -259,27 +271,20 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
                             borderRadius: BorderRadius.circular(16),
                             onTap: () => _selectMachine(machine),
                             child: Padding(
-                              padding: const EdgeInsets.all(18),
+                              padding: const EdgeInsets.all(16),
                               child: Row(
                                 children: [
-                                  // Icon Badge
+                                  // Icon Badge - Clean Blue Tint
                                   Container(
-                                    padding: const EdgeInsets.all(14),
+                                    padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          const Color(0xFF38BDF8).withValues(alpha: 0.2),
-                                          const Color(0xFF0284C7).withValues(alpha: 0.1),
-                                        ],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      ),
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+                                      color: const Color(0xFFEFF6FF),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: const Color(0xFFDBEAFE)),
                                     ),
-                                    child: const Icon(Icons.build_circle_rounded, color: Color(0xFF38BDF8), size: 28),
+                                    child: const Icon(Icons.build_circle_rounded, color: Color(0xFF2563EB), size: 26),
                                   ),
-                                  const SizedBox(width: 16),
+                                  const SizedBox(width: 14),
 
                                   // Details
                                   Expanded(
@@ -289,30 +294,31 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
                                         Row(
                                           children: [
                                             Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                               decoration: BoxDecoration(
-                                                color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                                                color: const Color(0xFFF1F5F9),
                                                 borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(color: const Color(0xFFE2E8F0)),
                                               ),
                                               child: Text(
                                                 code,
                                                 style: const TextStyle(
-                                                  color: Color(0xFF38BDF8),
+                                                  color: Color(0xFF1E293B),
                                                   fontWeight: FontWeight.bold,
-                                                  fontSize: 12,
+                                                  fontSize: 11,
                                                 ),
                                               ),
                                             ),
                                             const SizedBox(width: 8),
-                                            const Icon(Icons.fiber_manual_record, color: Color(0xFF10B981), size: 10),
+                                            const Icon(Icons.fiber_manual_record, color: Color(0xFF059669), size: 8),
                                             const SizedBox(width: 4),
-                                            const Text('ONLINE', style: TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold)),
+                                            const Text('ONLINE', style: TextStyle(color: Color(0xFF059669), fontSize: 10, fontWeight: FontWeight.bold)),
                                           ],
                                         ),
                                         const SizedBox(height: 6),
                                         Text(
                                           name,
-                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                          style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 15),
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
@@ -323,16 +329,17 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
                                     ),
                                   ),
 
-                                  // Action Arrow
+                                  // Action Arrow Button
                                   Container(
-                                    padding: const EdgeInsets.all(10),
+                                    padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF1E293B),
+                                      color: const Color(0xFFF8FAFC),
                                       shape: BoxShape.circle,
+                                      border: Border.all(color: const Color(0xFFE2E8F0)),
                                     ),
                                     child: _isSelecting
-                                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(color: Color(0xFF38BDF8), strokeWidth: 2))
-                                        : const Icon(Icons.arrow_forward_rounded, color: Color(0xFF38BDF8), size: 18),
+                                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(color: Color(0xFF2563EB), strokeWidth: 2))
+                                        : const Icon(Icons.arrow_forward_rounded, color: Color(0xFF2563EB), size: 18),
                                   ),
                                 ],
                               ),
