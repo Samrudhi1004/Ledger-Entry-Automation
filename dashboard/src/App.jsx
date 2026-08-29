@@ -17,6 +17,7 @@ import MachinesPage from './pages/MachinesPage';
 import MachineDetailPage from './pages/MachineDetailPage';
 import ParametersPage from './pages/ParametersPage';
 import UsersPage from './pages/UsersPage';
+import CalibrationPage from './pages/CalibrationPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
 
@@ -168,6 +169,33 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <UsersPage />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
+        path="/calibration"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <CalibrationPage view="dashboard" />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
+        path="/calibration/equipment"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <CalibrationPage view="equipment" />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
+        path="/calibration/equipment/new"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <CalibrationPage view="register" />
           </ProtectedLayout>
         }
       />

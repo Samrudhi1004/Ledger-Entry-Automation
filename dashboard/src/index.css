@@ -1125,6 +1125,179 @@ td.deviation-ooc { color: var(--accent-red);   font-family: 'JetBrains Mono', mo
   margin-bottom: 20px;
 }
 
+/* ── Calibration Equipment Module ─────────────────────────── */
+.calibration-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  margin-bottom: 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: fit-content;
+}
+
+.calibration-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+.calibration-nav-link:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.calibration-nav-link.active {
+  color: var(--text-inverse);
+  background: var(--accent-blue);
+  box-shadow: var(--shadow-sm);
+}
+
+.calibration-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 20px;
+}
+
+.calibration-quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.calibration-action-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+.calibration-action-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+}
+
+.calibration-action-card > svg:first-child { color: var(--accent-blue); }
+.calibration-action-card span { display: flex; flex-direction: column; }
+.calibration-action-card strong { font-size: 0.82rem; }
+.calibration-action-card small { color: var(--text-muted); font-size: 0.7rem; }
+
+.calibration-registry-card {
+  max-width: 900px;
+}
+
+.calibration-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.calibration-stat-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.calibration-section-header {
+  align-items: flex-start;
+}
+
+.calibration-toolbar {
+  justify-content: space-between;
+}
+
+.calibration-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  max-width: 560px;
+}
+
+.calibration-search > svg {
+  position: absolute;
+  left: 14px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.calibration-search .form-input {
+  padding-left: 40px;
+}
+
+.calibration-status-filter {
+  width: 180px;
+}
+
+.calibration-table {
+  min-width: 1460px;
+}
+
+.calibration-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calibration-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.calibration-form-span {
+  grid-column: 1 / -1;
+}
+
+.calibration-notice {
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.calibration-notice-success {
+  color: var(--accent-green);
+  background: var(--accent-green-glow);
+  border-color: var(--accent-green);
+}
+
+.calibration-notice-error {
+  color: var(--accent-red);
+  background: var(--accent-red-glow);
+  border-color: var(--accent-red);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ── Utility ───────────────────────────────────────────────── */
 .flex         { display: flex; }
 .flex-col     { display: flex; flex-direction: column; }
@@ -1158,6 +1331,7 @@ td.deviation-ooc { color: var(--accent-red);   font-family: 'JetBrains Mono', mo
 /* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 1200px) {
   .stat-grid { grid-template-columns: repeat(3, 1fr); }
+  .calibration-stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {
@@ -1166,6 +1340,29 @@ td.deviation-ooc { color: var(--accent-red);   font-family: 'JetBrains Mono', mo
   .header { left: 0; }
   .grid-2, .grid-2-1, .grid-1-2 { grid-template-columns: 1fr; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .calibration-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .calibration-toolbar { align-items: stretch; flex-direction: column; }
+  .calibration-search { max-width: none; }
+  .calibration-status-filter { width: 100%; }
+  .calibration-form-grid { grid-template-columns: 1fr; }
+  .calibration-form-span { grid-column: auto; }
+  .calibration-dashboard-grid { grid-template-columns: 1fr; }
+  .calibration-nav { width: 100%; overflow-x: auto; }
+  .calibration-nav-link { white-space: nowrap; }
+  .calibration-actions .btn { min-height: 44px; }
+  #calibration-equipment-form .form-input,
+  #calibration-equipment-form .form-textarea,
+  #calibration-failure-form .form-input,
+  #calibration-failure-form .form-textarea { font-size: 1rem; }
+}
+
+@media (max-width: 560px) {
+  .page-content.calibration-page { padding: 20px 16px; }
+  .calibration-stat-grid { grid-template-columns: 1fr; }
+  .calibration-section-header { align-items: stretch; flex-direction: column; gap: 12px; }
+  .calibration-section-header .btn { justify-content: center; }
+  .calibration-form-actions { flex-direction: column-reverse; }
+  .calibration-form-actions .btn { justify-content: center; width: 100%; }
 }
 
 /* ── Print Styles ──────────────────────────────────────────── */

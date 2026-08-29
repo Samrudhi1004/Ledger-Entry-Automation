@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'apps.voice',
     'apps.dashboard',
     'apps.analytics',
+    'apps.calibration',
 ]
 
 # ─── Middleware ────────────────────────────────────────────────
