@@ -2,6 +2,7 @@
 .env
 *.env
 *.env.*
+!dashboard/.env.example
 
 # Python / Django
 __pycache__/

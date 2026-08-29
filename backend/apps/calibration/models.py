@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.validators import MinValueValidator
 from django.utils import timezone
 
 
@@ -9,7 +10,7 @@ class CalibrationEquipment(models.Model):
     serial_number = models.CharField(max_length=100, unique=True)
     department = models.CharField(max_length=100)
     location = models.CharField(max_length=150)
-    calibration_frequency_days = models.PositiveIntegerField()
+    calibration_frequency_days = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     last_calibration_date = models.DateField()
     next_calibration_date = models.DateField(db_index=True)
     remarks = models.TextField(blank=True)
@@ -43,4 +44,3 @@ class CalibrationEquipment(models.Model):
         if self.days_remaining <= 30:
             return 'Due Soon'
         return 'Valid'
-

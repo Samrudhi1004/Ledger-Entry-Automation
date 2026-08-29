@@ -4,29 +4,34 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.users.permissions import IsCalibrator
+
 from .models import CalibrationEquipment
-from .serializers import CalibrationEquipmentSerializer, MarkEquipmentFailedSerializer
+from .serializers import (
+    CalibrationEquipmentSerializer,
+    MarkEquipmentFailedSerializer,
+    MarkEquipmentPassedSerializer,
+)
 
 
 class EquipmentListCreateView(generics.ListCreateAPIView):
     queryset = CalibrationEquipment.objects.all()
     serializer_class = CalibrationEquipmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCalibrator]
     pagination_class = None
 
 
 class EquipmentDetailView(generics.RetrieveUpdateAPIView):
     queryset = CalibrationEquipment.objects.all()
     serializer_class = CalibrationEquipmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCalibrator]
 
 
 class MarkEquipmentFailedView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCalibrator]
 
     def post(self, request, pk):
         equipment = get_object_or_404(CalibrationEquipment, pk=pk)
@@ -41,8 +46,32 @@ class MarkEquipmentFailedView(APIView):
         return Response(CalibrationEquipmentSerializer(equipment).data, status=status.HTTP_200_OK)
 
 
+class MarkEquipmentPassedView(APIView):
+    permission_classes = [IsCalibrator]
+
+    def post(self, request, pk):
+        equipment = get_object_or_404(CalibrationEquipment, pk=pk)
+        serializer = MarkEquipmentPassedSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        passed_date = serializer.validated_data['passed_date']
+        equipment.last_calibration_date = passed_date
+        equipment.next_calibration_date = passed_date + timedelta(
+            days=equipment.calibration_frequency_days
+        )
+        equipment.is_failed = False
+        equipment.failed_date = None
+        equipment.failure_remark = ''
+        equipment.save(update_fields=[
+            'last_calibration_date', 'next_calibration_date', 'is_failed',
+            'failed_date', 'failure_remark', 'updated_at',
+        ])
+
+        return Response(CalibrationEquipmentSerializer(equipment).data, status=status.HTTP_200_OK)
+
+
 class CalibrationSummaryView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCalibrator]
 
     def get(self, request):
         today = timezone.localdate()
@@ -63,4 +92,3 @@ class CalibrationSummaryView(APIView):
             failed_equipment=Count('id', filter=Q(is_failed=True)),
         )
         return Response(summary)
-

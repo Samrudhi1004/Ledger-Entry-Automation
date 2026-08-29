@@ -37,3 +37,16 @@ class MarkEquipmentFailedSerializer(serializers.Serializer):
     failed_date = serializers.DateField(required=False, default=timezone.localdate)
     failure_remark = serializers.CharField(required=False, allow_blank=True, default='')
 
+    def validate_failed_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError('Failed date cannot be in the future.')
+        return value
+
+
+class MarkEquipmentPassedSerializer(serializers.Serializer):
+    passed_date = serializers.DateField(required=False, default=timezone.localdate)
+
+    def validate_passed_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError('Passed date cannot be in the future.')
+        return value

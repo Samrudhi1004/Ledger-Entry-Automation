@@ -1,6 +1,6 @@
 """
 Custom User model with role-based access control.
-Roles: Operator, Supervisor, Quality Engineer, Admin
+Roles: Operator, Supervisor, Quality Engineer, Calibrator, Admin
 """
 
 from django.contrib.auth.models import AbstractUser
@@ -13,6 +13,7 @@ class User(AbstractUser):
         OPERATOR          = 'operator',           'Operator'
         SUPERVISOR        = 'supervisor',         'Supervisor'
         QUALITY_ENGINEER  = 'quality_engineer',   'Inspector'
+        CALIBRATOR        = 'calibrator',         'Calibrator'
         ADMIN             = 'admin',              'Admin'
 
     # Core fields
@@ -69,6 +70,10 @@ class User(AbstractUser):
     @property
     def is_quality_engineer(self):
         return self.role == self.Role.QUALITY_ENGINEER
+
+    @property
+    def is_calibrator(self):
+        return self.role == self.Role.CALIBRATOR
 
     @property
     def is_admin_user(self):

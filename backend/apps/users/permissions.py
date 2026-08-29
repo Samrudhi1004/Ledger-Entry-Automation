@@ -33,6 +33,15 @@ class IsQualityEngineer(BasePermission):
                     and request.user.role == User.Role.QUALITY_ENGINEER)
 
 
+class IsCalibrator(BasePermission):
+    """Allow access to calibrators only."""
+    message = 'Only calibrators can perform this action.'
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated
+                    and request.user.role == User.Role.CALIBRATOR)
+
+
 class IsAdminUser(BasePermission):
     """Allow access to admins only."""
     message = 'Only admins can perform this action.'

@@ -20,7 +20,7 @@ export default function UsersPage() {
   const [successBannerMsg, setSuccessBannerMsg] = useState('');
   const [pageErrorBannerMsg, setPageErrorBannerMsg] = useState('');
 
-  // Form state for creating user accounts (Supervisor, Inspector, Operator)
+  // Form state for creating user accounts
   const [formData, setFormData] = useState({
     username: '',
     first_name: '',
@@ -165,6 +165,7 @@ export default function UsersPage() {
     switch (role) {
       case 'supervisor': return 'SUPERVISOR';
       case 'quality_engineer': return 'INSPECTOR';
+      case 'calibrator': return 'CALIBRATOR';
       case 'operator': return 'OPERATOR';
       case 'admin': return 'ADMIN';
       default: return role ? role.toUpperCase() : 'USER';
@@ -175,6 +176,7 @@ export default function UsersPage() {
     switch (role) {
       case 'supervisor': return 'badge-purple';
       case 'quality_engineer': return 'badge-ok';
+      case 'calibrator': return 'badge-progress';
       case 'operator': return 'badge-blue';
       default: return 'badge-manual';
     }
@@ -184,7 +186,7 @@ export default function UsersPage() {
     <>
       <Header
         title="User & Account Management"
-        subtitle="Manage accounts for Supervisors, Quality Inspectors, and Machine Operators"
+        subtitle="Manage accounts for Supervisors, Quality Inspectors, Calibrators, and Machine Operators"
       />
 
       <div className="page-content bg-gradient-animated">
@@ -218,6 +220,7 @@ export default function UsersPage() {
                 <option value="">All Roles</option>
                 <option value="supervisor">Supervisors</option>
                 <option value="quality_engineer">Inspectors</option>
+                <option value="calibrator">Calibrators</option>
                 <option value="operator">Operators</option>
               </select>
 
@@ -294,7 +297,7 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Modal for Creating New User Account (Supervisor, Inspector, Operator) */}
+      {/* Modal for creating a new user account */}
       {showModal && (
         <Modal
           title="Create New User Account (Database Saved)"
@@ -391,6 +394,7 @@ export default function UsersPage() {
                 >
                   <option value="supervisor">Supervisor (Quality Control & Approvals)</option>
                   <option value="quality_engineer">Inspector (Quality Inspector)</option>
+                  <option value="calibrator">Calibrator (Calibration Equipment Management)</option>
                   <option value="operator">Operator (Shop Floor Machine Operator)</option>
                 </select>
               </div>
