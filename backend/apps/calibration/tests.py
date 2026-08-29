@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from .models import CalibrationEquipment
@@ -51,14 +52,23 @@ class CalibrationEquipmentStatusTests(TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('next_calibration_date', serializer.errors)
 
+    def test_frequency_must_be_at_least_one_day(self):
+        serializer = CalibrationEquipmentSerializer(data=equipment_data(
+            calibration_frequency_days=0,
+        ))
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('calibration_frequency_days', serializer.errors)
+
 
 class CalibrationEquipmentApiTests(APITestCase):
     def setUp(self):
-        self.user = get_user_model().objects.create_user(
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
             username='calibration-tester',
             password='test-password',
             email='calibration@example.com',
             employee_id='CAL-TEST-1',
+            role=user_model.Role.CALIBRATOR,
         )
         self.client.force_authenticate(self.user)
         self.equipment = CalibrationEquipment.objects.create(**equipment_data())
@@ -76,11 +86,72 @@ class CalibrationEquipmentApiTests(APITestCase):
         self.assertEqual(self.equipment.failure_remark, 'Damaged measuring jaw')
         self.assertTrue(CalibrationEquipment.objects.filter(pk=self.equipment.pk).exists())
 
+    def test_mark_passed_reactivates_equipment_and_schedules_next_calibration(self):
+        self.equipment.is_failed = True
+        self.equipment.failed_date = date(2026, 8, 20)
+        self.equipment.failure_remark = 'Temporary failure'
+        self.equipment.calibration_frequency_days = 30
+        self.equipment.save()
+
+        response = self.client.post(
+            reverse('calibration-equipment-mark-passed', args=[self.equipment.pk]),
+            {'passed_date': '2026-08-27'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.equipment.refresh_from_db()
+        self.assertFalse(self.equipment.is_failed)
+        self.assertEqual(self.equipment.last_calibration_date, date(2026, 8, 27))
+        self.assertEqual(self.equipment.next_calibration_date, date(2026, 9, 26))
+        self.assertIsNone(self.equipment.failed_date)
+        self.assertEqual(self.equipment.failure_remark, '')
+
     def test_equipment_detail_does_not_allow_delete(self):
         response = self.client.delete(
             reverse('calibration-equipment-detail', args=[self.equipment.pk])
         )
         self.assertEqual(response.status_code, 405)
+
+    def test_non_calibrator_cannot_access_calibration_api(self):
+        user_model = get_user_model()
+        operator = user_model.objects.create_user(
+            username='operator-test',
+            password='test-password',
+            employee_id='OP-TEST-1',
+            role=user_model.Role.OPERATOR,
+        )
+        self.client.force_authenticate(operator)
+
+        response = self.client.get(reverse('calibration-equipment-list'))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_future_failed_date_is_rejected(self):
+        future_date = timezone.localdate() + timedelta(days=1)
+
+        response = self.client.post(
+            reverse('calibration-equipment-mark-failed', args=[self.equipment.pk]),
+            {'failed_date': future_date.isoformat()},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.equipment.refresh_from_db()
+        self.assertFalse(self.equipment.is_failed)
+
+    def test_future_passed_date_is_rejected(self):
+        future_date = timezone.localdate() + timedelta(days=1)
+
+        response = self.client.post(
+            reverse('calibration-equipment-mark-passed', args=[self.equipment.pk]),
+            {'passed_date': future_date.isoformat()},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.equipment.refresh_from_db()
+        self.assertEqual(self.equipment.last_calibration_date, date(2026, 1, 1))
 
     def test_summary_counts_date_groups_and_failed_equipment(self):
         today = date(2026, 8, 27)

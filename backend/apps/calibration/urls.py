@@ -5,6 +5,7 @@ from .views import (
     EquipmentDetailView,
     EquipmentListCreateView,
     MarkEquipmentFailedView,
+    MarkEquipmentPassedView,
 )
 
 
@@ -16,6 +17,10 @@ urlpatterns = [
         MarkEquipmentFailedView.as_view(),
         name='calibration-equipment-mark-failed',
     ),
+    path(
+        'equipment/<int:pk>/mark-passed/',
+        MarkEquipmentPassedView.as_view(),
+        name='calibration-equipment-mark-passed',
+    ),
     path('summary/', CalibrationSummaryView.as_view(), name='calibration-summary'),
 ]
-
