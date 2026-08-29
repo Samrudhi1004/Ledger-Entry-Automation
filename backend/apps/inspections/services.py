@@ -523,7 +523,7 @@ class InspectionService:
                 'inspection_type':       meas_type,
                 'trial_number':          meas_trial,
                 'hourly_slot':           meas_slot,
-                'recorded_at':           datetime.now(timezone.utc),
+                'recorded_at':           datetime.now(timezone.utc).isoformat(),
             }
 
             if existing_idx is not None:
@@ -621,7 +621,7 @@ class InspectionService:
             'inspection_type':  meas_type,
             'trial_number':     meas_trial,
             'hourly_slot':      meas_slot,
-            'recorded_at':      datetime.now(timezone.utc),
+            'recorded_at':      datetime.now(timezone.utc).isoformat(),
         }
 
         # Update MongoDB document
