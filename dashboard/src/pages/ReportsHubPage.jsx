@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
-import { Cpu, FileText, ArrowRight, ShieldCheck, Activity, CheckCircle2, BarChart3 } from 'lucide-react';
+import { Cpu, FileText, ArrowRight, ShieldCheck, Activity, CheckCircle2, BarChart3, Clock } from 'lucide-react';
 
 export default function ReportsHubPage() {
   const navigate = useNavigate();
@@ -51,6 +51,22 @@ export default function ReportsHubPage() {
       details: ['Official Setup Approval PDF Exports', 'Product & Process Parameter Logs', 'Date, Machine & Part Archive'],
       actionText: 'Open Setup Approval Reports',
       link: '/reports/setup-approval',
+      disabled: false,
+    },
+    {
+      id: 'downtime-reports',
+      title: 'Downtime Reports',
+      badge: '● Form QF/MF-06 Delays',
+      badgeBg: '#E0F2FE',
+      badgeColor: '#0369A1',
+      icon: Clock,
+      iconBg: '#E0F2FE',
+      iconColor: '#0284C7',
+      description:
+        'View and log operator-specific downtime minutes (Form QF/MF-06) linked directly to submitted Daily Production Reports.',
+      details: ['Official Downtime Excel & PDF Exports', '9-Category Downtime Minutes Breakdown', 'Hanuman Engineering Works QF/MF-06 Format'],
+      actionText: 'Open Downtime Reports',
+      link: '/reports/downtime?view=history',
       disabled: false,
     },
   ];

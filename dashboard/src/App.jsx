@@ -1,51 +1,59 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import Sidebar from './components/layout/Sidebar';
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import PendingReviewPage from './pages/PendingReviewPage';
 import SessionDetailPage from './pages/SessionDetailPage';
 import InspectionsPage from './pages/InspectionsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import ReportsHubPage from './pages/ReportsHubPage';
 import SetupApprovalReportsPage from './pages/SetupApprovalReportsPage';
 import DailyProductionReportsPage from './pages/DailyProductionReportsPage';
+import DowntimeReportsPage from './pages/DowntimeReportsPage';
 import ProductionModulePage from './pages/ProductionModulePage';
 import MachinesPage from './pages/MachinesPage';
 import MachineDetailPage from './pages/MachineDetailPage';
 import ParametersPage from './pages/ParametersPage';
 import UsersPage from './pages/UsersPage';
-import CalibrationPage from './pages/CalibrationPage';
 import TasksPage from './pages/TasksPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
 
 const PLANT_ID = 1;
+const CALIBRATOR_ROLE = 'calibrator';
+const CALIBRATOR_ONLY = [CALIBRATOR_ROLE];
+const CalibrationPage = lazy(() => import('./pages/CalibrationPage'));
 
-function ProtectedLayout({ children, pendingCount, onPendingCountChange }) {
+function ProtectedLayout({ children, pendingCount, allowedRoles }) {
   const { user, loading } = useAuth();
 
   if (loading) return <LoadingSpinner message="Checking authentication..." />;
   if (!user) return <Navigate to="/login" replace />;
+  if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
+  if (!allowedRoles && user.role === CALIBRATOR_ROLE) return <Navigate to="/calibration" replace />;
 
-  return (
-    <WebSocketProvider plantId={PLANT_ID}>
-      <div className="app-layout">
-        <Sidebar pendingCount={pendingCount} />
-        <main className="main-content">
+  const layout = (
+    <div className="app-layout">
+      <Sidebar pendingCount={pendingCount} />
+      <main className="main-content">
+        <Suspense fallback={<LoadingSpinner message="Loading module..." />}>
           {children}
-        </main>
-      </div>
-    </WebSocketProvider>
+        </Suspense>
+      </main>
+    </div>
   );
+
+  return user.role === CALIBRATOR_ROLE
+    ? layout
+    : <WebSocketProvider plantId={PLANT_ID}>{layout}</WebSocketProvider>;
 }
 
 function RootRedirect() {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner message="Redirecting..." />;
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role === CALIBRATOR_ROLE) return <Navigate to="/calibration" replace />;
   if (user.role === 'admin') return <Navigate to="/users" replace />;
   return <Navigate to="/reports" replace />;
 }
@@ -54,21 +62,21 @@ export default function App() {
   const { user } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
 
-  // Poll for pending counts to show on the sidebar badge
-  const updatePendingCount = async () => {
-    if (!user) return;
-    try {
-      const res = await getPendingSessions();
-      setPendingCount(res.data?.length ?? 0);
-    } catch { /* ignore */ }
-  };
-
   useEffect(() => {
-    if (user) {
-      updatePendingCount();
-      const interval = setInterval(updatePendingCount, 30000);
-      return () => clearInterval(interval);
+    if (!user || user.role === CALIBRATOR_ROLE) {
+      setPendingCount(0);
+      return;
     }
+
+    const updatePendingCount = async () => {
+      try {
+        const res = await getPendingSessions();
+        setPendingCount(res.data?.length ?? 0);
+      } catch { /* ignore */ }
+    };
+    updatePendingCount();
+    const interval = setInterval(updatePendingCount, 30000);
+    return () => clearInterval(interval);
   }, [user]);
 
   return (
@@ -104,6 +112,14 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <DailyProductionReportsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/reports/downtime"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <DowntimeReportsPage />
           </ProtectedLayout>
         }
       />
@@ -177,7 +193,7 @@ export default function App() {
       <Route
         path="/calibration"
         element={
-          <ProtectedLayout pendingCount={pendingCount}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
             <CalibrationPage view="dashboard" />
           </ProtectedLayout>
         }
@@ -186,7 +202,7 @@ export default function App() {
       <Route
         path="/calibration/equipment"
         element={
-          <ProtectedLayout pendingCount={pendingCount}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
             <CalibrationPage view="equipment" />
           </ProtectedLayout>
         }
@@ -195,7 +211,7 @@ export default function App() {
       <Route
         path="/calibration/equipment/new"
         element={
-          <ProtectedLayout pendingCount={pendingCount}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
             <CalibrationPage view="register" />
           </ProtectedLayout>
         }

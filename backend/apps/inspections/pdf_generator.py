@@ -444,3 +444,168 @@ def generate_daily_production_pdf(report) -> str:
     doc.build(elements)
     return f"media/pdf_reports/{file_name}"
 
+
+def generate_downtime_pdf(qs, date_str: str, shift_str: str) -> str:
+    media_pdf_dir = os.path.join(settings.MEDIA_ROOT, 'pdf_reports')
+    os.makedirs(media_pdf_dir, exist_ok=True)
+
+    file_name = f"Downtime_Report_{date_str}_{shift_str}.pdf"
+    file_path = os.path.join(media_pdf_dir, file_name)
+
+    doc = SimpleDocTemplate(
+        file_path,
+        pagesize=landscape(A4),
+        rightMargin=15,
+        leftMargin=15,
+        topMargin=15,
+        bottomMargin=15
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle('Title', fontName='Helvetica-Bold', fontSize=14, alignment=1)
+    subtitle_style = ParagraphStyle('SubTitle', fontName='Helvetica-Bold', fontSize=10, alignment=1)
+    doc_ref_style = ParagraphStyle('DocRef', fontName='Helvetica-Bold', fontSize=8, alignment=2)
+    cyan_header_style = ParagraphStyle('CyanHeader', fontName='Helvetica-Bold', fontSize=14, alignment=1)
+    cell_style = ParagraphStyle('Cell', fontName='Helvetica', fontSize=7, alignment=1)
+    bold_cell = ParagraphStyle('BoldCell', fontName='Helvetica-Bold', fontSize=7, alignment=1)
+
+    elements = []
+
+    # 1. Header Table (Hanuman Engineering Works / DOWN TIME REPORT / Doc Ref)
+    header_data = [
+        [
+            Paragraph("<b>HANUMAN ENGINEERING<br/>WORKS</b>", title_style),
+            Paragraph("<b>DOWN TIME REPORT</b>", cyan_header_style),
+            Paragraph("<b>FORMAT NO. :- QF/MF-06</b><br/>REV. No./ Date :- 00 / 30.09.2026<br/><b>Shift:</b> " + str(shift_str), doc_ref_style)
+        ]
+    ]
+    header_table = Table(header_data, colWidths=[200, 420, 190])
+    header_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#B0E0E6')),  # Excel Cyan Color
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
+        ('PADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 6))
+
+    # 2. Date Sub-Header Banner
+    date_data = [[Paragraph(f"<b>DATE:</b> {date_str} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>SHIFT:</b> {shift_str}", ParagraphStyle('LeftDate', fontName='Helvetica-Bold', fontSize=9, alignment=0))]]
+    date_table = Table(date_data, colWidths=[810])
+    date_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E0F2FE')),
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('PADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(date_table)
+    elements.append(Spacer(1, 8))
+
+    # 3. Main Data Table with Excel Merged Header Columns
+    table_data = [
+        [
+            Paragraph("<b>Sr. No.</b>", bold_cell),
+            Paragraph("<b>Machine No.</b>", bold_cell),
+            Paragraph("<b>Operator Name</b>", bold_cell),
+            Paragraph("<b>Target</b>", bold_cell),
+            Paragraph("<b>Produced</b>", bold_cell),
+            Paragraph("<b>Accepted / Actual</b>", bold_cell),
+            Paragraph("<b>Rejection Summary</b>", bold_cell), "", "",
+            Paragraph("<b>DOWN TIME IN MINUTES</b>", bold_cell), "", "", "", "", "", "", "", "",
+            Paragraph("<b>Total Down Time (Min.)</b>", bold_cell),
+            Paragraph("<b>Remarks</b>", bold_cell)
+        ],
+        [
+            "", "", "", "", "", "",
+            Paragraph("<b>CR</b>", bold_cell), Paragraph("<b>MR</b>", bold_cell), Paragraph("<b>RW</b>", bold_cell),
+            Paragraph("<b>NO LOAD</b>", bold_cell), Paragraph("<b>NO OPERATOR</b>", bold_cell), Paragraph("<b>U/M</b>", bold_cell),
+            Paragraph("<b>SETTING</b>", bold_cell), Paragraph("<b>INSP. WAIT</b>", bold_cell), Paragraph("<b>TOOL CHANGE</b>", bold_cell),
+            Paragraph("<b>P/O</b>", bold_cell), Paragraph("<b>R/W</b>", bold_cell), Paragraph("<b>TOOL PROB</b>", bold_cell),
+            "", ""
+        ]
+    ]
+
+    total_downtime_sum = 0
+    total_produced_sum = 0
+    total_accepted_sum = 0
+
+    for idx, obj in enumerate(qs, 1):
+        prod = obj.production_report
+        op_name = prod.operator.get_full_name().strip() if prod.operator else '—'
+        if not op_name and prod.operator:
+            op_name = prod.operator.username
+
+        total_downtime_sum += obj.total_downtime
+        total_produced_sum += prod.jobs_completed
+        total_accepted_sum += prod.correct_jobs
+
+        table_data.append([
+            Paragraph(str(idx), cell_style),
+            Paragraph(prod.machine.machine_code, bold_cell),
+            Paragraph(op_name, cell_style),
+            Paragraph(str(prod.production_target), cell_style),
+            Paragraph(str(prod.jobs_completed), cell_style),
+            Paragraph(str(prod.correct_jobs), cell_style),
+            Paragraph(str(prod.cr_count), cell_style),
+            Paragraph(str(prod.mr_count), cell_style),
+            Paragraph(str(prod.rw_count), cell_style),
+            Paragraph(str(obj.no_load), cell_style),
+            Paragraph(str(obj.no_operator), cell_style),
+            Paragraph(str(obj.um), cell_style),
+            Paragraph(str(obj.setting), cell_style),
+            Paragraph(str(obj.inspection_wait), cell_style),
+            Paragraph(str(obj.tool_change), cell_style),
+            Paragraph(str(obj.power_off), cell_style),
+            Paragraph(str(obj.rework), cell_style),
+            Paragraph(str(obj.tool_problem), cell_style),
+            Paragraph(str(obj.total_downtime), bold_cell),
+            Paragraph(obj.remarks or '—', cell_style)
+        ])
+
+    # Summary Row
+    if len(qs) > 0:
+        table_data.append([
+            Paragraph("<b>TOTAL</b>", bold_cell), "", "", "",
+            Paragraph(f"<b>{total_produced_sum}</b>", bold_cell),
+            Paragraph(f"<b>{total_accepted_sum}</b>", bold_cell),
+            "", "", "", "", "", "", "", "", "", "", "", "",
+            Paragraph(f"<b>{total_downtime_sum} Min.</b>", bold_cell),
+            ""
+        ])
+
+    col_widths = [25, 50, 65, 35, 40, 50, 25, 25, 25, 35, 45, 30, 40, 40, 45, 30, 30, 35, 55, 75]
+    main_table = Table(table_data, colWidths=col_widths, repeatRows=2)
+
+    ts = [
+        ('BACKGROUND', (0, 0), (-1, 1), colors.HexColor('#B0E0E6')),
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('SPAN', (0, 0), (0, 1)),
+        ('SPAN', (1, 0), (1, 1)),
+        ('SPAN', (2, 0), (2, 1)),
+        ('SPAN', (3, 0), (3, 1)),
+        ('SPAN', (4, 0), (4, 1)),
+        ('SPAN', (5, 0), (5, 1)),
+        ('SPAN', (6, 0), (8, 0)),   # Rejection Summary span
+        ('SPAN', (9, 0), (17, 0)),  # DOWN TIME IN MINUTES span
+        ('SPAN', (18, 0), (18, 1)), # Total Down Time span
+        ('SPAN', (19, 0), (19, 1)), # Remarks span
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('PADDING', (0, 0), (-1, -1), 3),
+    ]
+
+    if len(qs) > 0:
+        summary_row_idx = len(table_data) - 1
+        ts.extend([
+            ('BACKGROUND', (0, summary_row_idx), (-1, summary_row_idx), colors.HexColor('#E2E8F0')),
+            ('SPAN', (0, summary_row_idx), (3, summary_row_idx)),
+        ])
+
+    main_table.setStyle(TableStyle(ts))
+    elements.append(main_table)
+
+    doc.build(elements)
+    return f"media/pdf_reports/{file_name}"
+
+

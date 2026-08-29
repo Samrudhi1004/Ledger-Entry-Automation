@@ -10,10 +10,12 @@ import {
   Cpu,
   BarChart3,
   Factory,
+  Gauge,
   LogOut,
   ChevronDown,
   ChevronRight,
   CheckSquare,
+  Clock,
 } from 'lucide-react';
 
 const MODULES = [
@@ -45,6 +47,16 @@ const MODULES = [
     label: 'Tasks Management',
     icon: CheckSquare,
     to: '/tasks',
+    items: [],
+  },
+];
+
+const CALIBRATION_MODULES = [
+  {
+    key: 'calibration',
+    label: 'Calibration Equipment',
+    icon: Gauge,
+    to: '/calibration',
     items: [],
   },
 ];
@@ -82,6 +94,14 @@ export default function Sidebar({ pendingCount = 0 }) {
   const initials = user
     ? `${user.first_name?.[0] ?? ''}${user.last_name?.[0] ?? ''}`.toUpperCase() || user.username?.[0]?.toUpperCase()
     : '?';
+  const isCalibrator = user?.role === 'calibrator';
+  const visibleModules = isCalibrator
+    ? CALIBRATION_MODULES
+    : MODULES.filter((module) => {
+        if (user?.role === 'admin') return module.key === 'master' || module.key === 'tasks';
+        if (user?.role === 'operator') return module.key !== 'tasks'; // operators use mobile app
+        return true;
+      });
 
   return (
     <aside className="sidebar">
@@ -91,18 +111,14 @@ export default function Sidebar({ pendingCount = 0 }) {
           <Factory size={20} color="#ffffff" />
         </div>
         <div className="sidebar-logo-text">
-          <span className="sidebar-logo-title">{user?.role === 'admin' ? 'Admin Hub' : 'Inspection Hub'}</span>
-          <span className="sidebar-logo-sub">{user?.role === 'admin' ? 'System Management' : 'Quality Control'}</span>
+          <span className="sidebar-logo-title">{isCalibrator ? 'Calibration Hub' : user?.role === 'admin' ? 'Admin Hub' : 'Inspection Hub'}</span>
+          <span className="sidebar-logo-sub">{isCalibrator ? 'Equipment Control' : user?.role === 'admin' ? 'System Management' : 'Quality Control'}</span>
         </div>
       </div>
 
       {/* Nav */}
       <nav className="sidebar-nav">
-        {MODULES.filter(m => {
-          if (user?.role === 'admin') return m.key === 'master' || m.key === 'tasks';
-          if (user?.role === 'operator') return m.key !== 'tasks'; // operators use mobile app
-          return true;
-        }).map((m) => {
+        {visibleModules.map((m) => {
           let module = m;
           if (module.key === 'master' && user?.role !== 'admin') {
             module = { ...m, items: m.items.filter(item => item.to !== '/users') };
@@ -110,6 +126,7 @@ export default function Sidebar({ pendingCount = 0 }) {
           const ModuleIcon = module.icon;
 
           if (module.to) {
+            const isDirectActive = location.pathname === module.to || location.pathname.startsWith(`${module.to}/`);
             return (
               <div key={module.key} className="sidebar-module">
                 <NavLink
