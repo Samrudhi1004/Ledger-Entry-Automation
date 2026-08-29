@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../services/api_service.dart';
+import '../services/persistence_service.dart';
 import 'account_screen.dart';
 import 'machine_select_screen.dart';
 import 'operation_select_screen.dart';
