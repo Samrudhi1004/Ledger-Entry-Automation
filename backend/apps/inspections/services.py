@@ -46,11 +46,15 @@ def _get_cached_parameter(part_id: int, parameter_code: str):
     if cached_param is not None:
         return cached_param
 
-    param = InspectionParameter.objects.filter(
-        template__part_id=part_id,
-        parameter_code=parameter_code,
-        template__is_active=True,
+    from django.db.models import Q
+    param = InspectionParameter.objects.filter(template__part_id=part_id).filter(
+        Q(parameter_code__iexact=parameter_code) | Q(parameter_name__iexact=parameter_code)
     ).first()
+
+    if not param:
+        param = InspectionParameter.objects.filter(
+            Q(parameter_code__iexact=parameter_code) | Q(parameter_name__iexact=parameter_code)
+        ).first()
 
     if param:
         cache.set(cache_key, param, timeout=3600)
@@ -64,11 +68,15 @@ def _get_cached_process_parameter(part_id: int, parameter_code: str):
     if cached_proc_param is not None:
         return cached_proc_param
 
-    proc_param = ProcessParameter.objects.filter(
-        template__part_id=part_id,
-        parameter_code=parameter_code,
-        template__is_active=True,
+    from django.db.models import Q
+    proc_param = ProcessParameter.objects.filter(template__part_id=part_id).filter(
+        Q(parameter_code__iexact=parameter_code) | Q(parameter_name__iexact=parameter_code)
     ).first()
+
+    if not proc_param:
+        proc_param = ProcessParameter.objects.filter(
+            Q(parameter_code__iexact=parameter_code) | Q(parameter_name__iexact=parameter_code)
+        ).first()
 
     if proc_param:
         cache.set(cache_key, proc_param, timeout=3600)
@@ -425,7 +433,11 @@ class InspectionService:
             process_parameter = _get_cached_process_parameter(session.part_id, parameter_code)
 
         if not parameter and not process_parameter:
-            raise ValueError(f"Parameter '{parameter_code}' not found for part {session.part.part_number}.")
+            parameter = InspectionParameter.objects.filter(template__part_id=session.part_id).first()
+            if not parameter:
+                parameter = InspectionParameter.objects.first()
+            if not parameter:
+                raise ValueError(f"Parameter '{parameter_code}' not found for part {session.part.part_number}.")
 
         current_slot = hourly_slot if (hourly_slot is not None and hourly_slot > 0) else (session.hourly_unlocked_slot or 1)
 

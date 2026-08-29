@@ -22,6 +22,8 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
   final _audioRecorder = AudioRecorder();
   final _scrollController = ScrollController();
 
+  bool _isRecording = false;
+  bool _isProcessing = false;
   final bool _autoAdvance = true; // Auto-advance parameter-by-parameter after filling
   String _transcribedText = '';
   Map<String, dynamic>? _lastResult;
@@ -297,12 +299,12 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                   const Divider(height: 1, color: Color(0xFFE2E8F0)),
                   Expanded(
                     child: GridView.builder(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(12),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 1.25,
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                        childAspectRatio: 1.05,
                       ),
                       itemCount: params.length,
                       itemBuilder: (context, index) {
@@ -324,30 +326,30 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                             Navigator.pop(ctx);
                             _scrollToCurrentParam();
                           },
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(10),
                           child: Container(
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               color: isCurrent
                                   ? const Color(0xFFEFF6FF)
                                   : isRecorded
                                       ? (isPass ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2))
                                       : Colors.white,
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(10),
                               border: Border.all(
                                 color: isCurrent
                                     ? const Color(0xFF2563EB)
                                     : isRecorded
                                         ? (isPass ? const Color(0xFFA7F3D0) : const Color(0xFFFCA5A5))
                                         : const Color(0xFFE2E8F0),
-                                width: isCurrent ? 2 : 1,
+                                width: isCurrent ? 1.5 : 1,
                               ),
                               boxShadow: [
                                 if (isCurrent)
                                   const BoxShadow(
                                     color: Color(0x1A2563EB),
-                                    blurRadius: 8,
-                                    offset: Offset(0, 3),
+                                    blurRadius: 6,
+                                    offset: Offset(0, 2),
                                   ),
                               ],
                             ),
@@ -358,19 +360,19 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                                 Row(
                                   children: [
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                                       decoration: BoxDecoration(
                                         color: isCurrent
                                             ? const Color(0xFF2563EB)
                                             : const Color(0xFFF1F5F9),
-                                        borderRadius: BorderRadius.circular(6),
+                                        borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: Text(
                                         '#${index + 1}',
                                         style: TextStyle(
                                           color: isCurrent ? Colors.white : const Color(0xFF64748B),
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 10,
+                                          fontSize: 9,
                                         ),
                                       ),
                                     ),
@@ -379,10 +381,10 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                                       Icon(
                                         isPass ? Icons.check_circle_rounded : Icons.cancel_rounded,
                                         color: isPass ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                                        size: 18,
+                                        size: 15,
                                       )
                                     else
-                                      const Icon(Icons.circle_outlined, color: Color(0xFF94A3B8), size: 16),
+                                      const Icon(Icons.circle_outlined, color: Color(0xFF94A3B8), size: 13),
                                   ],
                                 ),
                                 Text(
@@ -390,24 +392,23 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                                   style: TextStyle(
                                     color: const Color(0xFF0F172A),
                                     fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
-                                    fontSize: 13,
+                                    fontSize: 11,
+                                    height: 1.15,
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                Row(
-                                  children: [
-                                    Text(
-                                      isRecorded ? '$measuredVal $unit' : 'Target: $nom $unit',
-                                      style: TextStyle(
-                                        color: isRecorded
-                                            ? (isPass ? const Color(0xFF059669) : const Color(0xFFDC2626))
-                                            : const Color(0xFF64748B),
-                                        fontSize: 11,
-                                        fontWeight: isRecorded ? FontWeight.bold : FontWeight.normal,
-                                      ),
-                                    ),
-                                  ],
+                                Text(
+                                  isRecorded ? '$measuredVal $unit' : '$nom $unit',
+                                  style: TextStyle(
+                                    color: isRecorded
+                                        ? (isPass ? const Color(0xFF059669) : const Color(0xFFDC2626))
+                                        : const Color(0xFF64748B),
+                                    fontSize: 9.5,
+                                    fontWeight: isRecorded ? FontWeight.bold : FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),
