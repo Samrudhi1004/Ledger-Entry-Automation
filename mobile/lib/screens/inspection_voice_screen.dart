@@ -22,9 +22,7 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
   final _audioRecorder = AudioRecorder();
   final _scrollController = ScrollController();
 
-  bool _isRecording = false;
-  bool _isProcessing = false;
-  final bool _autoAdvance = false; // Manual control (no auto-advance jump)
+  final bool _autoAdvance = true; // Auto-advance parameter-by-parameter after filling
   String _transcribedText = '';
   Map<String, dynamic>? _lastResult;
 
