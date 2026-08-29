@@ -136,8 +136,15 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 
-# ─── Django Channels (WebSocket) ──────────────────────────────
 USE_REDIS = os.getenv('USE_REDIS', 'false').lower() == 'true'
+
+if USE_REDIS:
+    import socket
+    try:
+        s = socket.create_connection(('127.0.0.1', 6379), timeout=0.5)
+        s.close()
+    except Exception:
+        USE_REDIS = False
 
 if USE_REDIS:
     CHANNEL_LAYERS = {
