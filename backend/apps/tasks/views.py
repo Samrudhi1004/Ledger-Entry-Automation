@@ -34,6 +34,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         if task.allocated_to != request.user:
             return Response({"detail": "You can only accept tasks assigned to you."}, status=status.HTTP_403_FORBIDDEN)
         
+        if task.status not in (Task.Status.PENDING,):
+            return Response({"detail": "Only pending tasks can be accepted."}, status=status.HTTP_400_BAD_REQUEST)
+        
         task.status = Task.Status.ACCEPTED
         task.save()
         return Response(TaskSerializer(task).data)
@@ -56,6 +59,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         task = self.get_object()
         if task.allocated_to != request.user:
             return Response({"detail": "You can only flag issues for tasks assigned to you."}, status=status.HTTP_403_FORBIDDEN)
+        
+        if task.status in (Task.Status.COMPLETED, Task.Status.CANCELLED):
+            return Response({"detail": "Cannot flag an issue on a completed or cancelled task."}, status=status.HTTP_400_BAD_REQUEST)
         
         issue_desc = request.data.get('issue_description')
         if not issue_desc:

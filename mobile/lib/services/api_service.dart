@@ -710,7 +710,7 @@ class ApiService {
       final data = jsonDecode(response.body);
       return data is List ? data : (data['results'] ?? []);
     }
-    return [];
+    throw Exception('Failed to load tasks (status ${response.statusCode})');
   }
 
   static Future<bool> acceptTask(int taskId) async {

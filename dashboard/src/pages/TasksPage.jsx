@@ -385,7 +385,7 @@ function UserTasksView({ tasks, loading, refreshing, onRefresh, onAllocate, onRe
               <tr>
                 <th>Task</th>
                 {activeTab === 'mine' && <th>Assigned To</th>}
-                {activeTab === 'assigned' && <th>Assigned To</th>}
+                {activeTab === 'assigned' && <th>Allocated By</th>}
                 <th>Deadline</th>
                 <th>Status</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
@@ -398,7 +398,7 @@ function UserTasksView({ tasks, loading, refreshing, onRefresh, onAllocate, onRe
                   task={task}
                   currentUser={currentUser}
                   onResolve={onResolve}
-                  showAllocatedBy={false}
+                  showAllocatedBy={activeTab === 'assigned'}
                 />
               ))}
             </tbody>

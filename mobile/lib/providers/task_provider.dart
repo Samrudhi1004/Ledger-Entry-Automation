@@ -21,20 +21,56 @@ class TaskProvider with ChangeNotifier {
   }
 
   Future<bool> acceptTask(int taskId) async {
-    final success = await ApiService.acceptTask(taskId);
-    if (success) await fetchTasks();
-    return success;
+    try {
+      final success = await ApiService.acceptTask(taskId);
+      if (success) {
+        errorMessage = '';
+        await fetchTasks();
+      } else {
+        errorMessage = 'Failed to accept task.';
+      }
+      notifyListeners();
+      return success;
+    } catch (e) {
+      errorMessage = e.toString();
+      notifyListeners();
+      return false;
+    }
   }
 
   Future<bool> completeTask(int taskId) async {
-    final success = await ApiService.completeTask(taskId);
-    if (success) await fetchTasks();
-    return success;
+    try {
+      final success = await ApiService.completeTask(taskId);
+      if (success) {
+        errorMessage = '';
+        await fetchTasks();
+      } else {
+        errorMessage = 'Failed to complete task.';
+      }
+      notifyListeners();
+      return success;
+    } catch (e) {
+      errorMessage = e.toString();
+      notifyListeners();
+      return false;
+    }
   }
 
   Future<bool> flagIssue(int taskId, String issueDescription) async {
-    final success = await ApiService.flagTaskIssue(taskId, issueDescription);
-    if (success) await fetchTasks();
-    return success;
+    try {
+      final success = await ApiService.flagTaskIssue(taskId, issueDescription);
+      if (success) {
+        errorMessage = '';
+        await fetchTasks();
+      } else {
+        errorMessage = 'Failed to flag issue.';
+      }
+      notifyListeners();
+      return success;
+    } catch (e) {
+      errorMessage = e.toString();
+      notifyListeners();
+      return false;
+    }
   }
 }

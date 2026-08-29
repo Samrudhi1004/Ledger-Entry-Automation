@@ -1,9 +1,9 @@
-﻿import os
+import os
 import django
 import sys
 from datetime import datetime
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
 from apps.users.models import User
