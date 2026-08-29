@@ -6,8 +6,6 @@ import '../providers/inspection_provider.dart';
 import 'app_home_screen.dart';
 import 'operation_select_screen.dart';
 import 'report_sheet_screen.dart';
-import 'inspection_voice_screen.dart';
-import 'daily_production_report_screen.dart';
 
 class SummaryScreen extends StatefulWidget {
   const SummaryScreen({super.key});
@@ -55,17 +53,55 @@ class _SummaryScreenState extends State<SummaryScreen> {
     return '${res['measured_value']} ${param['unit']}';
   }
 
+  bool _isPass(Map<String, dynamic> param, Map<String, dynamic>? res) {
+    if (res == null) return false;
+    final st = (res['status'] ?? '').toString().toLowerCase();
+    if (st == 'ok' || st == 'pass' || res['is_pass'] == true) return true;
+    if (st == 'out_of_spec' || st == 'reject' || res['is_pass'] == false) return false;
+
+    final val = double.tryParse('${res['measured_value'] ?? res['value']}');
+    if (val == null) return false;
+
+    final type = (param['measurement_type'] ?? '').toString().toLowerCase();
+    final name = (param['parameter_name'] ?? '').toString().toUpperCase();
+
+    if (type == 'visual') return val >= 0.5;
+    if (name.contains('MIN')) {
+      final minVal = double.tryParse('${param['lower_limit'] ?? param['nominal_value']}');
+      if (minVal != null) return val >= minVal;
+    }
+    if (type == 'surface' || name.contains('MAX')) {
+      final maxVal = double.tryParse('${param['nominal_value'] ?? param['upper_limit']}');
+      if (maxVal != null) return val <= maxVal;
+    }
+    final ll = double.tryParse('${param['lower_limit']}');
+    final ul = double.tryParse('${param['upper_limit']}');
+    if (ll != null && ul != null) return val >= ll && val <= ul;
+
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<InspectionProvider>(context);
+    final auth = Provider.of<AuthProvider>(context);
     final results = provider.recordedResults;
+    final isInspector = auth.isInspector;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 1,
-        title: const Text('Inspection Session Summary', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)),
+        elevation: 0,
+        scrolledUnderElevation: 0.5,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(color: const Color(0xFFE2E8F0), height: 1.0),
+        ),
+        title: const Text(
+          'Session Summary',
+          style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 17),
+        ),
         iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
         actions: [
           IconButton(
@@ -81,195 +117,215 @@ class _SummaryScreenState extends State<SummaryScreen> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Session Overview Banner
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0D1424),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF1E293B)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Part: ${provider.selectedPart?['part_number'] ?? '-'} (${provider.selectedPart?['part_name'] ?? provider.selectedPart?['part_number'] ?? '-'})',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: provider.inspectionType == 'first_piece'
-                              ? const Color(0xFF38BDF8).withValues(alpha: 0.15)
-                              : const Color(0xFF10B981).withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: provider.inspectionType == 'first_piece'
-                                ? const Color(0xFF38BDF8)
-                                : const Color(0xFF10B981),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Session Overview Card
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x0A0F172A),
+                      blurRadius: 10,
+                      offset: Offset(0, 3),
+                    )
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Part: ${provider.selectedPart?['part_number'] ?? '-'} (${provider.selectedPart?['part_name'] ?? provider.selectedPart?['part_number'] ?? '-'})',
+                            style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 15),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        child: Text(
-                          provider.inspectionType == 'first_piece'
-                              ? '1ST PC #${provider.trialNumber} SHEET'
-                              : 'HOURLY SHEET',
-                          style: TextStyle(
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
                             color: provider.inspectionType == 'first_piece'
-                                ? const Color(0xFF38BDF8)
-                                : const Color(0xFF10B981),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                                ? const Color(0xFFEFF6FF)
+                                : const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: provider.inspectionType == 'first_piece'
+                                  ? const Color(0xFFBFDBFE)
+                                  : const Color(0xFFA7F3D0),
+                            ),
+                          ),
+                          child: Text(
+                            provider.inspectionType == 'first_piece'
+                                ? '1ST PC #${provider.trialNumber}'
+                                : 'SLOT ${provider.hourlySlot}/HR',
+                            style: TextStyle(
+                              color: provider.inspectionType == 'first_piece'
+                                  ? const Color(0xFF2563EB)
+                                  : const Color(0xFF059669),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Machine: ${provider.selectedMachine?['machine_code'] ?? 'CNC-01'}  •  Recorded: ${results.length} of ${provider.parameters.length} params',
-                    style: const TextStyle(color: Colors.blueGrey, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-            const Text(
-              'RECORDED PARAMETERS CHECKLIST',
-              style: TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-            ),
-            const SizedBox(height: 12),
-
-            Expanded(
-              child: ListView.builder(
-                itemCount: provider.parameters.length,
-                itemBuilder: (context, index) {
-                  final param = provider.parameters[index];
-                  final code = param['parameter_code'];
-                  final res = results[code];
-                  final isRecorded = res != null;
-                  final isOk = isRecorded && res['status'] == 'ok';
-
-                  return Card(
-                    color: const Color(0xFF0D1424),
-                    margin: const EdgeInsets.only(bottom: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(
-                        color: isRecorded
-                            ? (isOk ? Colors.green.withValues(alpha: 0.5) : Colors.red.withValues(alpha: 0.5))
-                            : const Color(0xFF1E293B),
-                      ),
+                      ],
                     ),
-                    child: ListTile(
-                      title: Text(
-                        '${param['parameter_name']}',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Machine: ${provider.selectedMachine?['name'] ?? provider.selectedMachine?['machine_code'] ?? 'CNC-01'}  •  Recorded: ${results.length} of ${provider.parameters.length} params',
+                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+              const Text(
+                'RECORDED PARAMETERS CHECKLIST',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+              ),
+              const SizedBox(height: 10),
+
+              Expanded(
+                child: ListView.builder(
+                  itemCount: provider.parameters.length,
+                  itemBuilder: (context, index) {
+                    final param = provider.parameters[index];
+                    final code = param['parameter_code'];
+                    final res = results[code];
+                    final isRecorded = res != null;
+                    final isOk = isRecorded && _isPass(param, res);
+
+                    return Card(
+                      color: Colors.white,
+                      elevation: 0,
+                      margin: const EdgeInsets.only(bottom: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: isRecorded
+                              ? (isOk ? const Color(0xFFA7F3D0) : const Color(0xFFFCA5A5))
+                              : const Color(0xFFE2E8F0),
+                        ),
                       ),
-                      subtitle: Text(
-                        _formatSpecSubtitle(param),
-                        style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
-                      ),
-                      trailing: isRecorded
-                          ? Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: isOk ? Colors.green.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                '${_formatRecordedValue(param, res)} (${res['status'].toString().toUpperCase()})',
-                                style: TextStyle(
-                                  color: isOk ? Colors.green : Colors.red,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        title: Text(
+                          '${param['parameter_name']}',
+                          style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        subtitle: Text(
+                          _formatSpecSubtitle(param),
+                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                        ),
+                        trailing: isRecorded
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: isOk ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isOk ? const Color(0xFFA7F3D0) : const Color(0xFFFCA5A5),
+                                  ),
+                                ),
+                                child: Text(
+                                  '${_formatRecordedValue(param, res)} (${isOk ? 'OK' : 'FAIL'})',
+                                  style: TextStyle(
+                                    color: isOk ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              )
+                            : Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFFBEB),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFFFDE68A)),
+                                ),
+                                child: const Text(
+                                  'PENDING',
+                                  style: TextStyle(color: Color(0xFFD97706), fontWeight: FontWeight.bold, fontSize: 10),
                                 ),
                               ),
-                            )
-                          : const Text(
-                              'PENDING',
-                              style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
-                    ),
-                  );
-                },
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Submit / Finalize Session Button
-            ElevatedButton(
-              onPressed: _isSubmitting
-                  ? null
-                  : () async {
-                      // ⚠️ Guard: Block finalization if no parameters were loaded.
-                      // This prevents the false "FIRST PIECE FINALIZED & PASSED"
-                      // shown when parameters.length == 0 and oocCount == 0.
-                      if (provider.parameters.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              '❌ Cannot finalize: No inspection parameters were loaded for this session. '
-                              'Please ensure the operation template has configured parameters.',
+              // Submit / Finalize Session Button
+              ElevatedButton(
+                onPressed: _isSubmitting
+                    ? null
+                    : () async {
+                        if (provider.parameters.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                '❌ Cannot finalize: No inspection parameters were loaded for this session.',
+                              ),
+                              backgroundColor: Colors.redAccent,
+                              behavior: SnackBarBehavior.floating,
                             ),
-                            backgroundColor: Colors.redAccent,
-                            duration: Duration(seconds: 5),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                        return;
-                      }
+                          );
+                          return;
+                        }
 
-                      setState(() {
-                        _isSubmitting = true;
-                      });
+                        setState(() {
+                          _isSubmitting = true;
+                        });
 
-                      final auth = Provider.of<AuthProvider>(context, listen: false);
-                      Map<String, dynamic>? finalResult;
+                        Map<String, dynamic>? finalResult;
+                        if (isInspector) {
+                          finalResult = await provider.finalizeFirstPieceSession();
+                        } else {
+                          await provider.completeSession();
+                        }
 
-                      if (auth.isInspector) {
-                        finalResult = await provider.finalizeFirstPieceSession();
-                      } else {
-                        await provider.completeSession();
-                      }
+                        if (!mounted) return;
 
-                      if (!mounted) return;
+                        setState(() {
+                          _isSubmitting = false;
+                        });
 
-                      setState(() {
-                        _isSubmitting = false;
-                      });
-
-                      _showCompletionDialog(provider, finalResult);
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Provider.of<AuthProvider>(context, listen: false).isInspector ? Colors.blueAccent : Colors.green,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        _showCompletionDialog(provider, finalResult);
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2563EB),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: _isSubmitting
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                      )
+                    : Text(
+                        isInspector
+                            ? 'FINALIZE FIRST PIECE & GENERATE REPORT'
+                            : 'SUBMIT HOURLY INSPECTION (SLOT ${provider.hourlySlot}/HR)',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.3),
+                      ),
               ),
-              child: _isSubmitting
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : Text(
-                      Provider.of<AuthProvider>(context, listen: false).isInspector
-                          ? 'FINALIZE FIRST PIECE & GENERATE PDF'
-                          : 'SUBMIT HOURLY SESSION',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-            ),
-
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -282,7 +338,8 @@ class _SummaryScreenState extends State<SummaryScreen> {
     int oocCount = 0;
 
     results.forEach((key, val) {
-      if (val['status'] == 'ok') {
+      final isOk = _isPass({'parameter_code': key}, val);
+      if (isOk) {
         okCount++;
       } else {
         oocCount++;
@@ -293,10 +350,6 @@ class _SummaryScreenState extends State<SummaryScreen> {
         'Op ${provider.selectedTemplate?['version'] ?? 10} — Inspection';
 
     final isInspector = Provider.of<AuthProvider>(context, listen: false).isInspector;
-
-    // ⚠️ Hard guard: 0/0 must NEVER be treated as PASSED.
-    // If no parameters are present, this is an invalid finalization state.
-    // isPassed requires: (a) API returned finalized_passed, OR (b) oocCount==0 AND totalParams>0.
     final isPassed = (finalResult?['status'] == 'finalized_passed') ||
         (oocCount == 0 && totalParams > 0 && results.isNotEmpty);
 
@@ -304,237 +357,106 @@ class _SummaryScreenState extends State<SummaryScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF0D1424),
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: isPassed ? Colors.greenAccent : Colors.redAccent, width: 1.5),
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: isPassed ? const Color(0xFF059669) : const Color(0xFFDC2626),
+            width: 1.5,
+          ),
         ),
         title: Column(
           children: [
-            Icon(isPassed ? Icons.verified_rounded : Icons.warning_rounded, color: isPassed ? Colors.greenAccent : Colors.redAccent, size: 54),
+            Icon(
+              isPassed ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+              color: isPassed ? const Color(0xFF059669) : const Color(0xFFDC2626),
+              size: 54,
+            ),
             const SizedBox(height: 10),
             Text(
               isInspector
-                  ? (isPassed ? 'FIRST PIECE FINALIZED & PASSED!' : 'FIRST PIECE FINALIZED (FAILED)')
+                  ? (isPassed ? 'FIRST PIECE FINALIZED & PASSED!' : 'FIRST PIECE FINALIZED (REJECTED)')
                   : 'HOURLY INSPECTION SUBMITTED!',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+              style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 17),
             ),
             const SizedBox(height: 4),
             Text(
               templateName,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.blueAccent, fontSize: 13, fontWeight: FontWeight.w600),
+              style: const TextStyle(color: Color(0xFF2563EB), fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],
         ),
-
         content: SizedBox(
           width: double.maxFinite,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Show warning if 0 parameters were recorded (abnormal state)
-              if (totalParams == 0) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.redAccent),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 20),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'No inspection parameters were loaded. This session has 0 parameters — results are invalid.',
-                          style: TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF131D30),
-                  borderRadius: BorderRadius.circular(10),
+                  color: isPassed ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isPassed ? const Color(0xFFA7F3D0) : const Color(0xFFFCA5A5),
+                  ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildStatCol('FILLED', '${results.length} / $totalParams', Colors.blueAccent),
-                    _buildStatCol('PASSED (OK)', '$okCount', Colors.greenAccent),
-                    _buildStatCol('OOC FAIL', '$oocCount', Colors.redAccent),
+                    Column(
+                      children: [
+                        const Text('WITHIN SPEC', style: TextStyle(color: Color(0xFF059669), fontSize: 10, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Text('$okCount / $totalParams', style: const TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                    Container(height: 24, width: 1, color: const Color(0xFFCBD5E1)),
+                    Column(
+                      children: [
+                        const Text('OUT OF SPEC', style: TextStyle(color: Color(0xFFDC2626), fontSize: 10, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Text('$oocCount / $totalParams', style: const TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('FILLED MEASUREMENTS:', style: TextStyle(color: Colors.blueGrey, fontSize: 11, fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 6),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: provider.parameters.length,
-                  itemBuilder: (_, idx) {
-                    final p = provider.parameters[idx];
-                    final code = p['parameter_code'];
-                    final res = results[code];
-                    if (res == null) return const SizedBox.shrink();
-                    final isOk = res['status'] == 'ok';
-
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '${p['parameter_name']}',
-                              style: const TextStyle(color: Colors.white70, fontSize: 12),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Row(
-                            children: [
-                              Text('${res['measured_value']} ${p['unit']}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                              const SizedBox(width: 6),
-                              Icon(isOk ? Icons.check_circle : Icons.cancel, color: isOk ? Colors.greenAccent : Colors.redAccent, size: 14),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+              const SizedBox(height: 12),
+              Text(
+                isInspector
+                    ? (isPassed
+                        ? 'Production line setup is approved. Operators may proceed with hourly manufacturing.'
+                        : 'Setup parameters failed validation. Corrective trial required.')
+                    : 'Hourly Slot ${provider.hourlySlot}/HR recorded successfully into the digital F02 inspection ledger.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
               ),
             ],
           ),
         ),
         actions: [
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF38BDF8),
-                    side: const BorderSide(color: Color(0xFF38BDF8)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  icon: const Icon(Icons.home_rounded, size: 16),
-                  label: const Text('BACK TO HOME', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                  onPressed: () {
-                    provider.resetForNextOperation();
-                    Navigator.pop(ctx);
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AppHomeScreen()),
-                      (route) => false,
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isInspector
-                        ? ((oocCount > 0 && provider.trialNumber < 3) ? const Color(0xFFF59E0B) : const Color(0xFF10B981))
-                        : const Color(0xFF10B981),
-                    foregroundColor: (isInspector && oocCount > 0 && provider.trialNumber < 3) ? Colors.black : Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  icon: Icon(
-                    isInspector
-                        ? ((oocCount > 0 && provider.trialNumber < 3) ? Icons.build_circle_rounded : Icons.assignment_turned_in_rounded)
-                        : Icons.fact_check_rounded,
-                    size: 16,
-                  ),
-                  label: Text(
-                    isInspector
-                        ? ((oocCount > 0 && provider.trialNumber < 3)
-                            ? 'RETRIAL 1ST PC #${provider.trialNumber + 1} ($oocCount WRONG)'
-                            : 'FINALIZE 1ST PIECE REPORT')
-                        : 'NEXT OPERATION',
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                  onPressed: () async {
-                    final auth = Provider.of<AuthProvider>(context, listen: false);
-                    final navigator = Navigator.of(context);
-                    final messenger = ScaffoldMessenger.of(context);
-
-                    Navigator.pop(ctx);
-
-                    if (auth.isInspector) {
-                      final currentTrial = provider.trialNumber;
-                      if (oocCount > 0 && currentTrial < 3) {
-                        final nextTrial = currentTrial + 1;
-                        final template = provider.selectedTemplate;
-                        if (template != null) {
-                          await provider.loadParametersForRetrial(template, trial: nextTrial);
-                          await provider.startSession(trial: nextTrial, inspectionType: 'first_piece');
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Text('⚠️ Wrong parameter entry detected in 1ST PC #$currentTrial! Starting 1ST PC #$nextTrial corrective retrial.'),
-                              backgroundColor: const Color(0xFFF59E0B),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                          navigator.push(
-                            MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
-                          );
-                          return;
-                        }
-                      }
-                      navigator.push(
-                        MaterialPageRoute(builder: (_) => const ReportSheetScreen()),
-                      );
-                    } else {
-                      // Capture slot state BEFORE reset (reset clears completedHourlySlots).
-                      // ONLY check contains(8) — after slot 7 completes, hourlySlot auto-advances
-                      // to 8 but slot 8 is NOT done yet. hourlySlot >= 8 would fire too early.
-                      final wasSlot8Done = provider.completedHourlySlots.contains(8);
-                      provider.resetForNextOperation();
-                      if (wasSlot8Done) {
-                        // Slot 8 inspection is fully submitted → go to Daily Production Report
-                        navigator.push(
-                          MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
-                        );
-                      } else {
-                        // Still have slots to complete → go back to operation select
-                        navigator.push(
-                          MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
-                        );
-                      }
-                    }
-                  },
-                ),
-              ),
-            ],
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
+                (route) => false,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 44),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            child: const Text('CONTINUE TO OPERATIONS', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
   }
-
-  Widget _buildStatCol(String title, String val, Color col) {
-    return Column(
-      children: [
-        Text(val, style: TextStyle(color: col, fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 2),
-        Text(title, style: const TextStyle(color: Colors.blueGrey, fontSize: 10)),
-      ],
-    );
-  }
 }
-
