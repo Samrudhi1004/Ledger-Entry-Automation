@@ -11,7 +11,7 @@ class ApiService {
   static String baseUrl = const String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: kDebugMode
-        ? 'http://10.0.2.2:8000/api'
+        ? (kIsWeb ? 'http://127.0.0.1:8000/api' : 'http://10.0.2.2:8000/api')
         : 'https://ledger-entry-backend.onrender.com/api',
   );
 
@@ -699,5 +699,50 @@ class ApiService {
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+  }
+
+  // ── Tasks ────────────────────────────────────────────────────────────────────
+  static Future<List<dynamic>> getTasks() async {
+    final response = await authenticatedRequest(
+      (headers) => http.get(Uri.parse('$baseUrl/tasks/'), headers: headers),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data is List ? data : (data['results'] ?? []);
+    }
+    throw Exception('Failed to load tasks (status ${response.statusCode})');
+  }
+
+  static Future<bool> acceptTask(int taskId) async {
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/tasks/$taskId/accept/'),
+        headers: headers,
+        body: jsonEncode({}),
+      ),
+    );
+    return response.statusCode == 200;
+  }
+
+  static Future<bool> completeTask(int taskId) async {
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/tasks/$taskId/complete/'),
+        headers: headers,
+        body: jsonEncode({}),
+      ),
+    );
+    return response.statusCode == 200;
+  }
+
+  static Future<bool> flagTaskIssue(int taskId, String issueDescription) async {
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/tasks/$taskId/flag_issue/'),
+        headers: headers,
+        body: jsonEncode({'issue_description': issueDescription}),
+      ),
+    );
+    return response.statusCode == 200;
   }
 }

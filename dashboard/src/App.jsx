@@ -16,6 +16,7 @@ import MachinesPage from './pages/MachinesPage';
 import MachineDetailPage from './pages/MachineDetailPage';
 import ParametersPage from './pages/ParametersPage';
 import UsersPage from './pages/UsersPage';
+import TasksPage from './pages/TasksPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
 
@@ -212,6 +213,15 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
             <CalibrationPage view="register" />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
+        path="/tasks"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <TasksPage />
           </ProtectedLayout>
         }
       />

@@ -14,6 +14,7 @@ import {
   LogOut,
   ChevronDown,
   ChevronRight,
+  CheckSquare,
   Clock,
 } from 'lucide-react';
 
@@ -39,6 +40,13 @@ const MODULES = [
     label: 'Production Module',
     icon: Layers,
     to: '/production',
+    items: [],
+  },
+  {
+    key: 'tasks',
+    label: 'Tasks Management',
+    icon: CheckSquare,
+    to: '/tasks',
     items: [],
   },
 ];
@@ -89,7 +97,11 @@ export default function Sidebar({ pendingCount = 0 }) {
   const isCalibrator = user?.role === 'calibrator';
   const visibleModules = isCalibrator
     ? CALIBRATION_MODULES
-    : MODULES.filter((module) => user?.role === 'admin' ? module.key === 'master' : true);
+    : MODULES.filter((module) => {
+        if (user?.role === 'admin') return module.key === 'master' || module.key === 'tasks';
+        if (user?.role === 'operator') return module.key !== 'tasks'; // operators use mobile app
+        return true;
+      });
 
   return (
     <aside className="sidebar">
@@ -116,16 +128,15 @@ export default function Sidebar({ pendingCount = 0 }) {
           if (module.to) {
             const isDirectActive = location.pathname === module.to || location.pathname.startsWith(`${module.to}/`);
             return (
-              <div key={module.key} className={`sidebar-module${isDirectActive ? ' has-active' : ''}`}>
+              <div key={module.key} className="sidebar-module">
                 <NavLink
                   to={module.to}
-                  className={`sidebar-module-header${isDirectActive ? ' active' : ''}`}
-                  style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+                  className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
                 >
                   <span className="module-icon">
                     <ModuleIcon size={16} />
                   </span>
-                  <span className="module-title">{module.label}</span>
+                  <span>{module.label}</span>
                 </NavLink>
               </div>
             );

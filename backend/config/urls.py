@@ -21,6 +21,7 @@ urlpatterns = [
     path('api/dashboard/',   include('apps.dashboard.urls')),
     path('api/analytics/',   include('apps.analytics.urls')),
     path('api/calibration/', include('apps.calibration.urls')),
+    path('api/', include('apps.tasks.urls')),
 ]
 
 # Serve media files in development
