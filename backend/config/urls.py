@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/voice/',       include('apps.voice.urls')),
     path('api/dashboard/',   include('apps.dashboard.urls')),
     path('api/analytics/',   include('apps.analytics.urls')),
+    path('api/calibration/', include('apps.calibration.urls')),
 ]
 
 # Serve media files in development
