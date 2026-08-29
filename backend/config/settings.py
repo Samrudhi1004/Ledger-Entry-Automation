@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'apps.dashboard',
     'apps.analytics',
     'apps.calibration',
+    'apps.tasks',
 ]
 
 # ─── Middleware ────────────────────────────────────────────────

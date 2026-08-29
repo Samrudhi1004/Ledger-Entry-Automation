@@ -11,6 +11,7 @@ import 'operation_select_screen.dart';
 import 'daily_production_report_screen.dart';
 import 'inspection_voice_screen.dart';
 import 'setup_approval_report_screen.dart';
+import 'tasks_screen.dart';
 
 class AppHomeScreen extends StatefulWidget {
   const AppHomeScreen({super.key});
@@ -792,9 +793,10 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: IndexedStack(
-          index: _currentIndex == 1 ? 1 : 0,
+          index: _currentIndex,
           children: [
             homeTabContent,
+            const TasksScreen(),
             const AccountScreen(),
           ],
         ),
@@ -845,7 +847,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
               ),
             ),
 
-            // Tab 2: About (Profile & Station details)
+            // Tab 2: Tasks
             InkWell(
               onTap: () => setState(() => _currentIndex = 1),
               borderRadius: BorderRadius.circular(20),
@@ -854,16 +856,43 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                 child: Row(
                   children: [
                     Icon(
-                      Icons.person_rounded,
+                      Icons.task_alt_rounded,
                       color: _currentIndex == 1 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                      size: 22,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Tasks',
+                      style: TextStyle(
+                        color: _currentIndex == 1 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                        fontWeight: _currentIndex == 1 ? FontWeight.bold : FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Tab 3: About (Profile & Station details)
+            InkWell(
+              onTap: () => setState(() => _currentIndex = 2),
+              borderRadius: BorderRadius.circular(20),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.person_rounded,
+                      color: _currentIndex == 2 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
                       size: 22,
                     ),
                     const SizedBox(width: 6),
                     Text(
                       'About',
                       style: TextStyle(
-                        color: _currentIndex == 1 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
-                        fontWeight: _currentIndex == 1 ? FontWeight.bold : FontWeight.w600,
+                        color: _currentIndex == 2 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                        fontWeight: _currentIndex == 2 ? FontWeight.bold : FontWeight.w600,
                         fontSize: 13,
                       ),
                     ),

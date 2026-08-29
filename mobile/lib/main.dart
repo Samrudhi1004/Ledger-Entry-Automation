@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/inspection_provider.dart';
+import 'providers/task_provider.dart';
 import 'screens/splash_screen.dart';
 
 void main() {
@@ -19,6 +20,7 @@ class VoiceInspectionApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => InspectionProvider()),
+        ChangeNotifierProvider(create: (_) => TaskProvider()),
       ],
       child: MaterialApp(
         title: 'Voice Inspection Operator Terminal',
