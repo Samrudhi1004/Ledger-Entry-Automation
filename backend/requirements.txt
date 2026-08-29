@@ -27,6 +27,7 @@ python-dotenv==1.2.2
 faster-whisper
 ffmpeg-python
 reportlab
+openpyxl
 # ─── Number Parsing ────────────────────────────────────────────
 word2number==1.1
 

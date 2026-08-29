@@ -19,10 +19,12 @@ from .views import (
     FirstPieceStatusView,
     SetupApprovalView,
     DailyProductionReportViewSet,
+    DowntimeReportViewSet,
 )
 
 router = SimpleRouter()
 router.register('daily-production-reports', DailyProductionReportViewSet, basename='daily-production-report')
+router.register('downtime-reports', DowntimeReportViewSet, basename='downtime-report')
 
 urlpatterns = [
     # Main session list

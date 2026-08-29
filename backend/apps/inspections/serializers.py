@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import InspectionSession, DailyProductionReport
+from .models import InspectionSession, DailyProductionReport, DowntimeReport
 
 
 class StartInspectionSerializer(serializers.Serializer):
@@ -194,4 +194,62 @@ class DailyProductionReportSerializer(serializers.ModelSerializer):
             })
 
         return attrs
+
+
+class DowntimeReportSerializer(serializers.ModelSerializer):
+    production_report_id = serializers.IntegerField(source='production_report.id', read_only=True)
+    date = serializers.DateField(source='production_report.date', read_only=True)
+    shift = serializers.CharField(source='production_report.shift', read_only=True)
+    machine = serializers.CharField(source='production_report.machine.machine_code', read_only=True)
+    machine_code = serializers.CharField(source='production_report.machine.machine_code', read_only=True)
+    machine_name = serializers.CharField(source='production_report.machine.name', read_only=True)
+    operator = serializers.SerializerMethodField()
+    operator_name = serializers.SerializerMethodField()
+    target = serializers.IntegerField(source='production_report.production_target', read_only=True)
+    produced = serializers.IntegerField(source='production_report.jobs_completed', read_only=True)
+    accepted_actual = serializers.IntegerField(source='production_report.correct_jobs', read_only=True)
+    cr = serializers.IntegerField(source='production_report.cr_count', read_only=True)
+    mr = serializers.IntegerField(source='production_report.mr_count', read_only=True)
+    rw = serializers.IntegerField(source='production_report.rw_count', read_only=True)
+
+    class Meta:
+        model = DowntimeReport
+        fields = [
+            'id', 'report_id', 'production_report', 'production_report_id',
+            'date', 'shift', 'machine', 'machine_code', 'machine_name',
+            'operator', 'operator_name',
+            'target', 'produced', 'accepted_actual', 'cr', 'mr', 'rw',
+            'no_load', 'no_operator', 'um', 'setting', 'inspection_wait',
+            'tool_change', 'power_off', 'rework', 'tool_problem',
+            'total_downtime', 'remarks', 'status',
+            'created_by', 'created_at', 'updated_at', 'completed_at'
+        ]
+        read_only_fields = [
+            'id', 'report_id', 'total_downtime', 'created_at', 'updated_at', 'completed_at'
+        ]
+
+    def get_operator(self, obj):
+        if obj.production_report and obj.production_report.operator:
+            name = obj.production_report.operator.get_full_name().strip()
+            return name if name else obj.production_report.operator.username
+        return '—'
+
+    def get_operator_name(self, obj):
+        return self.get_operator(obj)
+
+    def validate(self, attrs):
+        fields = [
+            'no_load', 'no_operator', 'um', 'setting',
+            'inspection_wait', 'tool_change', 'power_off',
+            'rework', 'tool_problem'
+        ]
+        for field in fields:
+            val = attrs.get(field)
+            if val is not None:
+                if not isinstance(val, int) or val < 0:
+                    raise serializers.ValidationError({
+                        field: f"{field} must be a non-negative integer."
+                    })
+        return attrs
+
 

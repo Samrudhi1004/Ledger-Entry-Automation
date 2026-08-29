@@ -13,6 +13,7 @@ import {
   LogOut,
   ChevronDown,
   ChevronRight,
+  Clock,
 } from 'lucide-react';
 
 const MODULES = [

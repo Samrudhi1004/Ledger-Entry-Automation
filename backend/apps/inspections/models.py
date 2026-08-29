@@ -117,7 +117,7 @@ class DailyProductionReport(models.Model):
     machine = models.ForeignKey('machines.Machine', on_delete=models.PROTECT, related_name='production_reports')
     part = models.ForeignKey('parts.Part', on_delete=models.PROTECT, related_name='production_reports')
     operation = models.CharField(max_length=100, blank=True, default='')
-    shift = models.CharField(max_length=1, choices=InspectionSession.Shift.choices, default=InspectionSession.Shift.A)
+    shift = models.CharField(max_length=20, default='A')
     operator = models.ForeignKey('users.User', on_delete=models.PROTECT, related_name='production_reports')
 
     production_target = models.PositiveIntegerField(default=0)
@@ -131,6 +131,12 @@ class DailyProductionReport(models.Model):
 
     remarks = models.TextField(blank=True, default='')
     achievement_percentage = models.FloatField(default=0.0)
+
+    class Status(models.TextChoices):
+        DRAFT = 'DRAFT', 'Draft'
+        SUBMITTED = 'SUBMITTED', 'Submitted'
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.SUBMITTED)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -148,4 +154,85 @@ class DailyProductionReport(models.Model):
 
     def __str__(self):
         return f"Daily Production Report {self.date} | {self.machine.machine_code} | {self.operator.username}"
+
+
+class DowntimeReport(models.Model):
+    """
+    Downtime Report attached strictly 1-to-1 to a DailyProductionReport.
+    Stores supervisor downtime entries (in minutes).
+    """
+    class Status(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        COMPLETED = 'COMPLETED', 'Completed'
+
+    report_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    production_report = models.OneToOneField(
+        DailyProductionReport,
+        on_delete=models.CASCADE,
+        related_name='downtime_report'
+    )
+
+    # Downtime fields in MINUTES
+    no_load = models.PositiveIntegerField(default=0)
+    no_operator = models.PositiveIntegerField(default=0)
+    um = models.PositiveIntegerField(default=0)
+    setting = models.PositiveIntegerField(default=0)
+    inspection_wait = models.PositiveIntegerField(default=0)
+    tool_change = models.PositiveIntegerField(default=0)
+    power_off = models.PositiveIntegerField(default=0)
+    rework = models.PositiveIntegerField(default=0)
+    tool_problem = models.PositiveIntegerField(default=0)
+
+    total_downtime = models.PositiveIntegerField(default=0)
+    remarks = models.TextField(blank=True, default='')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+
+    created_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_downtime_reports'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'downtime_reports'
+        ordering = ['-created_at']
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        downtime_fields = [
+            self.no_load, self.no_operator, self.um, self.setting,
+            self.inspection_wait, self.tool_change, self.power_off,
+            self.rework, self.tool_problem
+        ]
+        for val in downtime_fields:
+            if val is not None and val < 0:
+                raise ValidationError("Downtime values must be non-negative integers.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        self.total_downtime = (
+            (self.no_load or 0) +
+            (self.no_operator or 0) +
+            (self.um or 0) +
+            (self.setting or 0) +
+            (self.inspection_wait or 0) +
+            (self.tool_change or 0) +
+            (self.power_off or 0) +
+            (self.rework or 0) +
+            (self.tool_problem or 0)
+        )
+        if self.status == self.Status.COMPLETED and not self.completed_at:
+            from django.utils import timezone
+            self.completed_at = timezone.now()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Downtime Report | ProdRef: {self.production_report_id} | Total: {self.total_downtime} min"
+
 

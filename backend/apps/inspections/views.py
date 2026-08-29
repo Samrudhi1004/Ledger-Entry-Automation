@@ -14,6 +14,9 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from django.conf import settings
 from django.http import HttpResponse, FileResponse
+import io
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import csv
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -21,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 from apps.parts.models import Part
 from apps.machines.models import Machine
 from apps.users.permissions import IsSupervisorOrAbove, IsOperatorOrSupervisor
-from .models import InspectionSession, DailyProductionReport
+from .models import InspectionSession, DailyProductionReport, DowntimeReport
 from .serializers import (
     StartInspectionSerializer,
     RecordMeasurementSerializer,
@@ -29,8 +32,9 @@ from .serializers import (
     ReviewSerializer,
     InspectionSessionSerializer,
     DailyProductionReportSerializer,
+    DowntimeReportSerializer,
 )
-from .pdf_generator import generate_daily_production_pdf
+from .pdf_generator import generate_daily_production_pdf, generate_downtime_pdf
 from .services import InspectionService
 
 _service = InspectionService()
@@ -890,7 +894,11 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
     GET /api/inspections/daily-production-reports/export_excel/
     """
     serializer_class = DailyProductionReportSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['export_excel', 'export_pdf']:
+            return []
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         qs = DailyProductionReport.objects.select_related('machine', 'part', 'operator').all()
@@ -957,6 +965,407 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
             ])
 
         return response
+
+
+def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Downtime Report"
+    ws.views.sheetView[0].showGridLines = True
+
+    cyan_fill = PatternFill(start_color="B0E0E6", end_color="B0E0E6", fill_type="solid")
+    light_blue_fill = PatternFill(start_color="93C5FD", end_color="93C5FD", fill_type="solid")
+    sky_fill = PatternFill(start_color="7DD3FC", end_color="7DD3FC", fill_type="solid")
+    soft_cyan_fill = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid")
+
+    thin_border = Border(
+        left=Side(style='thin', color='000000'),
+        right=Side(style='thin', color='000000'),
+        top=Side(style='thin', color='000000'),
+        bottom=Side(style='thin', color='000000')
+    )
+
+    title_font = Font(name="Arial", size=13, bold=True)
+    header_font = Font(name="Arial", size=20, bold=True)
+    sub_font = Font(name="Arial", size=10, bold=True)
+    bold_cell_font = Font(name="Arial", size=9, bold=True)
+    regular_font = Font(name="Arial", size=9)
+    note_font = Font(name="Arial", size=9, italic=True)
+
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    align_left = Alignment(horizontal="left", vertical="center")
+    align_right = Alignment(horizontal="right", vertical="center")
+
+    # 1. Title Banner (Rows 1 to 3)
+    ws.merge_cells("A1:C2")
+    ws["A1"] = "HANUMAN ENGINEERING\nWORKS"
+    ws["A1"].font = title_font
+    ws["A1"].alignment = align_center
+
+    ws.merge_cells("A3:C3")
+    ws["A3"] = f"Date: {date_str if date_str and date_str != 'All' else ''}"
+    ws["A3"].font = sub_font
+    ws["A3"].alignment = align_left
+
+    ws.merge_cells("D1:S3")
+    ws["D1"] = "DOWN TIME REPORT"
+    ws["D1"].font = header_font
+    ws["D1"].alignment = align_center
+
+    ws.merge_cells("T1:V1")
+    ws["T1"] = "FORMAT NO. :- QF/MF-06"
+    ws["T1"].font = sub_font
+    ws["T1"].alignment = align_right
+
+    ws.merge_cells("T2:V2")
+    ws["T2"] = "REV. No./ Date :- 00 / 30.09.2026"
+    ws["T2"].font = sub_font
+    ws["T2"].alignment = align_right
+
+    ws.merge_cells("T3:V3")
+    ws["T3"] = f"Shift: {shift_str if shift_str and shift_str != 'All' else ''}"
+    ws["T3"].font = sub_font
+    ws["T3"].alignment = align_left
+
+    for row in range(1, 4):
+        for col in range(1, 23):
+            cell = ws.cell(row=row, column=col)
+            cell.fill = cyan_fill
+            cell.border = thin_border
+
+    # 2. Merged Headers (Rows 4 & 5)
+    ws.merge_cells("A4:A5")
+    ws["A4"] = "Sr. No."
+
+    ws.merge_cells("B4:B5")
+    ws["B4"] = "Machine\nNo."
+
+    ws.merge_cells("C4:C5")
+    ws["C4"] = "Operator Name"
+
+    ws.merge_cells("D4:D5")
+    ws["D4"] = "Target"
+
+    ws.merge_cells("E4:E5")
+    ws["E4"] = "Produced"
+
+    ws.merge_cells("F4:F5")
+    ws["F4"] = "Accepted\n/ Actual"
+
+    ws.merge_cells("G4:I4")
+    ws["G4"] = "Rejection Summary"
+    ws["G5"] = "CR"
+    ws["H5"] = "MR"
+    ws["I5"] = "RW"
+
+    ws.merge_cells("J4:R4")
+    ws["J4"] = "DOWN TIME IN MINUTES"
+    ws["J5"] = "NO LOAD"
+    ws["K5"] = "NO\nOPERATOR"
+    ws["L5"] = "U/M"
+    ws["M5"] = "SETTING"
+    ws["N5"] = "INSP.\nWAIT"
+    ws["O5"] = "TOOL\nCHANGE"
+    ws["P5"] = "P/O"
+    ws["Q5"] = "R/W"
+    ws["R5"] = "TOOL\nPROB"
+
+    ws.merge_cells("S4:S5")
+    ws["S4"] = "Total Down\nTime (Min.)"
+
+    ws.merge_cells("T4:V5")
+    ws["T4"] = "Remarks"
+
+    for row in (4, 5):
+        for col in range(1, 23):
+            cell = ws.cell(row=row, column=col)
+            cell.font = bold_cell_font
+            cell.alignment = align_center
+            cell.border = thin_border
+            if 7 <= col <= 9:
+                cell.fill = light_blue_fill
+            elif 10 <= col <= 18:
+                cell.fill = sky_fill
+            elif col == 19:
+                cell.fill = soft_cyan_fill
+            else:
+                cell.fill = cyan_fill
+
+    # 3. Data Rows (Row 6 onwards)
+    current_row = 6
+    for idx, obj in enumerate(qs, 1):
+        prod = obj.production_report
+        op_name = prod.operator.get_full_name().strip() if prod.operator else '—'
+        if not op_name and prod.operator:
+            op_name = prod.operator.username
+
+        ws.cell(row=current_row, column=1, value=idx).alignment = align_center
+        ws.cell(row=current_row, column=2, value=prod.machine.machine_code).alignment = align_center
+        ws.cell(row=current_row, column=3, value=op_name).alignment = align_left
+        ws.cell(row=current_row, column=4, value=prod.production_target).alignment = align_center
+        ws.cell(row=current_row, column=5, value=prod.jobs_completed).alignment = align_center
+        ws.cell(row=current_row, column=6, value=prod.correct_jobs).alignment = align_center
+
+        ws.cell(row=current_row, column=7, value=prod.cr_count).alignment = align_center
+        ws.cell(row=current_row, column=8, value=prod.mr_count).alignment = align_center
+        ws.cell(row=current_row, column=9, value=prod.rw_count).alignment = align_center
+
+        ws.cell(row=current_row, column=10, value=obj.no_load).alignment = align_center
+        ws.cell(row=current_row, column=11, value=obj.no_operator).alignment = align_center
+        ws.cell(row=current_row, column=12, value=obj.um).alignment = align_center
+        ws.cell(row=current_row, column=13, value=obj.setting).alignment = align_center
+        ws.cell(row=current_row, column=14, value=obj.inspection_wait).alignment = align_center
+        ws.cell(row=current_row, column=15, value=obj.tool_change).alignment = align_center
+        ws.cell(row=current_row, column=16, value=obj.power_off).alignment = align_center
+        ws.cell(row=current_row, column=17, value=obj.rework).alignment = align_center
+        ws.cell(row=current_row, column=18, value=obj.tool_problem).alignment = align_center
+
+        ws.cell(row=current_row, column=19, value=f"=SUM(J{current_row}:R{current_row})").alignment = align_center
+        ws.cell(row=current_row, column=19).font = bold_cell_font
+
+        ws.merge_cells(start_row=current_row, start_column=20, end_row=current_row, end_column=22)
+        ws.cell(row=current_row, column=20, value=obj.remarks or '').alignment = align_left
+
+        for col in range(1, 23):
+            c = ws.cell(row=current_row, column=col)
+            c.border = thin_border
+            if not c.font.bold:
+                c.font = regular_font
+
+        current_row += 1
+
+    # Empty grid rows up to row 19 matching template layout
+    while current_row < 20:
+        ws.cell(row=current_row, column=1, value=current_row - 5).alignment = align_center
+        ws.cell(row=current_row, column=19, value=f"=SUM(J{current_row}:R{current_row})").alignment = align_center
+        ws.cell(row=current_row, column=19).font = bold_cell_font
+        ws.merge_cells(start_row=current_row, start_column=20, end_row=current_row, end_column=22)
+
+        for col in range(1, 23):
+            c = ws.cell(row=current_row, column=col)
+            c.border = thin_border
+            if not c.font.bold:
+                c.font = regular_font
+        current_row += 1
+
+    # 4. Total Breakdown Row (Row 20)
+    total_row = current_row
+    ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=18)
+    ws.cell(row=total_row, column=1, value="Total breakdown Time(Min.)").alignment = align_right
+    ws.cell(row=total_row, column=1).font = bold_cell_font
+
+    ws.cell(row=total_row, column=19, value=f"=SUM(S6:S{total_row-1})").alignment = align_center
+    ws.cell(row=total_row, column=19).font = bold_cell_font
+    ws.cell(row=total_row, column=19).fill = soft_cyan_fill
+
+    ws.merge_cells(start_row=total_row, start_column=20, end_row=total_row, end_column=22)
+    for col in range(1, 23):
+        ws.cell(row=total_row, column=col).border = thin_border
+
+    # 5. Supervisor Sign Row (Row 21)
+    sig_row = total_row + 1
+    ws.merge_cells(start_row=sig_row, start_column=1, end_row=sig_row + 1, end_column=22)
+    ws.cell(row=sig_row, column=1, value="Supervisor Sign").alignment = Alignment(horizontal="left", vertical="top")
+    ws.cell(row=sig_row, column=1).font = Font(name="Arial", size=11, bold=True)
+    for r in range(sig_row, sig_row + 2):
+        for c in range(1, 23):
+            ws.cell(row=r, column=c).border = thin_border
+
+    # 6. Footer Note (Row 23)
+    note_row = sig_row + 2
+    ws.merge_cells(start_row=note_row, start_column=1, end_row=note_row, end_column=18)
+    ws.cell(row=note_row, column=1, value="Note: Actual Time to be Recorded in time (minutes)").alignment = align_left
+    ws.cell(row=note_row, column=1).font = note_font
+
+    ws.merge_cells(start_row=note_row, start_column=19, end_row=note_row, end_column=22)
+    ws.cell(row=note_row, column=19, value="Checked By").alignment = align_right
+    ws.cell(row=note_row, column=19).font = bold_cell_font
+
+    for col in range(1, 23):
+        ws.cell(row=note_row, column=col).border = thin_border
+
+    # Set Column Widths
+    col_widths = {
+        'A': 7, 'B': 12, 'C': 16, 'D': 9, 'E': 9, 'F': 11,
+        'G': 6, 'H': 6, 'I': 6,
+        'J': 9, 'K': 12, 'L': 7, 'M': 9, 'N': 8, 'O': 9, 'P': 6, 'Q': 6, 'R': 8,
+        'S': 15, 'T': 10, 'U': 10, 'V': 10
+    }
+    for col_letter, width in col_widths.items():
+        ws.column_dimensions[col_letter].width = width
+
+    ws.row_dimensions[1].height = 20
+    ws.row_dimensions[2].height = 20
+    ws.row_dimensions[3].height = 18
+    ws.row_dimensions[4].height = 20
+    ws.row_dimensions[5].height = 22
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+# ─── Downtime Reports ──────────────────────────────────────────────────────
+class DowntimeReportViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Downtime Reports attached to Daily Production Reports.
+    GET  /api/inspections/downtime-reports/?date=...&shift=...
+    POST /api/inspections/downtime-reports/
+    POST /api/inspections/downtime-reports/bulk_save/
+    GET  /api/inspections/downtime-reports/export_excel/?date=...&shift=...
+    GET  /api/inspections/downtime-reports/export_pdf/?date=...&shift=...
+    """
+    serializer_class = DowntimeReportSerializer
+
+    def get_permissions(self):
+        if self.action in ['export_excel', 'export_pdf']:
+            return []
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        # Fetch only SUBMITTED Daily Production Reports
+        prod_qs = DailyProductionReport.objects.filter(status='SUBMITTED').select_related('machine', 'operator')
+
+        date_str = self.request.query_params.get('date')
+        if date_str:
+            prod_qs = prod_qs.filter(date=date_str)
+
+        shift = self.request.query_params.get('shift')
+        if shift:
+            prod_qs = prod_qs.filter(shift=shift)
+
+        machine_id = self.request.query_params.get('machine') or self.request.query_params.get('machine_id')
+        if machine_id:
+            prod_qs = prod_qs.filter(machine_id=machine_id)
+
+        # Ensure a DowntimeReport exists for each submitted production report
+        for prod in prod_qs:
+            DowntimeReport.objects.get_or_create(production_report=prod)
+
+        return DowntimeReport.objects.filter(
+            production_report__in=prod_qs
+        ).select_related(
+            'production_report',
+            'production_report__machine',
+            'production_report__operator',
+            'created_by'
+        ).order_by('production_report__date', 'production_report__machine__machine_code')
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=False, methods=['post'])
+    def bulk_save(self, request):
+        data_list = request.data if isinstance(request.data, list) else request.data.get('reports', [])
+        if not isinstance(data_list, list):
+            return Response({"error": "Expected a list of downtime report records."}, status=status.HTTP_400_BAD_REQUEST)
+
+        updated_reports = []
+        for item in data_list:
+            prod_id = item.get('production_report_id') or item.get('production_report')
+            report_obj = None
+
+            if item.get('id'):
+                report_obj = DowntimeReport.objects.filter(id=item['id']).first()
+
+            if not report_obj and prod_id:
+                prod = DailyProductionReport.objects.filter(id=prod_id).first()
+                if prod:
+                    report_obj, _ = DowntimeReport.objects.get_or_create(production_report=prod)
+
+            if not report_obj:
+                continue
+
+            serializer = DowntimeReportSerializer(report_obj, data=item, partial=True)
+            if serializer.is_valid():
+                obj = serializer.save(created_by=request.user)
+                if item.get('mark_completed'):
+                    obj.status = DowntimeReport.Status.COMPLETED
+                    obj.save()
+                updated_reports.append(serializer.data)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(updated_reports, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def export_excel(self, request):
+        qs = self.filter_queryset(self.get_queryset())
+        date_str = request.query_params.get('date', 'All')
+        shift_str = request.query_params.get('shift', 'All')
+
+        excel_buffer = generate_downtime_xlsx(qs, date_str, shift_str)
+        response = HttpResponse(
+            excel_buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="Downtime_Report_{date_str}_{shift_str}.xlsx"'
+        return response
+
+    @action(detail=False, methods=['get'])
+    def export_pdf(self, request):
+        qs = self.filter_queryset(self.get_queryset())
+        date_str = request.query_params.get('date', 'All')
+        shift_str = request.query_params.get('shift', 'All')
+
+        relative_path = generate_downtime_pdf(qs, date_str, shift_str)
+        full_path = os.path.join(settings.BASE_DIR, relative_path)
+        if os.path.exists(full_path):
+            return FileResponse(
+                open(full_path, 'rb'),
+                content_type='application/pdf',
+                filename=f"Downtime_Report_{date_str}_{shift_str}.pdf"
+            )
+        return Response({"error": "PDF generation failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def history(self, request):
+        """
+        Returns date-wise and shift-wise summary of submitted downtime reports for history tracking.
+        """
+        reports = DowntimeReport.objects.select_related(
+            'production_report',
+            'production_report__machine',
+            'created_by'
+        ).order_by('-production_report__date')
+
+        date_groups = {}
+        for r in reports:
+            prod = r.production_report
+            if not prod:
+                continue
+            d_str = str(prod.date)
+            shift = prod.shift
+            key = f"{d_str}_{shift}"
+
+            if key not in date_groups:
+                date_groups[key] = {
+                    'key': key,
+                    'date': d_str,
+                    'shift': shift,
+                    'count': 0,
+                    'completed_count': 0,
+                    'total_downtime': 0,
+                    'status': 'COMPLETED' if r.status == 'COMPLETED' else 'PENDING',
+                    'updated_at': r.updated_at,
+                    'submitted_by': (r.created_by.get_full_name() or r.created_by.username) if r.created_by else 'Supervisor',
+                    'machines': []
+                }
+            
+            date_groups[key]['count'] += 1
+            if r.status == 'COMPLETED':
+                date_groups[key]['completed_count'] += 1
+            date_groups[key]['total_downtime'] += r.total_downtime
+            if prod.machine and prod.machine.machine_code not in date_groups[key]['machines']:
+                date_groups[key]['machines'].append(prod.machine.machine_code)
+
+        history_list = list(date_groups.values())
+        return Response(history_list, status=status.HTTP_200_OK)
+
 
 
 
