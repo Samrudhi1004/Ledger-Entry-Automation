@@ -315,12 +315,12 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
             <tr style={{ background: '#e2e8f0', borderBottom: '1.5px solid #000000', color: '#000000' }}>
               <th style={{ border: '1px solid #000000', padding: '3px 2px', width: '3%' }}>P.No</th>
               <th style={{ border: '1px solid #000000', padding: '3px 2px', width: '3%' }}>No</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 4px', width: isSetupReport ? '22%' : '12%', textAlign: 'left' }}>
+              <th style={{ border: '1px solid #000000', padding: '3px 4px', width: isSetupReport ? '23%' : '14%', textAlign: 'left' }}>
                 Parameter Name & Description
               </th>
               <th style={{ border: '1px solid #000000', padding: '3px 2px', width: '4%' }}>Class</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 4px', width: isSetupReport ? '16%' : '11%' }}>Specification</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 4px', width: isSetupReport ? '16%' : '11%' }}>Evaluation Technique</th>
+              <th style={{ border: '1px solid #000000', padding: '3px 4px', width: isSetupReport ? '17%' : '12%' }}>Specification</th>
+              <th style={{ border: '1px solid #000000', padding: '3px 4px', width: isSetupReport ? '17%' : '12%' }}>Evaluation Technique</th>
               <th style={{ border: '1px solid #000000', padding: '3px 2px', width: isSetupReport ? '12%' : '9%' }}>Sample Freq</th>
               <th style={{ border: '1px solid #000000', padding: '3px 1px', width: isSetupReport ? '7%' : '5%', background: '#cbd5e1' }}>1st #1</th>
               <th style={{ border: '1px solid #000000', padding: '3px 1px', width: isSetupReport ? '7%' : '5%', background: '#cbd5e1' }}>1st #2</th>
@@ -338,8 +338,6 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
                   <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: '#dcfce7' }}>8/Hr</th>
                 </>
               )}
-
-              <th style={{ border: '1px solid #000000', padding: '3px 2px', width: isSetupReport ? '3%' : '6%' }}>REMARK</th>
             </tr>
           </thead>
           <tbody>
@@ -347,7 +345,7 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
             {isSetupReport && (
               <tr>
                 <td
-                  colSpan={11}
+                  colSpan={10}
                   style={{
                     padding: '5px 8px',
                     textAlign: 'left',
@@ -406,7 +404,6 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
                       </td>
                     );
                   })}
-                  <td style={{ border: '1px solid #000000', padding: '2px 1px' }}>OK</td>
                 </tr>
               );
             })}
@@ -416,7 +413,7 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
               <>
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={10}
                     style={{
                       padding: '5px 8px',
                       textAlign: 'left',
@@ -470,8 +467,6 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
                       <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: tr3OOC ? 'bold' : 'normal', fontSize: 9, fontFamily: 'Consolas, monospace', color: tr3OOC ? '#dc2626' : '#000000', background: tr3OOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
                         {tr3 !== undefined ? tr3 : '—'}
                       </td>
-
-                      <td style={{ border: '1px solid #000000', padding: '2px 1px' }}>OK</td>
                     </tr>
                   );
                 })}

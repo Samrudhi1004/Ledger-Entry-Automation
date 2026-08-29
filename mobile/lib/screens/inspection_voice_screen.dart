@@ -425,48 +425,8 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
               );
             },
           ),
-          // Auto-Advance Toggle Pill
-          GestureDetector(
-            onTap: () {
-              setState(() => _autoAdvance = !_autoAdvance);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(_autoAdvance ? '⚡ Auto-Advance is ON' : '⏸️ Auto-Advance is OFF (Manual Mode)'),
-                  duration: const Duration(seconds: 1),
-                  backgroundColor: _autoAdvance ? const Color(0xFF10B981) : const Color(0xFF64748B),
-                ),
-              );
-            },
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: _autoAdvance ? const Color(0xFF10B981).withValues(alpha: 0.2) : const Color(0xFF334155),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _autoAdvance ? const Color(0xFF10B981) : const Color(0xFF64748B)),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _autoAdvance ? Icons.bolt_rounded : Icons.pause_circle_rounded,
-                    color: _autoAdvance ? const Color(0xFF34D399) : const Color(0xFF94A3B8),
-                    size: 14,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _autoAdvance ? 'AUTO' : 'MANUAL',
-                    style: TextStyle(
-                      color: _autoAdvance ? const Color(0xFF34D399) : const Color(0xFF94A3B8),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
           IconButton(
-            icon: const Icon(Icons.assessment_rounded, color: Color(0xFF94A3B8)),
+            icon: const Icon(Icons.assessment_rounded, color: Color(0xFF2563EB)),
             tooltip: 'View Summary',
             onPressed: () {
               Navigator.push(
@@ -474,7 +434,7 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                 MaterialPageRoute(builder: (_) => const SummaryScreen()),
               );
             },
-          )
+          ),
         ],
       ),
       body: SafeArea(

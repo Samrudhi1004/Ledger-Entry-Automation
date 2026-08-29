@@ -5,10 +5,8 @@ import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../services/persistence_service.dart';
 import 'app_home_screen.dart';
-import 'operator_home_screen.dart';
+import 'inspector_home_screen.dart';
 import 'supervisor_info_screen.dart';
-import 'inspection_voice_screen.dart';
-import 'summary_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -94,7 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const Text(
-                        'Operator Authentication',
+                        'Authentication',
                         style: TextStyle(
                           color: Color(0xFF0F172A),
                           fontSize: 18,
@@ -149,41 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
-
-                      // Quick role preset selection
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Color(0xFF2563EB)),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                              ),
-                              onPressed: () {
-                                _usernameController.text = 'operator';
-                                _passwordController.text = 'operator123';
-                              },
-                              child: const Text('Operator Login', style: TextStyle(fontSize: 11, color: Color(0xFF2563EB))),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Color(0xFF059669)),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                              ),
-                              onPressed: () {
-                                _usernameController.text = 'inspector';
-                                _passwordController.text = 'inspector123';
-                              },
-                              child: const Text('Inspector Login', style: TextStyle(fontSize: 11, color: Color(0xFF059669))),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 24),
 
                       // Login Button
                       ElevatedButton(
@@ -205,94 +169,97 @@ class _LoginScreenState extends State<LoginScreen> {
                                 if (context.mounted) {
                                   if (success) {
                                     Widget targetScreen = const AppHomeScreen();
-                                    // Restore saved inspection state for both operators AND inspectors.
-                                    if ((auth.isOperator || auth.isInspector) && auth.userId != null) {
-                                      final provider = Provider.of<InspectionProvider>(context, listen: false);
-                                      provider.currentUserId = auth.userId!;
+                                    final role = (auth.userRole ?? '').toLowerCase();
 
-                                      final summary = await PersistenceService.getSavedStateSummary(auth.userId!);
-                                      if (summary != null && context.mounted) {
-                                        // Ask the user if they want to resume or start fresh.
-                                        final shouldResume = await showDialog<bool>(
-                                          context: context,
-                                          barrierDismissible: false,
-                                          builder: (ctx) => AlertDialog(
-                                            backgroundColor: const Color(0xFF0D1424),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(16),
-                                              side: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-                                            ),
-                                            title: const Row(
-                                              children: [
-                                                Icon(Icons.restore_rounded, color: Color(0xFF2563EB), size: 28),
-                                                SizedBox(width: 10),
-                                                Text(
-                                                  'Resume Session?',
-                                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                                    if (role == 'inspector' || role == 'quality_engineer') {
+                                      targetScreen = const InspectorHomeScreen();
+                                    } else if (role == 'supervisor' || role == 'admin') {
+                                      targetScreen = const SupervisorInfoScreen();
+                                    } else {
+                                      // Operator role - check for saved state summary to resume
+                                      if (auth.userId != null) {
+                                        final provider = Provider.of<InspectionProvider>(context, listen: false);
+                                        provider.currentUserId = auth.userId!;
+
+                                        final summary = await PersistenceService.getSavedStateSummary(auth.userId!);
+                                        if (summary != null && context.mounted) {
+                                          final shouldResume = await showDialog<bool>(
+                                            context: context,
+                                            barrierDismissible: false,
+                                            builder: (ctx) => AlertDialog(
+                                              backgroundColor: const Color(0xFF0D1424),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(16),
+                                                side: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                                              ),
+                                              title: const Row(
+                                                children: [
+                                                  Icon(Icons.restore_rounded, color: Color(0xFF2563EB), size: 28),
+                                                  SizedBox(width: 10),
+                                                  Text(
+                                                    'Resume Session?',
+                                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                                                  ),
+                                                ],
+                                              ),
+                                              content: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  const Text(
+                                                    'You have an unfinished inspection session:',
+                                                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                                                  ),
+                                                  const SizedBox(height: 14),
+                                                  _resumeRow(Icons.precision_manufacturing_rounded, 'Machine', summary['machine'] ?? '—'),
+                                                  const SizedBox(height: 8),
+                                                  _resumeRow(Icons.category_rounded, 'Part', summary['part'] ?? '—'),
+                                                  const SizedBox(height: 8),
+                                                  _resumeRow(Icons.assignment_rounded, 'Inspection', summary['inspection'] ?? '—'),
+                                                  const SizedBox(height: 8),
+                                                  _resumeRow(Icons.bar_chart_rounded, 'Progress', summary['progress'] ?? '—'),
+                                                  const SizedBox(height: 8),
+                                                  _resumeRow(Icons.access_time_rounded, 'Saved', summary['saved_at'] ?? 'Recently'),
+                                                ],
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(ctx, false),
+                                                  style: TextButton.styleFrom(foregroundColor: const Color(0xFFEF4444)),
+                                                  child: const Text('START FRESH', style: TextStyle(fontWeight: FontWeight.bold)),
+                                                ),
+                                                ElevatedButton.icon(
+                                                  onPressed: () => Navigator.pop(ctx, true),
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: const Color(0xFF2563EB),
+                                                    foregroundColor: Colors.white,
+                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                  ),
+                                                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                                                  label: const Text('RESUME', style: TextStyle(fontWeight: FontWeight.bold)),
                                                 ),
                                               ],
                                             ),
-                                            content: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                const Text(
-                                                  'You have an unfinished inspection session:',
-                                                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                                                ),
-                                                const SizedBox(height: 14),
-                                                _resumeRow(Icons.precision_manufacturing_rounded, 'Machine', summary['machine'] ?? '—'),
-                                                const SizedBox(height: 8),
-                                                _resumeRow(Icons.category_rounded, 'Part', summary['part'] ?? '—'),
-                                                const SizedBox(height: 8),
-                                                _resumeRow(Icons.assignment_rounded, 'Inspection', summary['inspection'] ?? '—'),
-                                                const SizedBox(height: 8),
-                                                _resumeRow(Icons.bar_chart_rounded, 'Progress', summary['progress'] ?? '—'),
-                                                const SizedBox(height: 8),
-                                                _resumeRow(Icons.access_time_rounded, 'Saved', summary['saved_at'] ?? 'Recently'),
-                                              ],
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () => Navigator.pop(ctx, false),
-                                                style: TextButton.styleFrom(foregroundColor: const Color(0xFFEF4444)),
-                                                child: const Text('START FRESH', style: TextStyle(fontWeight: FontWeight.bold)),
-                                              ),
-                                              ElevatedButton.icon(
-                                                onPressed: () => Navigator.pop(ctx, true),
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: const Color(0xFF2563EB),
-                                                  foregroundColor: Colors.white,
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                ),
-                                                icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                                                label: const Text('RESUME', style: TextStyle(fontWeight: FontWeight.bold)),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                        if (shouldResume == true) {
-                                          final savedState = await PersistenceService.loadState(auth.userId!);
-                                          if (savedState != null) {
-                                            provider.restoreFromLocalState(savedState, auth.userId!);
-                                            if (provider.sessionId != null && provider.parameters.isNotEmpty) {
-                                              if (provider.recordedResults.length >= provider.parameters.length) {
-                                                targetScreen = const SummaryScreen();
-                                              } else {
-                                                targetScreen = const InspectionVoiceScreen();
-                                              }
-                                            } else {
-                                              if (auth.isOperator) targetScreen = const OperatorHomeScreen();
+                                          );
+                                          if (shouldResume == true) {
+                                            final savedState = await PersistenceService.loadState(auth.userId!);
+                                            if (savedState != null) {
+                                              provider.restoreFromLocalState(savedState, auth.userId!);
                                             }
+                                          } else {
+                                            await PersistenceService.clearState();
                                           }
                                         } else {
-                                          await PersistenceService.clearState();
+                                          final hasSaved = await PersistenceService.hasSavedState(auth.userId!);
+                                          if (hasSaved) {
+                                            final savedState = await PersistenceService.loadState(auth.userId!);
+                                            if (savedState != null) {
+                                              provider.restoreFromLocalState(savedState, auth.userId!);
+                                            }
+                                          }
                                         }
                                       }
-                                    }
-
-                                    if (auth.isSupervisor) {
-                                      targetScreen = const SupervisorInfoScreen();
+                                      targetScreen = const AppHomeScreen();
                                     }
 
                                     Navigator.pushReplacement(

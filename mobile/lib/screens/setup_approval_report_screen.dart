@@ -234,15 +234,14 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
                               columnWidths: const {
                                 0: FixedColumnWidth(35),   // P.NO
                                 1: FixedColumnWidth(35),   // NO
-                                2: FixedColumnWidth(160),  // PARAMETER NAME & DESCRIPTION
+                                2: FixedColumnWidth(180),  // PARAMETER NAME & DESCRIPTION
                                 3: FixedColumnWidth(55),   // CLASS
-                                4: FixedColumnWidth(120),  // SPECIFICATION
-                                5: FixedColumnWidth(120),  // EVALUATION TECHNIQUE
+                                4: FixedColumnWidth(130),  // SPECIFICATION
+                                5: FixedColumnWidth(130),  // EVALUATION TECHNIQUE
                                 6: FixedColumnWidth(80),   // SAMPLE FREQ
                                 7: FixedColumnWidth(65),   // 1ST #1
                                 8: FixedColumnWidth(65),   // 1ST #2
                                 9: FixedColumnWidth(65),   // 1ST #3
-                                10: FixedColumnWidth(55),  // REMARK
                               },
                               children: [
                                 // TABLE COLUMN HEADERS
@@ -258,14 +257,18 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
                                 _buildSectionBannerRow('PROCESS PARAMETER'),
 
                                 // SECTION 2 ROWS: PROCESS PARAMETERS
-                                ..._getProcessParamRowsList().asMap().entries.map((e) => _buildProcessRow(e.key, e.value)),
+                                ..._processParams.asMap().entries.map((e) => _buildProcessRow(e.key, e.value)),
                               ],
                             ),
                           ),
                         ),
+                        
+                        const SizedBox(height: 20),
 
-                        // 4. REACTION PLAN & SIGNATURE FOOTER
+                        // SIGNATURE / FOOTER BLOCK
                         _buildReportFooter(inspectorName),
+
+                        const SizedBox(height: 24),
                       ],
                     ),
                   ),
@@ -423,22 +426,21 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
     );
   }
 
-  // ── Table Column Headers Row (Official 11 Columns matching Form F02) ───────
+  // ── Table Column Headers Row (Official 10 Columns) ────────────────────────
   TableRow _buildTableHeaderRow() {
     return const TableRow(
       decoration: BoxDecoration(color: Color(0xFFE2E8F0)),
       children: [
         _HeaderCell('P.NO', width: 35),
         _HeaderCell('NO', width: 35),
-        _HeaderCell('PARAMETER NAME & DESCRIPTION', width: 160, alignLeft: true),
+        _HeaderCell('PARAMETER NAME & DESCRIPTION', width: 180, alignLeft: true),
         _HeaderCell('CLASS', width: 55),
-        _HeaderCell('SPECIFICATION', width: 120),
-        _HeaderCell('EVALUATION TECHNIQUE', width: 120),
+        _HeaderCell('SPECIFICATION', width: 130),
+        _HeaderCell('EVALUATION TECHNIQUE', width: 130),
         _HeaderCell('SAMPLE FREQ', width: 80),
         _HeaderCell('1ST #1', width: 65, color: Color(0xFF1E40AF)),
         _HeaderCell('1ST #2', width: 65, color: Color(0xFFB45309)),
         _HeaderCell('1ST #3', width: 65, color: Color(0xFF047857)),
-        _HeaderCell('REMARK', width: 55),
       ],
     );
   }
@@ -455,12 +457,12 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
             overflow: TextOverflow.visible,
           ),
         ),
-        for (int i = 0; i < 10; i++) const SizedBox.shrink(),
+        for (int i = 0; i < 9; i++) const SizedBox.shrink(),
       ],
     );
   }
 
-  // ── Product Parameter Row (Official 11 Columns) ─────────────────────────────
+  // ── Product Parameter Row (Official 10 Columns) ─────────────────────────────
   TableRow _buildProductRow(int index, Map<String, dynamic> param) {
     final code = param['parameter_code']?.toString() ?? '';
     final name = param['parameter_name']?.toString() ?? code;
@@ -476,7 +478,6 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
     final t1 = _productResults[code]?['1'] ?? _productResults[name]?['1'] ?? '-';
     final t2 = _productResults[code]?['2'] ?? _productResults[name]?['2'] ?? '-';
     final t3 = _productResults[code]?['3'] ?? _productResults[name]?['3'] ?? '-';
-    final remark = (t1 != '-' && t1.contains('REJECT')) ? 'NOT OK' : 'OK';
 
     return TableRow(
       decoration: const BoxDecoration(color: Colors.white),
@@ -505,12 +506,11 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
         _cellValueText(t1),
         _cellValueText(t2),
         _cellValueText(t3),
-        _cell(remark, align: Alignment.center, isBold: true, color: remark == 'OK' ? const Color(0xFF15803D) : Colors.red),
       ],
     );
   }
 
-  // ── Process Parameter Row (Official 11 Columns) ─────────────────────────────
+  // ── Process Parameter Row (Official 10 Columns) ─────────────────────────────
   TableRow _buildProcessRow(int index, Map<String, dynamic> pp) {
     final code = pp['parameter_code']?.toString() ?? '';
     final name = pp['parameter_name']?.toString() ?? '';
@@ -540,7 +540,6 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
     final t1 = entriesByKey[code]?['1'] ?? entriesByKey[name]?['1'] ?? _productResults[code]?['1'] ?? _productResults[name]?['1'] ?? '-';
     final t2 = entriesByKey[code]?['2'] ?? entriesByKey[name]?['2'] ?? _productResults[code]?['2'] ?? _productResults[name]?['2'] ?? '-';
     final t3 = entriesByKey[code]?['3'] ?? entriesByKey[name]?['3'] ?? _productResults[code]?['3'] ?? _productResults[name]?['3'] ?? '-';
-    final remark = 'OK';
 
     return TableRow(
       decoration: const BoxDecoration(color: Colors.white),
@@ -563,7 +562,6 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
         _cellValueText(t1),
         _cellValueText(t2),
         _cellValueText(t3),
-        _cell(remark, align: Alignment.center, isBold: true, color: const Color(0xFF15803D)),
       ],
     );
   }
