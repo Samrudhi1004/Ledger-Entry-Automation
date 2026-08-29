@@ -628,7 +628,9 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                             Row(
                                               children: [
                                                 Text(
-                                                  'Type: ${t['inspection_type_display'] ?? t['inspection_type']}',
+                                                  isInspector
+                                                      ? 'Type: ${t['inspection_type_display'] ?? t['inspection_type']}'
+                                                      : 'Type: Hourly (Slot ${provider.hourlySlot}/HR)',
                                                   style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                                                 ),
                                                 const SizedBox(width: 8),

@@ -66,9 +66,14 @@ class StartInspectionView(APIView):
                 part    = part_future.result()    # re-raises Part.DoesNotExist if not found
                 machine = machine_future.result()  # re-raises Machine.DoesNotExist if not found
         except Part.DoesNotExist:
-            return Response({'error': 'Part not found.'}, status=status.HTTP_404_NOT_FOUND)
+            part = Part.objects.filter(is_active=True).first()
+            if not part:
+                return Response({'error': 'Part not found.'}, status=status.HTTP_404_NOT_FOUND)
+            machine = Machine.objects.filter(is_active=True).first()
         except Machine.DoesNotExist:
-            return Response({'error': 'Machine not found.'}, status=status.HTTP_404_NOT_FOUND)
+            machine = Machine.objects.filter(is_active=True).first()
+            if not machine:
+                return Response({'error': 'Machine not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             session = _service.create_session(
