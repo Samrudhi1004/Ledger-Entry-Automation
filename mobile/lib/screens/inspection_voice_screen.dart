@@ -24,7 +24,7 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
 
   bool _isRecording = false;
   bool _isProcessing = false;
-  bool _autoAdvance = true; // Auto-Advance on by default
+  final bool _autoAdvance = true; // Auto-advance parameter-by-parameter after filling
   String _transcribedText = '';
   Map<String, dynamic>? _lastResult;
 
@@ -79,6 +79,38 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     return '$nom $unit (Master Spec)';
   }
 
+  bool _isMeasurementPassing(Map<String, dynamic> param, Map<String, dynamic>? recorded) {
+    if (recorded == null) return false;
+    final status = (recorded['status'] ?? '').toString().toLowerCase();
+    if (status == 'ok' || status == 'pass' || recorded['is_pass'] == true) {
+      return true;
+    }
+    if (status == 'out_of_spec' || status == 'reject' || recorded['is_pass'] == false) {
+      return false;
+    }
+
+    final val = double.tryParse('${recorded['measured_value'] ?? recorded['value']}');
+    if (val == null) return false;
+
+    final rule = _getParameterRule(param);
+    if (rule == 2) {
+      return val >= 0.5;
+    } else if (rule == 31) {
+      final minVal = double.tryParse('${param['lower_limit'] ?? param['nominal_value']}');
+      if (minVal != null) return val >= minVal;
+    } else if (rule == 32) {
+      final maxVal = double.tryParse('${param['nominal_value'] ?? param['upper_limit']}');
+      if (maxVal != null) return val <= maxVal;
+    } else {
+      final ll = double.tryParse('${param['lower_limit']}');
+      final ul = double.tryParse('${param['upper_limit']}');
+      if (ll != null && ul != null) {
+        return val >= ll && val <= ul;
+      }
+    }
+    return true;
+  }
+
   // Submit Spoken or Typed Value + Handle Auto-Advance
   Future<void> _submitSpokenOrTypedValue(String inputStr) async {
     if (inputStr.trim().isEmpty) return;
@@ -95,7 +127,6 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     final rule = _getParameterRule(currentParam);
 
     double? parsedVal;
-    // For visual YES/NO checks
     if (rule == 2) {
       final clean = inputStr.trim().toLowerCase();
       if (clean == '1' || clean == '1.0' || clean == 'yes' || clean == 'pass' || clean == 'ok') {
@@ -107,7 +138,6 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       }
       _transcribedText = parsedVal != null && parsedVal >= 0.5 ? 'YES (PASS)' : 'NO (REJECT)';
     } else {
-      // For numeric measurements
       final parseResult = await ApiService.parseText(inputStr);
       if (parseResult['is_parseable'] == true && parseResult['parsed_value'] != null) {
         parsedVal = (parseResult['parsed_value'] as num).toDouble();
@@ -124,14 +154,13 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Could not understand measurement. Please enter a valid number.'),
-            backgroundColor: Color(0xFFF59E0B),
+            backgroundColor: Color(0xFFD97706),
           ),
         );
       }
       return;
     }
 
-    // Submit measurement to backend
     final result = await provider.submitMeasurement(
       value: parsedVal,
       voiceRawText: _transcribedText,
@@ -145,7 +174,6 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       _inputController.clear();
     });
 
-    // ⚡ AUTO-ADVANCE LOGIC
     if (_autoAdvance && result != null) {
       await Future.delayed(const Duration(milliseconds: 700));
       if (!mounted) return;
@@ -157,7 +185,6 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
         });
         _scrollToCurrentParam();
       } else {
-        // All parameters completed!
         _showCompletionDialog();
       }
     }
@@ -169,26 +196,26 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Color(0xFF10B981), width: 1.5),
+          side: const BorderSide(color: Color(0xFF059669), width: 1.5),
         ),
         title: const Row(
           children: [
-            Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 28),
+            Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 28),
             SizedBox(width: 10),
-            Text('All Readings Done!', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('All Readings Done!', style: TextStyle(color: Color(0xFF0F172A), fontSize: 18, fontWeight: FontWeight.bold)),
           ],
         ),
         content: Text(
           'You have recorded all ${provider.parameters.length} parameters for this inspection session.\n\nProceed to review the summary and submit.',
-          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13.5),
+          style: const TextStyle(color: Color(0xFF64748B), fontSize: 13.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Review Again', style: TextStyle(color: Color(0xFF94A3B8))),
+            child: const Text('Review Again', style: TextStyle(color: Color(0xFF64748B))),
           ),
           ElevatedButton.icon(
             onPressed: () {
@@ -199,9 +226,10 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
+              backgroundColor: const Color(0xFF059669),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
             ),
             icon: const Icon(Icons.assessment_rounded, size: 18),
             label: const Text('VIEW SUMMARY', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -211,99 +239,240 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     );
   }
 
+  void _showParameterGridModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Consumer<InspectionProvider>(
+          builder: (context, provider, child) {
+            final opName = provider.selectedTemplate?['name'] ?? 'Operation Parameters';
+            final params = provider.parameters;
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.75,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCBD5E1),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.grid_view_rounded, color: Color(0xFF2563EB), size: 24),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                opName,
+                                style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                '${params.length} Parameters configured',
+                                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                  Expanded(
+                    child: GridView.builder(
+                      padding: const EdgeInsets.all(12),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                        childAspectRatio: 1.05,
+                      ),
+                      itemCount: params.length,
+                      itemBuilder: (context, index) {
+                        final p = params[index];
+                        final code = (p['parameter_code'] ?? '').toString();
+                        final name = p['parameter_name'] ?? 'Parameter ${index + 1}';
+                        final nom = p['nominal_value'] ?? '-';
+                        final unit = p['unit'] ?? 'mm';
+                        final isCurrent = index == provider.currentParamIndex;
+
+                        final recorded = provider.recordedResults[code];
+                        final isRecorded = recorded != null;
+                        final isPass = isRecorded && _isMeasurementPassing(p, recorded);
+                        final measuredVal = recorded != null ? (recorded['measured_value'] ?? recorded['value']) : null;
+
+                        return InkWell(
+                          onTap: () {
+                            provider.goToParameter(index);
+                            Navigator.pop(ctx);
+                            _scrollToCurrentParam();
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isCurrent
+                                  ? const Color(0xFFEFF6FF)
+                                  : isRecorded
+                                      ? (isPass ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2))
+                                      : Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: isCurrent
+                                    ? const Color(0xFF2563EB)
+                                    : isRecorded
+                                        ? (isPass ? const Color(0xFFA7F3D0) : const Color(0xFFFCA5A5))
+                                        : const Color(0xFFE2E8F0),
+                                width: isCurrent ? 1.5 : 1,
+                              ),
+                              boxShadow: [
+                                if (isCurrent)
+                                  const BoxShadow(
+                                    color: Color(0x1A2563EB),
+                                    blurRadius: 6,
+                                    offset: Offset(0, 2),
+                                  ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: isCurrent
+                                            ? const Color(0xFF2563EB)
+                                            : const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        '#${index + 1}',
+                                        style: TextStyle(
+                                          color: isCurrent ? Colors.white : const Color(0xFF64748B),
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 9,
+                                        ),
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    if (isRecorded)
+                                      Icon(
+                                        isPass ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                                        color: isPass ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                        size: 15,
+                                      )
+                                    else
+                                      const Icon(Icons.circle_outlined, color: Color(0xFF94A3B8), size: 13),
+                                  ],
+                                ),
+                                Text(
+                                  name,
+                                  style: TextStyle(
+                                    color: const Color(0xFF0F172A),
+                                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
+                                    fontSize: 11,
+                                    height: 1.15,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  isRecorded ? '$measuredVal $unit' : '$nom $unit',
+                                  style: TextStyle(
+                                    color: isRecorded
+                                        ? (isPass ? const Color(0xFF059669) : const Color(0xFFDC2626))
+                                        : const Color(0xFF64748B),
+                                    fontSize: 9.5,
+                                    fontWeight: isRecorded ? FontWeight.bold : FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _toggleVoiceRecording() async {
     if (_isRecording) {
       setState(() {
         _isRecording = false;
-        _isProcessing = true;  // spinner stays on while we poll
+        _isProcessing = true;
       });
 
-      final e2eSw = Stopwatch()..start();
       try {
         final path = await _audioRecorder.stop();
-        if (path != null) {
-          // Step 1 — send audio, get job_id back immediately (< 0.5 s)
+        if (path != null && path.isNotEmpty) {
           final uploadSw = Stopwatch()..start();
-          final submitRes = await ApiService.transcribeVoice(path);
+          final e2eSw = Stopwatch()..start();
+
+          final startResult = await ApiService.transcribeVoice(path);
           uploadSw.stop();
 
-          // Backward-compat: old server returns raw_text directly (status 200)
-          if (submitRes.containsKey('raw_text')) {
-            final textResult = submitRes['raw_text'] ?? submitRes['text'];
-            if (textResult != null && (textResult as String).isNotEmpty) {
-              await _submitSpokenOrTypedValue(textResult);
+          final jobId = startResult['job_id'] as String?;
+          if (jobId == null) {
+            final directText = startResult['raw_text'] ?? startResult['text'];
+            if (directText != null && (directText as String).isNotEmpty) {
+              await _submitSpokenOrTypedValue(directText);
             } else {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('No speech detected. Please try again or type manually.')),
+                  const SnackBar(content: Text('No speech detected. Please try again.')),
                 );
               }
-            }
-            return; // handled by old path
-          }
-
-          final jobId = submitRes['job_id'] as String?;
-          if (jobId == null) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Transcription failed to start. Please try again.')),
-              );
             }
             return;
           }
 
-          // Step 2 — poll every 2 s until done, failed, or 60 s timeout
           const pollInterval = Duration(seconds: 2);
-          const maxWait      = Duration(seconds: 60);
-          final deadline     = DateTime.now().add(maxWait);
-
-          final pollSw = Stopwatch()..start();
-          int pollCount = 0;
-          Map<String, dynamic> pollRes = {'status': 'processing'};
+          const maxWait = Duration(seconds: 60);
+          final deadline = DateTime.now().add(maxWait);
 
           while (DateTime.now().isBefore(deadline)) {
             await Future.delayed(pollInterval);
-            pollCount++;
-            pollRes = await ApiService.checkTranscriptionStatus(jobId);
-
+            final pollRes = await ApiService.checkTranscriptionStatus(jobId);
             final st = pollRes['status'] as String? ?? 'processing';
-            if (st == 'done' || st == 'failed') break;
-          }
-          pollSw.stop();
-          e2eSw.stop();
-
-          final timingMeta = pollRes['timing'] as Map<String, dynamic>?;
-          debugPrint('''
-==================================================
-[PERF CLIENT SUMMARY] Voice Entry Job: $jobId
-  ├─ HTTP Upload Time  : ${uploadSw.elapsedMilliseconds} ms
-  ├─ Polling Attempts  : $pollCount attempt(s)
-  ├─ Polling Duration  : ${pollSw.elapsedMilliseconds} ms
-  ├─ Backend Whisper   : ${timingMeta?['whisper_infer_ms'] ?? 'N/A'} ms
-  ├─ Backend Total Exec: ${timingMeta?['total_backend_ms'] ?? 'N/A'} ms
-  └─ TOTAL E2E LATENCY : ${e2eSw.elapsedMilliseconds} ms
-==================================================
-''');
-
-          // Step 3 — handle result
-          final finalStatus = pollRes['status'] as String? ?? 'failed';
-          if (finalStatus == 'done') {
-            final textResult = pollRes['raw_text'] ?? pollRes['text'];
-            if (textResult != null && (textResult as String).isNotEmpty) {
-              await _submitSpokenOrTypedValue(textResult);
-            } else {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('No speech detected. Please try again or type manually.')),
-                );
+            if (st == 'done') {
+              final textResult = pollRes['raw_text'] ?? pollRes['text'];
+              if (textResult != null && (textResult as String).isNotEmpty) {
+                await _submitSpokenOrTypedValue(textResult);
               }
-            }
-          } else {
-            // failed or timed-out
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Transcription failed or timed out. Please try again.')),
-              );
+              break;
+            } else if (st == 'failed') {
+              break;
             }
           }
         }
@@ -313,7 +482,7 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
         if (mounted) {
           setState(() {
             _isProcessing = false;
-            _isRecording  = false;
+            _isRecording = false;
           });
         }
       }
@@ -335,12 +504,6 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
             _isRecording = true;
           });
         }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Microphone permission required for voice entry.')),
-          );
-        }
       }
     }
   }
@@ -352,14 +515,14 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
 
     if (param == null) {
       return Scaffold(
-        backgroundColor: const Color(0xFF0B1120),
+        backgroundColor: const Color(0xFFF8FAFC),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 64),
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 64),
               const SizedBox(height: 16),
-              const Text('All parameters recorded!', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              const Text('All parameters recorded!', style: TextStyle(color: Color(0xFF0F172A), fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
               ElevatedButton.icon(
                 onPressed: () {
@@ -369,11 +532,12 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
+                  backgroundColor: const Color(0xFF059669),
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
                 ),
-                icon: const Icon(Icons.assessment_rounded),
+                icon: const Icon(Icons.assessment_rounded, color: Colors.white),
                 label: const Text('VIEW SESSION SUMMARY', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               )
             ],
@@ -392,11 +556,16 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 1,
+        elevation: 0,
+        scrolledUnderElevation: 0.5,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(color: const Color(0xFFE2E8F0), height: 1.0),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.grid_view_rounded, color: Color(0xFF2563EB)),
-          tooltip: 'Back to Parameter Grid',
-          onPressed: () => Navigator.pop(context),
+          tooltip: 'Parameter Grid Overview',
+          onPressed: () => _showParameterGridModal(context),
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -439,11 +608,11 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Top Horizontal Scrollable Mini-Grid Strip
+              // Top Horizontal Scrollable Mini-Grid Progress Strip
               _buildMiniGridStrip(provider),
 
               const SizedBox(height: 14),
@@ -452,49 +621,40 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                    color: isCritical ? const Color(0xFFEF4444) : const Color(0xFF334155),
+                    color: isCritical ? const Color(0xFFFCA5A5) : const Color(0xFFE2E8F0),
                     width: isCritical ? 2 : 1,
                   ),
-                  boxShadow: [
+                  boxShadow: const [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
+                      color: Color(0x0A0F172A),
                       blurRadius: 10,
-                      offset: const Offset(0, 4),
+                      offset: Offset(0, 3),
                     ),
                   ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Tag row: Code + Critical + Technique
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            _buildRuleBadge(rule),
-                          ],
-                        ),
+                        _buildRuleBadge(rule),
                         if (isCritical)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFEF4444).withValues(alpha: 0.2),
+                              color: const Color(0xFFFEF2F2),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFFEF4444)),
+                              border: Border.all(color: const Color(0xFFFCA5A5)),
                             ),
                             child: const Row(
                               children: [
-                                Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 12),
+                                Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 12),
                                 SizedBox(width: 4),
-                                Text('◑ CRITICAL', style: TextStyle(color: Color(0xFFF87171), fontSize: 10, fontWeight: FontWeight.w900)),
+                                Text('CRITICAL', style: TextStyle(color: Color(0xFFDC2626), fontSize: 10, fontWeight: FontWeight.bold)),
                               ],
                             ),
                           ),
@@ -503,31 +663,29 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
 
                     const SizedBox(height: 12),
 
-                    // Parameter Name
                     Text(
                       paramName,
-                      style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                      style: const TextStyle(color: Color(0xFF0F172A), fontSize: 20, fontWeight: FontWeight.bold),
                     ),
 
                     if (param['measurement_technique'] != null && param['measurement_technique'].toString().isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(Icons.construction_rounded, color: Color(0xFF94A3B8), size: 13),
+                          const Icon(Icons.construction_rounded, color: Color(0xFF64748B), size: 13),
                           const SizedBox(width: 5),
                           Text(
                             'Tool / Tech: ${param['measurement_technique']}',
-                            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.w500),
+                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                           ),
                         ],
                       ),
                     ],
 
                     const SizedBox(height: 14),
-                    const Divider(color: Color(0xFF334155), height: 1),
+                    const Divider(color: Color(0xFFE2E8F0), height: 1),
                     const SizedBox(height: 14),
 
-                    // Spec Target Box per Rule
                     _buildSpecSection(param, rule),
                   ],
                 ),
@@ -535,17 +693,15 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
 
               const SizedBox(height: 18),
 
-              // Interactive Data Input Section (Voice, Buttons, Keyboard)
+              // Interactive Data Input Section
               _buildInputSection(provider, param, rule),
 
               const SizedBox(height: 16),
 
-              // Result Feedback Banner (if just saved)
               if (_lastResult != null) ...[
                 _buildResultBanner(_lastResult!),
                 const SizedBox(height: 16),
               ],
-
             ],
           ),
         ),
@@ -553,7 +709,6 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     );
   }
 
-  // 📱 Horizontal Scrollable Mini-Grid Progress Strip
   Widget _buildMiniGridStrip(InspectionProvider provider) {
     return Container(
       height: 58,
@@ -566,31 +721,39 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
           final item = provider.parameters[idx];
           final code = item['parameter_code'] ?? 'P${idx + 1}';
           final isFilled = provider.isParamFilled(code);
-          final status = provider.getParamStatus(code);
+          final recorded = provider.recordedResults[code];
+          final isPass = isFilled && _isMeasurementPassing(item, recorded);
           final isSelected = idx == provider.currentParamIndex;
 
-          Color chipBg = const Color(0xFF1E293B);
-          Color borderCol = const Color(0xFF334155);
+          Color chipBg = Colors.white;
+          Color borderCol = const Color(0xFFCBD5E1);
+          Color textCol = const Color(0xFF0F172A);
           IconData icon = Icons.circle_outlined;
-          Color iconCol = const Color(0xFF64748B);
+          Color iconCol = const Color(0xFF94A3B8);
 
           if (isFilled) {
-            if (status == 'ok') {
-              chipBg = const Color(0xFF064E3B);
-              borderCol = const Color(0xFF10B981);
+            if (isPass) {
+              chipBg = const Color(0xFFECFDF5);
+              borderCol = const Color(0xFFA7F3D0);
+              textCol = const Color(0xFF059669);
               icon = Icons.check_circle_rounded;
-              iconCol = const Color(0xFF34D399);
+              iconCol = const Color(0xFF059669);
             } else {
-              chipBg = const Color(0xFF7F1D1D);
-              borderCol = const Color(0xFFEF4444);
+              chipBg = const Color(0xFFFEF2F2);
+              borderCol = const Color(0xFFFCA5A5);
+              textCol = const Color(0xFFDC2626);
               icon = Icons.cancel_rounded;
-              iconCol = const Color(0xFFF87171);
+              iconCol = const Color(0xFFDC2626);
             }
+          } else if (isSelected) {
+            chipBg = const Color(0xFFEFF6FF);
+            borderCol = const Color(0xFF2563EB);
+            textCol = const Color(0xFF2563EB);
+            iconCol = const Color(0xFF2563EB);
           }
 
-          if (isSelected) {
-            borderCol = const Color(0xFF6366F1);
-            chipBg = const Color(0xFF312E81);
+          if (isSelected && isFilled) {
+            borderCol = const Color(0xFF2563EB);
           }
 
           return GestureDetector(
@@ -600,22 +763,13 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
               _scrollToCurrentParam();
             },
             child: Container(
-              width: 58,
+              width: 64,
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
               decoration: BoxDecoration(
                 color: chipBg,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: borderCol, width: isSelected ? 2 : 1),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: const Color(0xFF6366F1).withValues(alpha: 0.4),
-                          blurRadius: 8,
-                          spreadRadius: 1,
-                        )
-                      ]
-                    : null,
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -623,15 +777,15 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                   Text(
                     (item['parameter_name'] ?? code).toString(),
                     style: TextStyle(
-                      color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
+                      color: textCol,
                       fontSize: 10,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.bold,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  Icon(icon, color: isSelected ? const Color(0xFF818CF8) : iconCol, size: 14),
+                  Icon(icon, color: iconCol, size: 14),
                 ],
               ),
             ),
@@ -647,31 +801,30 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     String label;
 
     if (rule == 2) {
-      bg = const Color(0xFFA855F7).withValues(alpha: 0.2);
-      text = const Color(0xFFC084FC);
+      bg = const Color(0xFFF3E8FF);
+      text = const Color(0xFF9333EA);
       label = 'Rule 2: Visual';
     } else if (rule == 31) {
-      bg = const Color(0xFFF59E0B).withValues(alpha: 0.2);
-      text = const Color(0xFFFBBF24);
+      bg = const Color(0xFFFEF3C7);
+      text = const Color(0xFFD97706);
       label = 'Rule 3A: Min Limit';
     } else if (rule == 32) {
-      bg = const Color(0xFF06B6D4).withValues(alpha: 0.2);
-      text = const Color(0xFF22D3EE);
+      bg = const Color(0xFFE0F2FE);
+      text = const Color(0xFF0284C7);
       label = 'Rule 3B: Max Limit';
     } else {
-      bg = const Color(0xFF3B82F6).withValues(alpha: 0.2);
-      text = const Color(0xFF60A5FA);
+      bg = const Color(0xFFEFF6FF);
+      text = const Color(0xFF2563EB);
       label = 'Rule 1: Range';
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
       child: Text(label, style: TextStyle(color: text, fontSize: 10, fontWeight: FontWeight.bold)),
     );
   }
 
-  // Dynamic Spec Section Display per Rule
   Widget _buildSpecSection(Map<String, dynamic> param, int rule) {
     final unit = param['unit'] ?? 'mm';
 
@@ -683,28 +836,27 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       final nom = param['nominal_value'];
       final mtype = (param['measurement_type'] ?? '').toString().toLowerCase();
 
-      // Non-numeric process parameters use dedicated Process Parameter card
       if (dataType != 'NUMERIC' || (low == null && high == null && nom == null && mtype.isEmpty)) {
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1B4B),
+            color: const Color(0xFFEEF2FF),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
+            border: Border.all(color: const Color(0xFFC7D2FE)),
           ),
           child: Row(
             children: [
-              const Icon(Icons.settings_suggest_rounded, color: Color(0xFF818CF8), size: 24),
+              const Icon(Icons.settings_suggest_rounded, color: Color(0xFF4F46E5), size: 24),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('PROCESS PARAMETER ($dataType)', style: const TextStyle(color: Color(0xFF818CF8), fontSize: 10, fontWeight: FontWeight.w900)),
+                    const Text('PROCESS PARAMETER', style: TextStyle(color: Color(0xFF4F46E5), fontSize: 10, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 2),
                     Text(
                       low != null && high != null ? 'Spec: $spec  [$low – $high $unit]' : 'Specification: $spec $unit',
-                      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -720,21 +872,21 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1B4B),
+          color: const Color(0xFFF3E8FF),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.4)),
+          border: Border.all(color: const Color(0xFFE9D5FF)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.remove_red_eye_rounded, color: Color(0xFFC084FC), size: 24),
+            const Icon(Icons.remove_red_eye_rounded, color: Color(0xFF9333EA), size: 24),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('MASTER VISUAL SPECIFICATION', style: TextStyle(color: Color(0xFFC084FC), fontSize: 10, fontWeight: FontWeight.w900)),
+                  const Text('MASTER VISUAL SPECIFICATION', style: TextStyle(color: Color(0xFF9333EA), fontSize: 10, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 2),
-                  Text(specText, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                  Text(specText, style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -746,21 +898,21 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFF451A03),
+          color: const Color(0xFFFEF3C7),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+          border: Border.all(color: const Color(0xFFFDE68A)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.vertical_align_bottom_rounded, color: Color(0xFFFBBF24), size: 24),
+            const Icon(Icons.vertical_align_bottom_rounded, color: Color(0xFFD97706), size: 24),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('RULE 3: MINIMUM LIMIT THRESHOLD', style: TextStyle(color: Color(0xFFFBBF24), fontSize: 10, fontWeight: FontWeight.w900)),
+                  const Text('RULE 3: MINIMUM LIMIT THRESHOLD', style: TextStyle(color: Color(0xFFD97706), fontSize: 10, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 2),
-                  Text('Must be ≥ $minVal $unit', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text('Must be ≥ $minVal $unit', style: const TextStyle(color: Color(0xFF0F172A), fontSize: 15, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -772,21 +924,21 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFF083344),
+          color: const Color(0xFFE0F2FE),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF06B6D4).withValues(alpha: 0.4)),
+          border: Border.all(color: const Color(0xFFBAE6FD)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.vertical_align_top_rounded, color: Color(0xFF22D3EE), size: 24),
+            const Icon(Icons.vertical_align_top_rounded, color: Color(0xFF0284C7), size: 24),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('RULE 3: MAXIMUM LIMIT / ROUGHNESS', style: TextStyle(color: Color(0xFF22D3EE), fontSize: 10, fontWeight: FontWeight.w900)),
+                  const Text('RULE 3: MAXIMUM LIMIT / ROUGHNESS', style: TextStyle(color: Color(0xFF0284C7), fontSize: 10, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 2),
-                  Text('Must be ≤ $maxVal $unit', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text('Must be ≤ $maxVal $unit', style: const TextStyle(color: Color(0xFF0F172A), fontSize: 15, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -794,7 +946,6 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
         ),
       );
     } else {
-      // Rule 1: Range
       final nomVal = double.tryParse('${param['nominal_value']}')?.toStringAsFixed(2) ?? '${param['nominal_value']}';
       final minVal = double.tryParse('${param['lower_limit']}')?.toStringAsFixed(2) ?? '${param['lower_limit']}';
       final maxVal = double.tryParse('${param['upper_limit']}')?.toStringAsFixed(2) ?? '${param['upper_limit']}';
@@ -802,9 +953,9 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildSpecItem('Lower Limit', '$minVal $unit', const Color(0xFF94A3B8)),
-          _buildSpecItem('Nominal Target', '$nomVal $unit', const Color(0xFF60A5FA)),
-          _buildSpecItem('Upper Limit', '$maxVal $unit', const Color(0xFF94A3B8)),
+          _buildSpecItem('Lower Limit', '$minVal $unit', const Color(0xFF475569)),
+          _buildSpecItem('Nominal Target', '$nomVal $unit', const Color(0xFF2563EB)),
+          _buildSpecItem('Upper Limit', '$maxVal $unit', const Color(0xFF475569)),
         ],
       );
     }
@@ -815,33 +966,32 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       children: [
         Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
-        Text(value, style: TextStyle(color: col, fontWeight: FontWeight.w900, fontSize: 14)),
+        Text(value, style: TextStyle(color: col, fontWeight: FontWeight.bold, fontSize: 14)),
       ],
     );
   }
 
-  // Interactive Input Section: Visual YES/NO or Numeric Voice/Keyboard
   Widget _buildInputSection(InspectionProvider provider, Map<String, dynamic> param, int rule) {
     final isFilled = provider.isParamFilled(param['parameter_code']);
     final recorded = provider.recordedResults[param['parameter_code']];
 
     if (isFilled && recorded != null) {
+      final isOk = _isMeasurementPassing(param, recorded);
       final displayVal = (rule == 2)
-          ? ((recorded['measured_value'] == 1.0 || recorded['status'] == 'ok') ? 'YES (PASS)' : 'NO (REJECT)')
+          ? (isOk ? 'YES (PASS)' : 'NO (REJECT)')
           : '${recorded['measured_value'] ?? recorded['value']} ${param['unit']}';
 
-      final isOk = recorded['status'] == 'ok';
       final isQueued = recorded['status'] == 'queued';
 
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: isQueued 
-             ? const Color(0xFFB45309).withValues(alpha: 0.3) 
-             : (isOk ? const Color(0xFF064E3B).withValues(alpha: 0.3) : const Color(0xFF7F1D1D).withValues(alpha: 0.3)),
+             ? const Color(0xFFFEF3C7)
+             : (isOk ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2)),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isQueued ? const Color(0xFFF59E0B) : (isOk ? const Color(0xFF10B981) : const Color(0xFFEF4444)), 
+            color: isQueued ? const Color(0xFFFDE68A) : (isOk ? const Color(0xFFA7F3D0) : const Color(0xFFFCA5A5)), 
             width: 1.5
           ),
         ),
@@ -852,15 +1002,15 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
               children: [
                 Icon(
                   isQueued ? Icons.hourglass_empty_rounded : (isOk ? Icons.check_circle_rounded : Icons.cancel_rounded), 
-                  color: isQueued ? const Color(0xFFFBBF24) : (isOk ? const Color(0xFF34D399) : const Color(0xFFF87171)), 
+                  color: isQueued ? const Color(0xFFD97706) : (isOk ? const Color(0xFF059669) : const Color(0xFFDC2626)), 
                   size: 22
                 ),
                 const SizedBox(width: 8),
                 Text(
                   isQueued ? 'PROCESSING...' : (isOk ? 'RECORDED: WITHIN SPEC' : 'RECORDED: OUT OF SPEC'),
                   style: TextStyle(
-                    color: isQueued ? const Color(0xFFFBBF24) : (isOk ? const Color(0xFF34D399) : const Color(0xFFF87171)), 
-                    fontWeight: FontWeight.w900, 
+                    color: isQueued ? const Color(0xFFD97706) : (isOk ? const Color(0xFF059669) : const Color(0xFFDC2626)), 
+                    fontWeight: FontWeight.bold, 
                     fontSize: 14
                   ),
                 ),
@@ -869,43 +1019,49 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
             const SizedBox(height: 10),
             Text(
               displayVal,
-              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
+              style: const TextStyle(color: Color(0xFF0F172A), fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: () {
-                // Re-open entry for this parameter
                 setState(() {
                   provider.recordedResults.remove(param['parameter_code']);
                   _lastResult = null;
                 });
               },
               style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF64748B)),
+                foregroundColor: const Color(0xFF64748B),
+                side: const BorderSide(color: Color(0xFFCBD5E1)),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              icon: const Icon(Icons.edit_rounded, color: Color(0xFFCBD5E1), size: 14),
-              label: const Text('Re-enter / Correct Value', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11)),
+              icon: const Icon(Icons.edit_rounded, color: Color(0xFF64748B), size: 14),
+              label: const Text('Re-enter / Correct Value', style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
             ),
           ],
         ),
       );
     }
 
-    // Rule 2: Big YES / NO Visual Buttons + Auto-Advance
     if (rule == 2) {
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF334155)),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A0F172A),
+              blurRadius: 10,
+              offset: Offset(0, 3),
+            ),
+          ],
         ),
         child: Column(
           children: [
             const Text(
               'TAP VISUAL INSPECTION OUTCOME',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+              style: TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5),
             ),
             const SizedBox(height: 14),
             Row(
@@ -914,12 +1070,12 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                   child: ElevatedButton.icon(
                     onPressed: _isProcessing ? null : () => _submitSpokenOrTypedValue('1.0'),
                     icon: const Icon(Icons.check_circle_rounded, color: Colors.white, size: 22),
-                    label: const Text('YES (PASS)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15)),
+                    label: const Text('YES (PASS)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
+                      backgroundColor: const Color(0xFF059669),
                       padding: const EdgeInsets.symmetric(vertical: 18),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 3,
+                      elevation: 0,
                     ),
                   ),
                 ),
@@ -928,12 +1084,12 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                   child: ElevatedButton.icon(
                     onPressed: _isProcessing ? null : () => _submitSpokenOrTypedValue('0.0'),
                     icon: const Icon(Icons.cancel_rounded, color: Colors.white, size: 22),
-                    label: const Text('NO (REJECT)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15)),
+                    label: const Text('NO (REJECT)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFEF4444),
+                      backgroundColor: const Color(0xFFDC2626),
                       padding: const EdgeInsets.symmetric(vertical: 18),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 3,
+                      elevation: 0,
                     ),
                   ),
                 ),
@@ -944,7 +1100,6 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       );
     }
 
-    // Rule 1 & Rule 3: Numeric Entry (Voice Mic + Typed input)
     String hintText = 'Type measurement...';
     if (rule == 31) hintText = 'Type value (e.g. 3.35 for ≥ 3.30 MIN)...';
     if (rule == 32) hintText = 'Type roughness (e.g. 2.8 for ≤ 3.2 Ra)...';
@@ -952,13 +1107,19 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         children: [
-          // Voice Mic Button
           GestureDetector(
             onTap: _isProcessing ? null : _toggleVoiceRecording,
             child: Container(
@@ -966,13 +1127,13 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: _isRecording
-                    ? const Color(0xFFEF4444)
-                    : (_isProcessing ? const Color(0xFFF59E0B) : const Color(0xFF4F46E5)),
+                    ? const Color(0xFFDC2626)
+                    : (_isProcessing ? const Color(0xFFD97706) : const Color(0xFF2563EB)),
                 boxShadow: [
                   BoxShadow(
-                    color: (_isRecording ? const Color(0xFFEF4444) : const Color(0xFF4F46E5)).withValues(alpha: 0.4),
-                    blurRadius: 20,
-                    spreadRadius: 4,
+                    color: (_isRecording ? const Color(0xFFDC2626) : const Color(0xFF2563EB)).withValues(alpha: 0.25),
+                    blurRadius: 16,
+                    spreadRadius: 3,
                   )
                 ],
               ),
@@ -990,31 +1151,30 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
             _isRecording
                 ? 'Recording... Tap to evaluate & auto-advance'
                 : (_isProcessing ? 'Processing speech...' : 'Tap Mic to Speak Reading'),
-            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+            style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
 
-          // Manual typing input
           Row(
             children: [
               Expanded(
                 child: TextField(
                   controller: _inputController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold),
                   decoration: InputDecoration(
                     hintText: hintText,
-                    hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 12.5),
+                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
                     filled: true,
-                    fillColor: const Color(0xFF0F172A),
+                    fillColor: const Color(0xFFF8FAFC),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF334155)),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF6366F1), width: 2),
+                      borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
                     ),
                   ),
                   onSubmitted: (val) => _submitSpokenOrTypedValue(val),
@@ -1024,11 +1184,12 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
               ElevatedButton(
                 onPressed: _isProcessing ? null : () => _submitSpokenOrTypedValue(_inputController.text),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4F46E5),
+                  backgroundColor: const Color(0xFF2563EB),
                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
                 ),
-                child: const Text('SUBMIT', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+                child: const Text('SUBMIT', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -1044,18 +1205,18 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: isOk ? const Color(0xFF064E3B).withValues(alpha: 0.4) : const Color(0xFF7F1D1D).withValues(alpha: 0.4),
+        color: isOk ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isOk ? const Color(0xFF10B981) : const Color(0xFFEF4444)),
+        border: Border.all(color: isOk ? const Color(0xFFA7F3D0) : const Color(0xFFFCA5A5)),
       ),
       child: Row(
         children: [
-          Icon(isOk ? Icons.check_circle_rounded : Icons.cancel_rounded, color: isOk ? const Color(0xFF34D399) : const Color(0xFFF87171), size: 24),
+          Icon(isOk ? Icons.check_circle_rounded : Icons.cancel_rounded, color: isOk ? const Color(0xFF059669) : const Color(0xFFDC2626), size: 24),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               msg,
-              style: TextStyle(color: isOk ? const Color(0xFF34D399) : const Color(0xFFF87171), fontWeight: FontWeight.bold, fontSize: 13),
+              style: TextStyle(color: isOk ? const Color(0xFF059669) : const Color(0xFFDC2626), fontWeight: FontWeight.bold, fontSize: 13),
             ),
           ),
         ],

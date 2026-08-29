@@ -10,6 +10,7 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import ReportsHubPage from './pages/ReportsHubPage';
 import SetupApprovalReportsPage from './pages/SetupApprovalReportsPage';
 import DailyProductionReportsPage from './pages/DailyProductionReportsPage';
+import DowntimeReportsPage from './pages/DowntimeReportsPage';
 import ProductionModulePage from './pages/ProductionModulePage';
 import MachinesPage from './pages/MachinesPage';
 import MachineDetailPage from './pages/MachineDetailPage';
@@ -110,6 +111,14 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <DailyProductionReportsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/reports/downtime"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <DowntimeReportsPage />
           </ProtectedLayout>
         }
       />

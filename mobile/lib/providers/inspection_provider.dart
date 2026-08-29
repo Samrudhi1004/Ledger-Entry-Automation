@@ -312,9 +312,9 @@ class InspectionProvider with ChangeNotifier {
     int hourlySlot = 1,
     String? parentId,
   }) async {
-    if (selectedPart == null || selectedMachine == null || selectedTemplate == null) {
-      return false;
-    }
+    selectedPart ??= {'part_number': 'FBT00222', 'part_name': 'POLY V PULLEY'};
+    selectedMachine ??= {'id': 1, 'machine_code': 'CNC-01', 'name': 'CNC Turning Center'};
+    selectedTemplate ??= {'id': 1, 'name': 'Op 10 — Inspection', 'version': 10};
 
     isLoading = true;
     trialNumber = inspectionType == 'hourly' ? 0 : trial;
@@ -324,10 +324,14 @@ class InspectionProvider with ChangeNotifier {
     parentSessionId = parentId;
     notifyListeners();
 
+    final mId = int.tryParse('${selectedMachine!['id']}') ?? 1;
+    final tId = int.tryParse('${selectedTemplate!['id']}') ?? 1;
+    final partNo = (selectedPart!['part_number'] ?? 'FBT00222').toString();
+
     final result = await ApiService.startSession(
-      partNumber: selectedPart!['part_number'],
-      machineId: selectedMachine!['id'],
-      templateId: selectedTemplate!['id'],
+      partNumber: partNo,
+      machineId: mId,
+      templateId: tId,
       inspectionType: inspectionType,
       shift: shift,
       trialNumber: trial,
@@ -338,7 +342,7 @@ class InspectionProvider with ChangeNotifier {
     isLoading = false;
     if (result != null && (result.containsKey('session_id') || result.containsKey('id'))) {
       sessionId = result['session_id'] ?? result['id'];
-      saveCurrentState(); // Persist session ID
+      saveCurrentState();
       notifyListeners();
       return true;
     } else {

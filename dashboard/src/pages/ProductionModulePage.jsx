@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
-import { BarChart3, ArrowRight, Layers, CheckCircle2, Factory } from 'lucide-react';
+import { BarChart3, ArrowRight, Layers, CheckCircle2, Factory, Clock } from 'lucide-react';
 
 export default function ProductionModulePage() {
   const navigate = useNavigate();
@@ -21,6 +21,21 @@ export default function ProductionModulePage() {
       details: ['End of Day Shift Production Logs', 'Target vs Actual Achievement %', 'CR / MR / RW Rejection Breakup'],
       actionText: 'Open Daily Production Reports',
       link: '/reports/daily-production',
+    },
+    {
+      id: 'downtime-reports',
+      title: 'Downtime Reports',
+      badge: '● Machine Delays & Downtime Minutes',
+      badgeBg: '#E0F2FE',
+      badgeColor: '#0369A1',
+      icon: Clock,
+      iconBg: '#E0F2FE',
+      iconColor: '#0284C7',
+      description:
+        'Log shift downtime minutes (No Load, No Operator, U/M, Setting, Insp Wait, Tool Change, P/O, R/W, Tool Prob) automatically linked to submitted Daily Production Reports.',
+      details: ['Operator & Machine Downtime Log', '9-Category Downtime Minutes Breakdown', 'Form QF/MF-06 Hanuman Engineering Format'],
+      actionText: 'Open Downtime Reports',
+      link: '/reports/downtime?view=full',
     },
   ];
 
