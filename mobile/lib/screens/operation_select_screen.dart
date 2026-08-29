@@ -188,6 +188,12 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // ⚡ LIVE RESUMING CARD (If session is in-progress or app was restarted mid-entry)
+              if (provider.sessionId != null || provider.recordedResults.isNotEmpty) ...[
+                _buildResumeInspectionCard(provider),
+                const SizedBox(height: 12),
+              ],
+
               // Selected Machine & Part Banner
               Container(
                 padding: const EdgeInsets.all(16),
@@ -897,6 +903,101 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildResumeInspectionCard(InspectionProvider provider) {
+    final recordedCount = provider.recordedResults.length;
+    final totalCount = provider.parameters.length;
+    final slotText = provider.inspectionType == 'first_piece'
+        ? '1ST PC #${provider.trialNumber}'
+        : 'SLOT ${provider.hourlySlot}/HR';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF93C5FD), width: 1.5),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2563EB),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'RESUME LIVE INSPECTION',
+                        style: TextStyle(color: Color(0xFF1E40AF), fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
+                      ),
+                      Text(
+                        'In-progress session active',
+                        style: TextStyle(color: Color(0xFF3B82F6), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                ),
+                child: Text(
+                  slotText,
+                  style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold, fontSize: 11),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Part: ${provider.selectedPart?['part_number'] ?? '—'}  •  Progress: $recordedCount of ${totalCount > 0 ? totalCount : '—'} parameters recorded',
+            style: const TextStyle(color: Color(0xFF1E293B), fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 44),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            icon: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
+            label: const Text('RESUME DATA ENTRY NOW', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          ),
+        ],
+      ),
     );
   }
 }
