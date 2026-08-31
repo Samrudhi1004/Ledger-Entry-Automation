@@ -100,9 +100,9 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     final now = DateTime.now();
     final dateStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-    // Use valid database fallback IDs (Machine: 5 CNC-01, Part: 10 Brake Drum Rear)
-    final machineId = provider.selectedMachine?['id'] ?? 5;
-    final partId = provider.selectedPart?['id'] ?? 10;
+    final machineId = provider.selectedMachine?['id'] ?? 1;
+    final partId = provider.selectedPart?['id'] ?? 1;
+
     final operation = provider.selectedTemplate?['part_operation_name'] ?? provider.selectedTemplate?['version']?.toString() ?? 'Drilling';
     final shift = provider.shift;
 
