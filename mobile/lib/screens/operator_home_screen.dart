@@ -35,10 +35,14 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
       final provider = Provider.of<InspectionProvider>(context, listen: false);
       
       if (provider.selectedMachine == null) {
-        final machines = await ApiService.getMachines();
-        if (machines.isNotEmpty) {
-          provider.selectMachine(machines.first);
-        } else {
+        try {
+          final machines = await ApiService.getMachines();
+          if (machines.isNotEmpty) {
+            provider.selectMachine(machines.first);
+          } else {
+            provider.selectMachine({'id': 1, 'machine_code': 'CNC-01', 'name': 'CNC Turning Center'});
+          }
+        } catch (_) {
           provider.selectMachine({'id': 1, 'machine_code': 'CNC-01', 'name': 'CNC Turning Center'});
         }
       }
