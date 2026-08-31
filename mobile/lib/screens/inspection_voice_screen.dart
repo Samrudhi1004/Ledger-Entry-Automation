@@ -335,14 +335,26 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () async {
-                    _isSubmitModalOpen = false;
-                    Navigator.pop(ctx);
-                    await provider.submitBatchMeasurements();
-                    if (context.mounted) {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (_) => const SummaryScreen()),
-                      );
+                    final res = await provider.submitBatchMeasurements();
+                    if (res != null) {
+                      _isSubmitModalOpen = false;
+                      if (context.mounted) {
+                        Navigator.pop(ctx);
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => const SummaryScreen()),
+                        );
+                      }
+                    } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Failed to submit measurements. Please check connection and try again.'),
+                            backgroundColor: Color(0xFFDC2626),
+                            duration: Duration(seconds: 4),
+                          ),
+                        );
+                      }
                     }
                   },
                   style: ElevatedButton.styleFrom(
