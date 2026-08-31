@@ -11,6 +11,7 @@ import 'operation_select_screen.dart';
 import 'daily_production_report_screen.dart';
 import 'inspection_voice_screen.dart';
 import 'setup_approval_report_screen.dart';
+import 'report_sheet_screen.dart';
 import 'tasks_screen.dart';
 
 class AppHomeScreen extends StatefulWidget {
@@ -535,6 +536,11 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
     final selectedPart = provider.selectedPart;
     final partNumber = selectedPart?['part_number'] ?? 'FBT00222';
 
+    final hasActiveSession = provider.sessionId != null || provider.recordedResults.isNotEmpty;
+    final recordedCount = provider.recordedResults.length;
+    final totalParams = provider.parameters.length;
+    final sessionPart = provider.selectedPart?['part_number'] ?? provider.selectedPart?['part_name'] ?? partNumber;
+
     final unreadNotifCount = _supervisorNotifications.where((n) => n['is_read'] == false).length;
 
     Widget homeTabContent = RefreshIndicator(
@@ -572,6 +578,28 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         letterSpacing: -0.5,
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF10B981),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Active Part: $partNumber',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
 
@@ -579,6 +607,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                 GestureDetector(
                   onTap: () => _showNotificationsModal(context),
                   child: Stack(
+                    clipBehavior: Clip.none,
                     children: [
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -587,18 +616,18 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.08),
+                              color: Colors.black.withValues(alpha: 0.04),
                               blurRadius: 10,
-                              offset: const Offset(0, 4),
+                              offset: const Offset(0, 2),
                             )
                           ],
                         ),
-                        child: const Icon(Icons.notifications_none_rounded, color: Color(0xFF0F172A), size: 24),
+                        child: const Icon(Icons.notifications_none_rounded, color: Color(0xFF334155), size: 22),
                       ),
                       if (unreadNotifCount > 0)
                         Positioned(
-                          right: 2,
-                          top: 2,
+                          right: -2,
+                          top: -2,
                           child: Container(
                             padding: const EdgeInsets.all(4),
                             decoration: const BoxDecoration(
@@ -630,7 +659,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
 
             // 2. FEATURE MODULES TITLE
             const Text(
-              'Consoles & Inspection Modules',
+              'Here are some things you can do',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -648,67 +677,115 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
               crossAxisSpacing: 14,
               mainAxisSpacing: 14,
               childAspectRatio: 1.05,
-              children: [
-                // Module 1: Machine Selection (Soft Indigo)
-                _buildSoftPastelCard(
-                  title: 'Machine',
-                  description: 'Choose or switch active floor machine',
-                  icon: Icons.precision_manufacturing_rounded,
-                  bgColor: const Color(0xFFF0F3FF),
-                  borderColor: const Color(0xFFE0E7FF),
-                  iconColor: const Color(0xFF4F46E5),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
-                    );
-                  },
-                ),
+              children: auth.isOperator
+                  ? [
+                      // Operator Card 1: Machine (with 1 to 8 hr entry)
+                      _buildSoftPastelCard(
+                        title: 'Machine',
+                        description: 'Select machine & 1 to 8 hr in-process inspection entry',
+                        icon: Icons.precision_manufacturing_rounded,
+                        bgColor: const Color(0xFFF0F3FF),
+                        borderColor: const Color(0xFFE0E7FF),
+                        iconColor: const Color(0xFF4F46E5),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+                          );
+                        },
+                      ),
 
-                // Module 2: Process Inspection (Operator) OR Setup Approval Report (Inspector / Supervisor)
-                if (auth.isOperator)
-                  _buildSoftPastelCard(
-                    title: 'Process Inspection',
-                    description: 'Select & start process inspection operations',
-                    icon: Icons.fact_check_rounded,
-                    bgColor: const Color(0xFFECFDF5),
-                    borderColor: const Color(0xFFA7F3D0),
-                    iconColor: const Color(0xFF059669),
-                    onTap: () => _handleProcessInspectionTap(context),
-                  )
-                else
-                  _buildSoftPastelCard(
-                    title: 'Setup Approval Report',
-                    description: 'View official first piece setup approval report (Form F02)',
-                    icon: Icons.assignment_turned_in_rounded,
-                    bgColor: const Color(0xFFFAF5FF),
-                    borderColor: const Color(0xFFE9D5FF),
-                    iconColor: const Color(0xFF9333EA),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const SetupApprovalReportScreen()),
-                      );
-                    },
-                  ),
+                      // Operator Card 2: Resume Entry (resumes live session directly)
+                      _buildSoftPastelCard(
+                        title: 'Resume Entry',
+                        description: hasActiveSession
+                            ? 'Resume $sessionPart ($recordedCount of ${totalParams > 0 ? totalParams : "—"} params)'
+                            : 'Resume active inspection data entry for operation',
+                        icon: hasActiveSession ? Icons.play_circle_fill_rounded : Icons.play_circle_outline_rounded,
+                        bgColor: hasActiveSession ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
+                        borderColor: hasActiveSession ? const Color(0xFFA7F3D0) : const Color(0xFFE2E8F0),
+                        iconColor: hasActiveSession ? const Color(0xFF059669) : const Color(0xFF64748B),
+                        onTap: () => _resumeActiveSessionDirectly(context),
+                      ),
 
-                // Module 3: Daily Production Report (Operators Only)
-                if (auth.isOperator)
-                  _buildSoftPastelCard(
-                    title: 'Daily Production Report',
-                    description: 'End of shift output, target & breakdown log (Form F19)',
-                    icon: Icons.bar_chart_rounded,
-                    bgColor: const Color(0xFFFFF7ED),
-                    borderColor: const Color(0xFFFFEDD5),
-                    iconColor: const Color(0xFFEA580C),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
-                      );
-                    },
-                  ),
-              ],
+                      // Operator Card 3: Daily Production Report (Form F19)
+                      _buildSoftPastelCard(
+                        title: 'Daily Production Report',
+                        description: 'End of shift output, target & breakdown log (Form F19)',
+                        icon: Icons.bar_chart_rounded,
+                        bgColor: const Color(0xFFFFF7ED),
+                        borderColor: const Color(0xFFFFEDD5),
+                        iconColor: const Color(0xFFEA580C),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
+                          );
+                        },
+                      ),
+                    ]
+                  : [
+                      // Inspector / Supervisor Card 1: Machine
+                      _buildSoftPastelCard(
+                        title: 'Machine',
+                        description: 'Choose or switch active floor machine',
+                        icon: Icons.precision_manufacturing_rounded,
+                        bgColor: const Color(0xFFF0F3FF),
+                        borderColor: const Color(0xFFE0E7FF),
+                        iconColor: const Color(0xFF4F46E5),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+                          );
+                        },
+                      ),
+
+                      // Inspector / Supervisor Card 2: Live Daily Report (Form F02 Live Sheet)
+                      _buildSoftPastelCard(
+                        title: 'Live Daily Report',
+                        description: 'View real-time Form F02 report filling (1PC & In-Process)',
+                        icon: Icons.article_rounded,
+                        bgColor: const Color(0xFFEFF6FF),
+                        borderColor: const Color(0xFFBFDBFE),
+                        iconColor: const Color(0xFF2563EB),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const ReportSheetScreen()),
+                          );
+                        },
+                      ),
+
+                      // Inspector / Supervisor Card 3: Setup Approval Report
+                      _buildSoftPastelCard(
+                        title: 'Setup Approval Report',
+                        description: 'View official first piece setup approval report (Form F02)',
+                        icon: Icons.assignment_turned_in_rounded,
+                        bgColor: const Color(0xFFFAF5FF),
+                        borderColor: const Color(0xFFE9D5FF),
+                        iconColor: const Color(0xFF9333EA),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const SetupApprovalReportScreen()),
+                          );
+                        },
+                      ),
+
+                      // Inspector / Supervisor Card 4: Resume Entry
+                      _buildSoftPastelCard(
+                        title: 'Resume Entry',
+                        description: hasActiveSession
+                            ? 'Resume $sessionPart ($recordedCount of ${totalParams > 0 ? totalParams : "—"} params)'
+                            : 'Resume active inspection data entry for operation',
+                        icon: hasActiveSession ? Icons.play_circle_fill_rounded : Icons.play_circle_outline_rounded,
+                        bgColor: hasActiveSession ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
+                        borderColor: hasActiveSession ? const Color(0xFFA7F3D0) : const Color(0xFFE2E8F0),
+                        iconColor: hasActiveSession ? const Color(0xFF059669) : const Color(0xFF64748B),
+                        onTap: () => _resumeActiveSessionDirectly(context),
+                      ),
+                    ],
             ),
 
             const SizedBox(height: 28),
@@ -804,8 +881,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
 
       // FLOATING 2-TAB BOTTOM NAVIGATION BAR (Home & About)
       bottomNavigationBar: Container(
-        margin: const EdgeInsets.only(left: 24, right: 24, bottom: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        margin: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(30),
@@ -818,85 +895,94 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
           ],
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             // Tab 1: Home
-            InkWell(
-              onTap: () => setState(() => _currentIndex = 0),
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.home_rounded,
-                      color: _currentIndex == 0 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
-                      size: 22,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Home',
-                      style: TextStyle(
+            Expanded(
+              child: InkWell(
+                onTap: () => setState(() => _currentIndex = 0),
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.home_rounded,
                         color: _currentIndex == 0 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
-                        fontWeight: _currentIndex == 0 ? FontWeight.bold : FontWeight.w600,
-                        fontSize: 13,
+                        size: 22,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        'Home',
+                        style: TextStyle(
+                          color: _currentIndex == 0 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                          fontWeight: _currentIndex == 0 ? FontWeight.bold : FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
 
             // Tab 2: Tasks
-            InkWell(
-              onTap: () => setState(() => _currentIndex = 1),
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.task_alt_rounded,
-                      color: _currentIndex == 1 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
-                      size: 22,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Tasks',
-                      style: TextStyle(
+            Expanded(
+              child: InkWell(
+                onTap: () => setState(() => _currentIndex = 1),
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.task_alt_rounded,
                         color: _currentIndex == 1 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
-                        fontWeight: _currentIndex == 1 ? FontWeight.bold : FontWeight.w600,
-                        fontSize: 13,
+                        size: 22,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        'Tasks',
+                        style: TextStyle(
+                          color: _currentIndex == 1 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                          fontWeight: _currentIndex == 1 ? FontWeight.bold : FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
 
             // Tab 3: About (Profile & Station details)
-            InkWell(
-              onTap: () => setState(() => _currentIndex = 2),
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.person_rounded,
-                      color: _currentIndex == 2 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
-                      size: 22,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'About',
-                      style: TextStyle(
+            Expanded(
+              child: InkWell(
+                onTap: () => setState(() => _currentIndex = 2),
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.person_rounded,
                         color: _currentIndex == 2 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
-                        fontWeight: _currentIndex == 2 ? FontWeight.bold : FontWeight.w600,
-                        fontSize: 13,
+                        size: 22,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        'About',
+                        style: TextStyle(
+                          color: _currentIndex == 2 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                          fontWeight: _currentIndex == 2 ? FontWeight.bold : FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1068,6 +1154,53 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _resumeActiveSessionDirectly(BuildContext context) async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final provider = Provider.of<InspectionProvider>(context, listen: false);
+    final userId = auth.userId ?? auth.username ?? 'operator';
+
+    // 1. If session is active in provider memory, open InspectionVoiceScreen directly
+    if (provider.sessionId != null || provider.recordedResults.isNotEmpty) {
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+        );
+      }
+      return;
+    }
+
+    // 2. Check local storage for saved in-flight inspection state
+    var hasSaved = await PersistenceService.hasSavedState(userId);
+    var targetUserKey = userId;
+    if (!hasSaved && auth.username != null) {
+      hasSaved = await PersistenceService.hasSavedState(auth.username!);
+      if (hasSaved) targetUserKey = auth.username!;
+    }
+
+    if (hasSaved) {
+      final savedState = await PersistenceService.loadState(targetUserKey);
+      if (savedState != null) {
+        provider.restoreFromLocalState(savedState, targetUserKey);
+        if (context.mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+          );
+        }
+        return;
+      }
+    }
+
+    // 3. If no session exists, navigate to operation selection to start new
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
+      );
+    }
   }
 
   Future<void> _handleProcessInspectionTap(BuildContext context) async {
