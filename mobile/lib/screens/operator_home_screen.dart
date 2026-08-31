@@ -33,6 +33,34 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
   Future<void> _loadOperatorTemplates() async {
     try {
       final provider = Provider.of<InspectionProvider>(context, listen: false);
+      
+      if (provider.selectedMachine == null) {
+        try {
+          final machines = await ApiService.getMachines();
+          if (machines.isNotEmpty) {
+            provider.selectMachine(machines.first);
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('No machines available. Please select one manually.'),
+                backgroundColor: Color(0xFFF59E0B),
+              ));
+              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MachineSelectScreen()));
+            }
+            return;
+          }
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Network error. Please select a machine manually.'),
+              backgroundColor: Color(0xFFEF4444),
+            ));
+            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MachineSelectScreen()));
+          }
+          return;
+        }
+      }
+
       final machineId = provider.selectedMachine?['id'] ?? 1;
 
       await provider.fetchPendingRejections();
@@ -413,19 +441,29 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () {
+                      if (provider.completedHourlySlots.length < 8) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('🔒 You must complete all 8 hourly inspections before submitting the Daily Production Report.'),
+                            backgroundColor: Color(0xFFF59E0B),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                        return;
+                      }
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFEA580C),
+                      backgroundColor: provider.completedHourlySlots.length < 8 ? const Color(0xFF94A3B8) : const Color(0xFFEA580C),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: 2,
+                      elevation: provider.completedHourlySlots.length < 8 ? 0 : 2,
                     ),
-                    icon: const Icon(Icons.bar_chart_rounded, size: 16),
+                    icon: Icon(provider.completedHourlySlots.length < 8 ? Icons.lock_rounded : Icons.bar_chart_rounded, size: 16),
                     label: const Text('DAILY PRODUCTION', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                   ),
                 ),
