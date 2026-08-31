@@ -359,51 +359,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 }),
               ],
 
-              if (isInspector) ...[
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'FIRST PIECE INSPECTION TRIALS',
-                      style: TextStyle(
-                        color: Color(0xFF475569),
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0xFFDBEAFE)),
-                      ),
-                      child: const Text(
-                        '1PC ONLY',
-                        style: TextStyle(color: Color(0xFF2563EB), fontSize: 10, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildTrialLaunchCard(1, '1ST PC #1', 'Initial Setup', const Color(0xFF2563EB)),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildTrialLaunchCard(2, '1ST PC #2', 'Corrective', const Color(0xFFD97706)),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildTrialLaunchCard(3, '1ST PC #3', 'Final Check', const Color(0xFF059669)),
-                    ),
-                  ],
-                ),
-              ] else ...[
+              if (!isInspector) ...[
                 const SizedBox(height: 20),
                 const Text(
                   'HOURLY IN-PROCESS INSPECTION SLOTS (1/HR - 8/HR)',

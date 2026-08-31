@@ -174,6 +174,18 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       _inputController.clear();
     });
 
+    // Dynamic completion check: trigger Submit/Review modal when 100% of parameters have recorded values
+    final totalCount = provider.parameters.length;
+    final recordedCount = provider.recordedResults.length;
+
+    if (totalCount > 0 && recordedCount >= totalCount) {
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (mounted) {
+        _showSubmitOrReviewModal();
+      }
+      return;
+    }
+
     if (_autoAdvance && result != null) {
       await Future.delayed(const Duration(milliseconds: 700));
       if (!mounted) return;
@@ -185,13 +197,38 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
         });
         _scrollToCurrentParam();
       } else {
-        _showCompletionDialog();
+        _showSubmitOrReviewModal();
       }
     }
   }
 
-  void _showCompletionDialog() {
+  bool _isSubmitModalOpen = false;
+
+  void _showSubmitOrReviewModal() {
+    if (_isSubmitModalOpen || !mounted) return;
+    _isSubmitModalOpen = true;
+
     final provider = Provider.of<InspectionProvider>(context, listen: false);
+    final totalCount = provider.parameters.length;
+
+    // Calculate OK & NOK counts
+    int okCount = 0;
+    int nokCount = 0;
+    for (final p in provider.parameters) {
+      final code = p['parameter_code'] ?? '';
+      final res = provider.recordedResults[code];
+      if (res != null) {
+        if (_isMeasurementPassing(p, res)) {
+          okCount++;
+        } else {
+          nokCount++;
+        }
+      }
+    }
+
+    final opName = provider.selectedTemplate?['name'] ?? 'Inspection Session';
+    final partNo = provider.selectedPart?['part_number'] ?? 'Part';
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -199,44 +236,133 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Color(0xFF059669), width: 1.5),
+          side: const BorderSide(color: Color(0xFF059669), width: 2),
         ),
-        title: const Row(
+        title: Column(
           children: [
-            Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 28),
-            SizedBox(width: 10),
-            Text('All Readings Done!', style: TextStyle(color: Color(0xFF0F172A), fontSize: 18, fontWeight: FontWeight.bold)),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: const BoxDecoration(
+                color: Color(0xFFECFDF5),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 36),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'All Parameters Recorded!',
+              style: TextStyle(color: Color(0xFF0F172A), fontSize: 18, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$opName · Part: $partNo',
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w500),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
-        content: Text(
-          'You have recorded all ${provider.parameters.length} parameters for this inspection session.\n\nProceed to review the summary and submit.',
-          style: const TextStyle(color: Color(0xFF64748B), fontSize: 13.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Review Again', style: TextStyle(color: Color(0xFF64748B))),
-          ),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const SummaryScreen()),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF059669),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              elevation: 0,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Color(0xFF059669), size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$okCount OK',
+                        style: const TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  Container(width: 1, height: 20, color: const Color(0xFFCBD5E1)),
+                  Row(
+                    children: [
+                      const Icon(Icons.cancel, color: Color(0xFFDC2626), size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$nokCount NOK',
+                        style: const TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            icon: const Icon(Icons.assessment_rounded, size: 18),
-            label: const Text('VIEW SUMMARY', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Text(
+              'All $totalCount parameters have been measured. Proceed to submit your inspection report or review values.',
+              style: const TextStyle(color: Color(0xFF475569), fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    _isSubmitModalOpen = false;
+                    Navigator.pop(ctx);
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SummaryScreen()),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF2563EB),
+                    side: const BorderSide(color: Color(0xFF2563EB)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.search_rounded, size: 16),
+                  label: const Text('REVIEW READINGS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    _isSubmitModalOpen = false;
+                    Navigator.pop(ctx);
+                    await provider.submitBatchMeasurements();
+                    if (context.mounted) {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SummaryScreen()),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF059669),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  icon: const Icon(Icons.send_rounded, size: 16),
+                  label: const Text('SUBMIT REPORT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
           ),
         ],
       ),
-    );
+    ).then((_) {
+      _isSubmitModalOpen = false;
+    });
   }
 
   void _showParameterGridModal(BuildContext context) {

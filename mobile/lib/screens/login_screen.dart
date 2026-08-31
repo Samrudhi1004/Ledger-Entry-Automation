@@ -171,12 +171,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                     Widget targetScreen = const AppHomeScreen();
                                     final role = (auth.userRole ?? '').toLowerCase();
 
-                                    if (role == 'inspector' || role == 'quality_engineer') {
-                                      targetScreen = const InspectorHomeScreen();
-                                    } else if (role == 'supervisor' || role == 'admin') {
+                                    if (role == 'supervisor' || role == 'admin') {
                                       targetScreen = const SupervisorInfoScreen();
                                     } else {
-                                      // Operator role - check for saved state summary to resume
                                       if (auth.userId != null) {
                                         final provider = Provider.of<InspectionProvider>(context, listen: false);
                                         provider.currentUserId = auth.userId!;

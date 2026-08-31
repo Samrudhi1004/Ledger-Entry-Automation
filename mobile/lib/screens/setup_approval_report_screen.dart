@@ -639,13 +639,13 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
 
           // Signatures Row
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _sigCol('OPERATOR SIGNATURE', inspectorName),
-                _sigCol('QUALITY INSPECTOR SIGNATURE', inspectorName),
-                _sigCol('SUPERVISOR SIGNATURE', 'Supervisor Sign'),
+                Expanded(child: _sigCol('OPERATOR SIGNATURE', inspectorName)),
+                Expanded(child: _sigCol('QUALITY INSPECTOR SIGNATURE', inspectorName)),
+                Expanded(child: _sigCol('SUPERVISOR SIGNATURE', 'Supervisor Sign')),
               ],
             ),
           ),
@@ -655,14 +655,29 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
   }
 
   Widget _sigCol(String label, String name) {
-    return Column(
-      children: [
-        Text(name, style: const TextStyle(color: Colors.black, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600, fontSize: 10)),
-        const SizedBox(height: 2),
-        Container(width: 140, height: 1, color: Colors.black54),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 8.5)),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        children: [
+          Text(
+            name,
+            style: const TextStyle(color: Colors.black, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600, fontSize: 9.5),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+          const SizedBox(height: 2),
+          Container(height: 1, color: Colors.black54),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 7.5),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+        ],
+      ),
     );
   }
 }
