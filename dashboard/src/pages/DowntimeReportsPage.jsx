@@ -443,7 +443,7 @@ export default function DowntimeReportsPage() {
         subtitle="Form QF/MF-06 — Supervisor Downtime Logging & Date-Wise Submissions"
       />
 
-      <div className="page-content" style={{ padding: '14px 16px', backgroundColor: '#F8FAFC', minHeight: '100vh', maxWidth: '100%', overflowX: 'hidden' }}>
+      <div className="page-content" style={{ padding: '14px 16px', backgroundColor: '#F8FAFC', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>
         
         {/* Navigation Tabs */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', borderBottom: '2px solid #E2E8F0', paddingBottom: '6px' }}>
@@ -608,7 +608,7 @@ export default function DowntimeReportsPage() {
             </div>
 
             {/* MAIN DOWNTIME TABLE */}
-            <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%', overflow: 'hidden' }}>
               
               {loading ? (
                 <div style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
@@ -624,7 +624,7 @@ export default function DowntimeReportsPage() {
                   </p>
                 </div>
               ) : (
-                <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
+                <div style={{ overflowX: 'auto', width: '100%' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'center', border: '1px solid #CBD5E1', tableLayout: 'auto' }}>
                     
                     {/* EXCEL MERGED HEADER STRUCTURE */}

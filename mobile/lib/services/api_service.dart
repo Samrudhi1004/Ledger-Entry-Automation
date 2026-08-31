@@ -258,10 +258,27 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
-        if (decoded is List) return decoded;
-        if (decoded is Map && decoded['results'] != null) return decoded['results'];
+        List<dynamic> result = [];
+        if (decoded is List) result = decoded;
+        if (decoded is Map && decoded['results'] != null) result = decoded['results'];
+        
+        if (result.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('cached_machines', jsonEncode(result));
+        }
+        return result;
       }
     } catch (_) {}
+    
+    // Fallback to cache on network failure
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedStr = prefs.getString('cached_machines');
+      if (cachedStr != null && cachedStr.isNotEmpty) {
+        return jsonDecode(cachedStr) as List<dynamic>;
+      }
+    } catch (_) {}
+
     return [];
   }
 
