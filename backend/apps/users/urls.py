@@ -5,6 +5,7 @@ from .views import (
     LogoutView,
     RegisterView,
     ProfileView,
+    UpdateProfilePhotoView,
     ChangePasswordView,
     UserListView,
     UserDetailView,
@@ -21,8 +22,9 @@ urlpatterns = [
     path('register/',        RegisterView.as_view(),       name='user-register'),
 
     # Own profile
-    path('me/',              ProfileView.as_view(),        name='user-profile'),
-    path('change-password/', ChangePasswordView.as_view(), name='change-password'),
+    path('me/',              ProfileView.as_view(),             name='user-profile'),
+    path('me/photo/',        UpdateProfilePhotoView.as_view(),  name='user-profile-photo'),
+    path('change-password/', ChangePasswordView.as_view(),      name='change-password'),
 
     # Admin: user management
     path('',                 UserListView.as_view(),       name='user-list'),

@@ -233,6 +233,63 @@ class ApiService {
     }
   }
 
+  // ── Profile Endpoints ───────────────────────────────────────────────────────
+
+  /// GET /api/users/me/ — fetch logged-in user profile details
+  static Future<Map<String, dynamic>?> getProfile() async {
+    try {
+      final response = await authenticatedRequest((headers) => http.get(
+        Uri.parse('$baseUrl/users/me/'),
+        headers: headers,
+      ));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('[ApiService] getProfile error: $e');
+    }
+    return null;
+  }
+
+  /// PATCH /api/users/me/ — update personal information (first_name, last_name, email, phone)
+  static Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async {
+    try {
+      final response = await authenticatedRequest((headers) => http.patch(
+        Uri.parse('$baseUrl/users/me/'),
+        headers: headers,
+        body: jsonEncode(data),
+      ));
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      } else {
+        final body = jsonDecode(response.body);
+        return {'success': false, 'message': body['detail'] ?? body['message'] ?? 'Failed to update profile'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error while updating profile'};
+    }
+  }
+
+  /// POST /api/users/change-password/ — change user password
+  static Future<Map<String, dynamic>> changePassword(String oldPassword, String newPassword) async {
+    try {
+      final response = await authenticatedRequest((headers) => http.post(
+        Uri.parse('$baseUrl/users/change-password/'),
+        headers: headers,
+        body: jsonEncode({'old_password': oldPassword, 'new_password': newPassword}),
+      ));
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': 'Password updated successfully'};
+      } else {
+        final body = jsonDecode(response.body);
+        final msg = body['old_password']?[0] ?? body['new_password']?[0] ?? body['detail'] ?? body['message'] ?? 'Failed to change password';
+        return {'success': false, 'message': msg};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error while changing password'};
+    }
+  }
+
   // ── Domain Endpoints (Protected by authenticatedRequest) ───────────────────
 
   // 2. Machine QR / Code Lookup

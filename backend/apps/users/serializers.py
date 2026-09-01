@@ -71,14 +71,21 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 # ─── Profile ───────────────────────────────────────────────────────────────
 class UserProfileSerializer(serializers.ModelSerializer):
-    plant_name = serializers.CharField(source='plant.name', read_only=True)
+    plant_name        = serializers.CharField(source='plant.name', read_only=True)
+    profile_photo_url = serializers.SerializerMethodField()
+
+    def get_profile_photo_url(self, obj):
+        request = self.context.get('request')
+        if obj.profile_photo and hasattr(obj.profile_photo, 'url'):
+            return request.build_absolute_uri(obj.profile_photo.url) if request else obj.profile_photo.url
+        return None
 
     class Meta:
         model  = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'employee_id', 'role', 'phone', 'plant', 'plant_name',
-            'profile_photo', 'date_joined', 'created_at',
+            'profile_photo', 'profile_photo_url', 'is_active', 'date_joined', 'created_at',
         ]
         read_only_fields = ['id', 'username', 'date_joined', 'created_at']
 
@@ -90,7 +97,7 @@ class UserListSerializer(serializers.ModelSerializer):
     class Meta:
         model  = User
         fields = [
-            'id', 'username', 'full_name', 'employee_id',
+            'id', 'username', 'email', 'phone', 'full_name', 'employee_id',
             'role', 'plant_name', 'is_active', 'created_at',
         ]
 

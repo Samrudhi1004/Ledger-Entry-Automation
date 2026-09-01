@@ -41,8 +41,21 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  // Re-fetch the logged-in user's profile and update context state.
+  // Call this after saving profile details or uploading a photo so the
+  // sidebar name and avatar update immediately without a page refresh.
+  const refreshUser = useCallback(async () => {
+    try {
+      const profile = await getProfile();
+      setUser(profile.data);
+      return profile.data;
+    } catch {
+      /* ignore — user stays as-is if request fails */
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

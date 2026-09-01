@@ -16,6 +16,7 @@ import MachinesPage from './pages/MachinesPage';
 import MachineDetailPage from './pages/MachineDetailPage';
 import ParametersPage from './pages/ParametersPage';
 import UsersPage from './pages/UsersPage';
+import ProfilePage from './pages/ProfilePage';
 import TasksPage from './pages/TasksPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
@@ -186,6 +187,15 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <UsersPage />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
+        path="/profile"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <ProfilePage />
           </ProtectedLayout>
         }
       />

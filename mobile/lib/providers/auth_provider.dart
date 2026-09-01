@@ -10,6 +10,13 @@ class AuthProvider with ChangeNotifier {
   String? _username;
   String? _userRole;
   String? _fullName;
+  String? _firstName;
+  String? _lastName;
+  String? _email;
+  String? _phone;
+  String? _employeeId;
+  String? _plantName;
+  String? _profilePhotoUrl;
   bool _isLoading = true;
 
   bool get isAuthenticated => _isAuthenticated;
@@ -17,6 +24,13 @@ class AuthProvider with ChangeNotifier {
   String? get userId => _username;
   String? get userRole => _userRole;
   String? get fullName => _fullName;
+  String? get firstName => _firstName;
+  String? get lastName => _lastName;
+  String? get email => _email;
+  String? get phone => _phone;
+  String? get employeeId => _employeeId;
+  String? get plantName => _plantName;
+  String? get profilePhotoUrl => _profilePhotoUrl;
   bool get isLoading => _isLoading;
 
   bool get isOperator => _userRole == 'operator' || _userRole == null;
@@ -100,6 +114,8 @@ class AuthProvider with ChangeNotifier {
             debugPrint('[AuthProvider] JWT payload decode warning: $e');
           }
         }
+        // Fetch latest profile details from backend
+        await refreshProfile();
         // If refreshStatus == null -> network timeout/error, local session STAYS LOGGED IN!
       } else {
         _isAuthenticated = false;
@@ -112,6 +128,33 @@ class AuthProvider with ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// Re-fetch current user profile details from backend and update local provider state
+  Future<void> refreshProfile() async {
+    try {
+      final profile = await ApiService.getProfile();
+      if (profile != null) {
+        _username = profile['username'] ?? _username;
+        _firstName = profile['first_name'] ?? '';
+        _lastName = profile['last_name'] ?? '';
+        _email = profile['email'] ?? '';
+        _phone = profile['phone'] ?? '';
+        _employeeId = profile['employee_id'] ?? '';
+        _plantName = profile['plant_name'] ?? '';
+        _profilePhotoUrl = profile['profile_photo_url'];
+        _userRole = profile['role'] ?? _userRole;
+
+        final first = _firstName ?? '';
+        final last = _lastName ?? '';
+        final full = '$first $last'.trim();
+        _fullName = full.isNotEmpty ? full : _username;
+
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[AuthProvider] refreshProfile error: $e');
     }
   }
 

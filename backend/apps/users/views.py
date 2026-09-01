@@ -113,6 +113,41 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         return self.request.user
 
 
+# ─── Profile Photo Upload ─────────────────────────────────────────────────────
+class UpdateProfilePhotoView(APIView):
+    """
+    POST /api/users/me/photo/
+    Upload or replace the logged-in user's profile photo.
+    Expects multipart/form-data with field 'photo'.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        photo = request.FILES.get('photo')
+        if not photo:
+            return Response({'error': 'No photo file provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+        if photo.content_type not in allowed_types:
+            return Response({'error': 'Only JPEG, PNG, WebP or GIF images are allowed.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file size (max 5 MB)
+        if photo.size > 5 * 1024 * 1024:
+            return Response({'error': 'Photo must be smaller than 5 MB.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        user.profile_photo = photo
+        user.save(update_fields=['profile_photo'])
+
+        serializer = UserProfileSerializer(user, context={'request': request})
+        return Response({
+            'success': True,
+            'message': 'Profile photo updated.',
+            'profile_photo_url': serializer.data.get('profile_photo_url'),
+        }, status=status.HTTP_200_OK)
+
+
 # ─── Change Password ──────────────────────────────────────────────────────
 class ChangePasswordView(APIView):
     """POST /api/users/change-password/"""
@@ -150,12 +185,12 @@ class UserListView(generics.ListCreateAPIView):
             qs = qs.filter(role=role)
         if plant:
             qs = qs.filter(plant_id=plant)
-        return qs
+        return qs.order_by('-is_active', '-created_at')
 
 
 # ─── User Detail (Supervisor / Admin) ─────────────────────────────────────
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """GET/PUT/DELETE /api/users/<id>/"""
+    """GET/PUT/PATCH/DELETE /api/users/<id>/"""
     serializer_class   = UserProfileSerializer
     queryset           = User.objects.all()
 
@@ -163,6 +198,44 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method == 'DELETE':
             return [IsAdminUser()]
         return [IsSupervisorOrAbove()]
+
+    def patch(self, request, *args, **kwargs):
+        try:
+            user_obj = self.get_object()
+        except User.DoesNotExist:
+            return Response({
+                "success": False,
+                "message": "User account not found."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Direct is_active toggle — bypass full serializer to avoid validation errors
+        if 'is_active' in request.data:
+            is_active_val = request.data['is_active']
+            # Handle both JSON boolean and string representations
+            if isinstance(is_active_val, str):
+                is_active_val = is_active_val.lower() == 'true'
+            user_obj.is_active = bool(is_active_val)
+            user_obj.save(update_fields=['is_active'])
+
+            from .serializers import UserListSerializer
+            serializer = UserListSerializer(user_obj)
+            return Response({
+                "success": True,
+                "action": "activated" if user_obj.is_active else "deactivated",
+                "message": f"User account '{user_obj.username}' has been {'activated' if user_obj.is_active else 'deactivated'}.",
+                "user": serializer.data
+            }, status=status.HTTP_200_OK)
+
+        # Fallback: general partial update for other fields
+        serializer = self.get_serializer(user_obj, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "success": True,
+                "message": f"User account '{user_obj.username}' updated successfully.",
+                "user": serializer.data
+            }, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def destroy(self, request, *args, **kwargs):
         try:
