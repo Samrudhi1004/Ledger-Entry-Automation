@@ -197,25 +197,54 @@ export default function Sidebar({ pendingCount = 0 }) {
 
       {/* User footer */}
       <div className="sidebar-footer">
-        <div className="user-pill">
-          <div className="user-avatar">{initials}</div>
-          <div className="user-info">
-            <div className="user-name">
-              {user ? `${user.first_name} ${user.last_name}`.trim() || user.username : '—'}
+        <NavLink
+          to="/profile"
+          style={({ isActive }) => ({
+            display: 'block',
+            textDecoration: 'none',
+            borderRadius: 10,
+            border: isActive ? '1px solid rgba(29,78,216,0.25)' : '1px solid transparent',
+            background: isActive ? 'rgba(29,78,216,0.06)' : 'transparent',
+            transition: 'all 0.18s ease',
+          })}
+          onMouseEnter={e => {
+            if (!e.currentTarget.classList.contains('active-profile')) {
+              e.currentTarget.style.background = 'rgba(15,23,42,0.04)';
+              e.currentTarget.style.borderColor = 'rgba(0,0,0,0.07)';
+            }
+          }}
+          onMouseLeave={e => {
+            if (!e.currentTarget.style.borderColor.includes('29,78,216')) {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.borderColor = 'transparent';
+            }
+          }}
+        >
+          <div className="user-pill">
+            <div className="user-avatar" style={{ overflow: 'hidden', padding: 0 }}>
+              {user?.profile_photo_url
+                ? <img src={user.profile_photo_url} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                : initials
+              }
             </div>
-            <div className="user-role">{user?.role ?? 'supervisor'}</div>
+            <div className="user-info">
+              <div className="user-name">
+                {user ? `${user.first_name} ${user.last_name}`.trim() || user.username : '—'}
+              </div>
+              <div className="user-role">{user?.role ?? 'supervisor'}</div>
+            </div>
+            <button
+              id="sidebar-logout"
+              className="btn btn-ghost btn-sm"
+              onClick={(e) => { e.preventDefault(); handleLogout(); }}
+              disabled={loggingOut}
+              style={{ padding: '4px 8px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              title="Log out"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
-          <button
-            id="sidebar-logout"
-            className="btn btn-ghost btn-sm"
-            onClick={handleLogout}
-            disabled={loggingOut}
-            style={{ padding: '4px 8px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            title="Log out"
-          >
-            <LogOut size={16} />
-          </button>
-        </div>
+        </NavLink>
       </div>
     </aside>
   );

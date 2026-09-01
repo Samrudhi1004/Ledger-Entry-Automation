@@ -3,7 +3,7 @@ import Header from '../components/layout/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Modal from '../components/common/Modal';
 import Badge from '../components/common/Badge';
-import { getUsers, registerUser, deleteUser, getPlants } from '../api/users';
+import { getUsers, registerUser, deleteUser, updateUserStatus, getPlants } from '../api/users';
 import { formatDateTime } from '../utils/formatters';
 
 export default function UsersPage() {
@@ -34,16 +34,27 @@ export default function UsersPage() {
     password2: '',
   });
 
-  const fetchUsers = async () => {
-    setLoading(true);
+  const sortUsers = (list) => {
+    const sorted = [...list];
+    sorted.sort((a, b) => {
+      const aActive = a.is_active === true || a.is_active === undefined ? 1 : 0;
+      const bActive = b.is_active === true || b.is_active === undefined ? 1 : 0;
+      return bActive - aActive;
+    });
+    return sorted;
+  };
+
+  const fetchUsers = async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     try {
       const res = await getUsers(roleFilter ? { role: roleFilter } : {});
       const data = res.data?.results ?? res.data ?? [];
-      setUsers(Array.isArray(data) ? data : []);
+      const userList = Array.isArray(data) ? [...data] : [];
+      setUsers(sortUsers(userList));
     } catch {
       setUsers([]);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   };
 
@@ -161,6 +172,36 @@ export default function UsersPage() {
     }
   };
 
+  const handleToggleActive = async (userObj, targetActive) => {
+    setSuccessBannerMsg('');
+    setPageErrorBannerMsg('');
+
+    // Optimistically update local state immediately — row moves to correct position right away
+    setUsers(prev => sortUsers(
+      prev.map(u => u.id === userObj.id ? { ...u, is_active: targetActive } : u)
+    ));
+
+    try {
+      const res = await updateUserStatus(userObj.id, targetActive);
+      // Update the row with server-confirmed data to stay in sync
+      const serverUser = res.data?.user;
+      if (serverUser) {
+        setUsers(prev => sortUsers(
+          prev.map(u => u.id === userObj.id ? { ...u, ...serverUser } : u)
+        ));
+      }
+      setSuccessBannerMsg(`✓ User account "${userObj.username}" has been ${targetActive ? 'reactivated' : 'inactivated'}.`);
+    } catch (err) {
+      // Revert optimistic update on failure
+      setUsers(prev => sortUsers(
+        prev.map(u => u.id === userObj.id ? { ...u, is_active: !targetActive } : u)
+      ));
+      const respData = err.response?.data;
+      const msg = respData?.message || respData?.detail || `Failed to update status for "${userObj.username}".`;
+      setPageErrorBannerMsg(msg);
+    }
+  };
+
   const getRoleLabel = (role) => {
     switch (role) {
       case 'supervisor': return 'SUPERVISOR';
@@ -251,6 +292,8 @@ export default function UsersPage() {
                     <th>Emp ID</th>
                     <th>Full Name</th>
                     <th>Username</th>
+                    <th>Email</th>
+                    <th>Phone</th>
                     <th>Role</th>
                     <th>Plant Location</th>
                     <th>Status</th>
@@ -264,6 +307,8 @@ export default function UsersPage() {
                       <td className="font-mono font-bold text-blue">{u.employee_id || `EMP-${u.id}`}</td>
                       <td>{u.full_name || u.username}</td>
                       <td className="font-mono">{u.username}</td>
+                      <td className="text-xs">{u.email || '—'}</td>
+                      <td className="text-xs font-mono">{u.phone || '—'}</td>
                       <td>
                         <span className={`badge ${getRoleBadgeClass(u.role)}`}>
                           {getRoleLabel(u.role)}
@@ -278,14 +323,125 @@ export default function UsersPage() {
                       <td className="text-xs text-muted">{formatDateTime(u.created_at)}</td>
                       <td style={{ textAlign: 'right' }}>
                         {u.role !== 'admin' && (
-                          <button
-                            className="btn btn-danger btn-sm"
-                            onClick={() => handleDelete(u)}
-                            title="Delete user account"
-                            style={{ padding: '4px 10px', fontSize: 12 }}
-                          >
-                            Delete
-                          </button>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                            {u.is_active !== false ? (
+                              <>
+                                <button
+                                  onClick={() => handleToggleActive(u, false)}
+                                  title="Inactivate user account"
+                                  style={{
+                                    padding: '4px 12px',
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    fontFamily: 'Inter, sans-serif',
+                                    letterSpacing: '0.03em',
+                                    color: '#64748b',
+                                    background: 'transparent',
+                                    border: '1px solid #cbd5e1',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.target.style.background = '#f1f5f9';
+                                    e.target.style.borderColor = '#94a3b8';
+                                    e.target.style.color = '#334155';
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.target.style.background = 'transparent';
+                                    e.target.style.borderColor = '#cbd5e1';
+                                    e.target.style.color = '#64748b';
+                                  }}
+                                >
+                                  Inactivate
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(u)}
+                                  title="Delete user account"
+                                  style={{
+                                    padding: '4px 12px',
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    fontFamily: 'Inter, sans-serif',
+                                    letterSpacing: '0.03em',
+                                    color: '#dc2626',
+                                    background: 'transparent',
+                                    border: '1px solid #fca5a5',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.target.style.background = '#fef2f2';
+                                    e.target.style.borderColor = '#dc2626';
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.target.style.background = 'transparent';
+                                    e.target.style.borderColor = '#fca5a5';
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleToggleActive(u, true)}
+                                  title="Reactivate user account"
+                                  style={{
+                                    padding: '4px 12px',
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    fontFamily: 'Inter, sans-serif',
+                                    letterSpacing: '0.03em',
+                                    color: '#1d4ed8',
+                                    background: 'transparent',
+                                    border: '1px solid #93c5fd',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.target.style.background = '#eff6ff';
+                                    e.target.style.borderColor = '#1d4ed8';
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.target.style.background = 'transparent';
+                                    e.target.style.borderColor = '#93c5fd';
+                                  }}
+                                >
+                                  Reactivate
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(u)}
+                                  title="Delete user account"
+                                  style={{
+                                    padding: '4px 12px',
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    fontFamily: 'Inter, sans-serif',
+                                    letterSpacing: '0.03em',
+                                    color: '#dc2626',
+                                    background: 'transparent',
+                                    border: '1px solid #fca5a5',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.target.style.background = '#fef2f2';
+                                    e.target.style.borderColor = '#dc2626';
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.target.style.background = 'transparent';
+                                    e.target.style.borderColor = '#fca5a5';
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -378,6 +534,32 @@ export default function UsersPage() {
                   className="form-input"
                   placeholder="e.g. Sharma"
                   value={formData.last_name}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div className="form-group">
+                <label className="form-label">Email Address</label>
+                <input
+                  type="email"
+                  name="email"
+                  className="form-input"
+                  placeholder="e.g. rahul@example.com"
+                  value={formData.email}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Phone Number</label>
+                <input
+                  type="text"
+                  name="phone"
+                  className="form-input"
+                  placeholder="e.g. +91 9876543210"
+                  value={formData.phone}
                   onChange={handleChange}
                 />
               </div>

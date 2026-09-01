@@ -9,5 +9,8 @@ export const registerUser = (userData) =>
 export const deleteUser = (userId) =>
   api.delete(`/api/users/${userId}/`);
 
+export const updateUserStatus = (userId, is_active) =>
+  api.patch(`/api/users/${userId}/`, { is_active });
+
 export const getPlants = () =>
   api.get('/api/machines/plants/');
