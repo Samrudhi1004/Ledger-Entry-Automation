@@ -22,6 +22,7 @@ import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
 
 const PLANT_ID = 1;
+const CALIBRATOR_ROLE = 'calibrator';
 const ALL_ROLES = ['admin', 'supervisor', 'calibrator', 'operator', 'quality_engineer'];
 const CALIBRATOR_ONLY = [CALIBRATOR_ROLE];
 const CalibrationPage = lazy(() => import('./pages/CalibrationPage'));
