@@ -7,7 +7,11 @@ class FactorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Factory
-        fields = ['id', 'name', 'code', 'location', 'is_active', 'plant_count', 'created_at']
+        fields = [
+            'id', 'name', 'code', 'location',
+            'contact_email', 'phone', 'address', 'gstin', 'industry_type',
+            'is_active', 'plant_count', 'created_at'
+        ]
 
 
 class PlantSerializer(serializers.ModelSerializer):

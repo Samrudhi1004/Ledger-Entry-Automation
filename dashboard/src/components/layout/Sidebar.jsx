@@ -7,15 +7,12 @@ import {
   Layers,
   Users,
   Sliders,
-  Cpu,
-  BarChart3,
   Factory,
   Gauge,
   LogOut,
   ChevronDown,
   ChevronRight,
   CheckSquare,
-  Clock,
 } from 'lucide-react';
 
 const MODULES = [
@@ -121,12 +118,11 @@ export default function Sidebar({ pendingCount = 0 }) {
         {visibleModules.map((m) => {
           let module = m;
           if (module.key === 'master' && user?.role !== 'admin') {
-            module = { ...m, items: m.items.filter(item => item.to !== '/users') };
+            module = { ...m, items: m.items.filter(item => item.to !== '/users' && item.to !== '/company') };
           }
           const ModuleIcon = module.icon;
 
           if (module.to) {
-            const isDirectActive = location.pathname === module.to || location.pathname.startsWith(`${module.to}/`);
             return (
               <div key={module.key} className="sidebar-module">
                 <NavLink
@@ -249,4 +245,3 @@ export default function Sidebar({ pendingCount = 0 }) {
     </aside>
   );
 }
-
