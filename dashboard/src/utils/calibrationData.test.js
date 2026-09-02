@@ -29,4 +29,8 @@ test('dashboard due windows return the exact matching equipment', () => {
     filterDashboardEquipment(equipment, 'date:2026-09-18').map((item) => item.equipment_id),
     ['DUE-20'],
   );
+  assert.deepEqual(
+    filterDashboardEquipment(equipment, 'month:2026-09').map((item) => item.equipment_id),
+    ['DUE-20'],
+  );
 });

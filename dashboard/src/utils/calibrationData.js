@@ -3,6 +3,13 @@ export const EMPTY_FORM = {
   equipment_name: '',
   equipment_type: '',
   serial_number: '',
+  manufacturer: '',
+  model_number: '',
+  range_size: '',
+  least_count: '',
+  acceptable_error: '',
+  acceptance_criteria: '',
+  history_card_number: '',
   department: '',
   location: '',
   calibration_frequency_days: '',
@@ -43,12 +50,17 @@ export const DASHBOARD_FILTER_OPTIONS = [
 
 export const dashboardFilterLabel = (filter) => {
   if (filter?.startsWith('date:')) return `Due on ${formatDate(filter.slice(5))}`;
+  if (filter?.startsWith('month:')) {
+    const [year, month] = filter.slice(6).split('-').map(Number);
+    return `Due in ${new Date(year, month - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`;
+  }
   return DASHBOARD_FILTER_OPTIONS.find(([value]) => value === filter)?.[1] ?? 'Equipment details';
 };
 
 export function filterDashboardEquipment(equipment, filter) {
   return equipment.filter((item) => {
     if (filter?.startsWith('date:')) return item.next_calibration_date === filter.slice(5);
+    if (filter?.startsWith('month:')) return item.next_calibration_date?.startsWith(filter.slice(6));
     const days = Number(item.days_remaining);
     const active = item.status !== 'Failed';
     switch (filter) {
