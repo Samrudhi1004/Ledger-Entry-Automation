@@ -1,7 +1,9 @@
 from datetime import date, timedelta
+from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.test import TestCase
@@ -10,6 +12,33 @@ from rest_framework.test import APITestCase
 
 from .models import CalibrationEquipment, CalibrationPlanEntry, CalibrationRecord
 from .serializers import CalibrationEquipmentSerializer
+
+
+class CalibrationDemoDataTests(TestCase):
+    @patch(
+        'apps.calibration.management.commands.seed_calibration_demo.timezone.localdate',
+        return_value=date(2026, 9, 3),
+    )
+    def test_demo_seed_is_complete_and_idempotent(self, _localdate):
+        output = StringIO()
+        call_command('seed_calibration_demo', stdout=output)
+        call_command('seed_calibration_demo', stdout=output)
+
+        demo = CalibrationEquipment.objects.filter(equipment_id__startswith='CAL-')
+        self.assertEqual(demo.count(), 36)
+        self.assertEqual(demo.filter(is_failed=True).count(), 0)
+        self.assertEqual(CalibrationPlanEntry.objects.filter(
+            equipment__in=demo, planned_date__year=2025,
+        ).count(), 36)
+        self.assertEqual(CalibrationPlanEntry.objects.filter(
+            equipment__in=demo, planned_date__year=2026,
+        ).count(), 36)
+        self.assertEqual(CalibrationRecord.objects.filter(
+            equipment__in=demo, calibration_date__year=2025, result='passed',
+        ).count(), 36)
+        self.assertEqual(CalibrationRecord.objects.filter(
+            equipment__in=demo, calibration_date__year=2026, result='passed',
+        ).count(), 24)
 
 
 def equipment_data(**overrides):
