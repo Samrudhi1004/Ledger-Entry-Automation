@@ -101,6 +101,9 @@ export function formatDate(value) {
 export function daysLabel(equipment) {
   if (equipment.status === 'Failed') return '—';
   if (equipment.days_remaining === 0) return 'Due today';
-  if (equipment.days_remaining < 0) return `${Math.abs(equipment.days_remaining)} overdue`;
+  if (equipment.days_remaining < 0) {
+    const overdueDays = Math.abs(equipment.days_remaining);
+    return `${overdueDays} ${overdueDays === 1 ? 'day' : 'days'} overdue`;
+  }
   return `${equipment.days_remaining} days`;
 }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { filterDashboardEquipment } from './calibrationData.js';
+import { daysLabel, filterDashboardEquipment } from './calibrationData.js';
 
 const equipment = [
   { equipment_id: 'VALID', status: 'Valid', days_remaining: 31 },
@@ -33,4 +33,9 @@ test('dashboard due windows return the exact matching equipment', () => {
     filterDashboardEquipment(equipment, 'month:2026-09').map((item) => item.equipment_id),
     ['DUE-20'],
   );
+});
+
+test('overdue day labels explain how far past due the equipment is', () => {
+  assert.equal(daysLabel({ status: 'Overdue', days_remaining: -1 }), '1 day overdue');
+  assert.equal(daysLabel({ status: 'Overdue', days_remaining: -8 }), '8 days overdue');
 });

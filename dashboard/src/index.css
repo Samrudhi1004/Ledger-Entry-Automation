@@ -1597,7 +1597,21 @@ td.deviation-ooc { color: var(--accent-red);   font-family: 'JetBrains Mono', mo
 }
 
 .calibration-plan-management {
+  max-height: 468px;
   margin-bottom: 24px;
+  overflow: auto;
+}
+
+.calibration-plan-management th {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  background: var(--bg-elevated);
+}
+
+.calibration-plan-management:focus-visible {
+  outline: 3px solid var(--accent-blue-glow);
+  outline-offset: 3px;
 }
 
 .calibration-print-sheet {

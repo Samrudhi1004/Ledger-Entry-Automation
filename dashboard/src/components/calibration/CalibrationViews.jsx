@@ -327,7 +327,7 @@ export function CalibrationPlanReport({ year, setYear, rows, openEditor, removeE
           <button type="button" className="btn btn-primary" onClick={() => openEditor()}><Plus size={16} aria-hidden="true" /> Add Plan Entry</button>
         </div>
       </div>
-      <div className="calibration-plan-management table-wrapper">
+      <div className="calibration-plan-management table-wrapper" role="region" aria-label={`${year} calibration plan entries`} tabIndex="0">
         <table className="calibration-report-table">
           <thead><tr><th>Equipment</th><th>Instrument ID / Serial No.</th><th>Planned Date</th><th>Actual Date</th><th>Result</th><th>Remarks</th><th>Controls</th></tr></thead>
           <tbody>{rows.length === 0 ? <tr><td colSpan="7">No equipment scheduled for {year}. Use Add Plan Entry to select from the permanent equipment master.</td></tr> : rows.map((row) => (
