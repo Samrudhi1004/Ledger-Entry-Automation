@@ -9,6 +9,16 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from django.core.mail import send_mail
+from django.utils.crypto import get_random_string
+from django.conf import settings
+from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+
 from .models import User
 from .serializers import (
     CustomTokenObtainPairSerializer,
@@ -157,6 +167,17 @@ class ChangePasswordView(APIView):
         serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             serializer.save()
+            
+            # Send notification email
+            user = request.user
+            subject = "Your Password Has Been Changed"
+            message = f"Hi {user.first_name or 'User'},\n\nThis is a confirmation that the password for your account has been successfully changed.\n\nIf you did not request this change, please contact an administrator immediately."
+            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
+            try:
+                send_mail(subject, message, from_email, [user.email], fail_silently=True)
+            except Exception:
+                pass
+
             return Response({'message': 'Password changed successfully.'})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -315,3 +336,207 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
                 "message": f"User account '{user_to_delete.username}' is referenced by protected data and was deactivated instead.",
                 "user": serializer.data
             }, status=status.HTTP_200_OK)
+
+
+# ─── Email Verification ───────────────────────────────────────────────────
+class RequestEmailVerificationView(APIView):
+    """
+    POST /api/users/verify-email/request/
+    Generates a token and sends a verification email.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        
+        if not user.email:
+            return Response({"error": "User does not have an email address set."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if user.is_email_verified:
+            return Response({"message": "Email is already verified."}, status=status.HTTP_200_OK)
+
+        base_token = get_random_string(length=32)
+        user.email_verification_token = base_token
+        user.save(update_fields=['email_verification_token'])
+
+        signer = TimestampSigner()
+        signed_token = signer.sign(base_token)
+
+        # Frontend verification URL
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        verify_url = f"{frontend_url}/verify-email/{signed_token}"
+
+        subject = "Verify your email address"
+        message = f"Hi {user.first_name},\n\nPlease click the following link to verify your email address:\n{verify_url}\n\nIf you did not request this, please ignore this email."
+        
+        html_message = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+            <div style="background-color: #2563eb; padding: 24px; text-align: center;">
+                <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">Email Verification</h1>
+            </div>
+            <div style="padding: 32px 24px; background-color: #ffffff; color: #374151;">
+                <p style="font-size: 16px; margin-top: 0;">Hi <strong>{user.first_name or 'User'}</strong>,</p>
+                <p style="font-size: 16px; line-height: 1.5; margin-bottom: 24px;">
+                    Thank you for joining us! To complete your profile setup, we just need to verify your email address.
+                </p>
+                <div style="text-align: center; margin: 32px 0;">
+                    <a href="{verify_url}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; display: inline-block;">
+                        Verify Email Address
+                    </a>
+                </div>
+                <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px;">
+                    Or copy and paste this link into your browser:
+                </p>
+                <p style="font-size: 14px; color: #2563eb; word-break: break-all; margin-top: 0;">
+                    <a href="{verify_url}" style="color: #2563eb;">{verify_url}</a>
+                </p>
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 24px;" />
+                <p style="font-size: 12px; color: #9ca3af; margin: 0;">
+                    If you did not request this email, you can safely ignore it.
+                </p>
+            </div>
+        </div>
+        """
+        
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
+        recipient_list = [user.email]
+
+        try:
+            send_mail(subject, message, from_email, recipient_list, fail_silently=False, html_message=html_message)
+            return Response({"message": "Verification email sent successfully."}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": f"Failed to send email: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class VerifyEmailView(APIView):
+    """
+    POST /api/users/verify-email/confirm/
+    Validates token and marks email as verified.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        token = request.data.get('token')
+        if not token:
+            return Response({"error": "Token is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        signer = TimestampSigner()
+        try:
+            # Token expires after 24 hours (86400 seconds)
+            base_token = signer.unsign(token, max_age=86400)
+        except SignatureExpired:
+            return Response({"error": "Verification token has expired."}, status=status.HTTP_400_BAD_REQUEST)
+        except BadSignature:
+            return Response({"error": "Invalid verification token."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email_verification_token=base_token).first()
+        if not user:
+            return Response({"error": "Invalid verification token."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.is_email_verified = True
+        user.email_verification_token = None
+        user.save(update_fields=['is_email_verified', 'email_verification_token'])
+
+        return Response({"message": "Email verified successfully."}, status=status.HTTP_200_OK)
+
+
+# ─── Forgot Password ──────────────────────────────────────────────────────
+class ForgotPasswordRequestView(APIView):
+    """
+    POST /api/users/password-reset/request/
+    Generates a password reset token and sends an email.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        if not email:
+            return Response({"error": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email=email).first()
+        if not user:
+            # For security, do not reveal whether user exists
+            return Response({"message": "If an account with that email exists, a password reset link has been sent."}, status=status.HTTP_200_OK)
+
+        # Generate token
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+
+        # Frontend reset URL
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        reset_url = f"{frontend_url}/reset-password/{uid}/{token}"
+
+        subject = "Reset Your Password"
+        message = f"Hi {user.first_name or 'User'},\n\nPlease click the following link to reset your password:\n{reset_url}\n\nIf you did not request this, please ignore this email."
+        
+        html_message = f'''
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+            <div style="background-color: #2563eb; padding: 24px; text-align: center;">
+                <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">Reset Your Password</h1>
+            </div>
+            <div style="padding: 32px 24px; background-color: #ffffff; color: #374151;">
+                <p style="font-size: 16px; margin-top: 0;">Hi <strong>{user.first_name or 'User'}</strong>,</p>
+                <p style="font-size: 16px; line-height: 1.5; margin-bottom: 24px;">
+                    We received a request to reset your password. Click the button below to choose a new password.
+                </p>
+                <div style="text-align: center; margin: 32px 0;">
+                    <a href="{reset_url}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; display: inline-block;">
+                        Reset Password
+                    </a>
+                </div>
+                <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px;">
+                    Or copy and paste this link into your browser:
+                </p>
+                <p style="font-size: 14px; color: #2563eb; word-break: break-all; margin-top: 0;">
+                    <a href="{reset_url}" style="color: #2563eb;">{reset_url}</a>
+                </p>
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 24px;" />
+                <p style="font-size: 12px; color: #9ca3af; margin: 0;">
+                    If you did not request a password reset, you can safely ignore this email.
+                </p>
+            </div>
+        </div>
+        '''
+
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
+
+        try:
+            send_mail(subject, message, from_email, [user.email], fail_silently=False, html_message=html_message)
+        except Exception:
+            pass # Fail silently
+
+        return Response({"message": "If an account with that email exists, a password reset link has been sent."}, status=status.HTTP_200_OK)
+
+
+class ResetPasswordConfirmView(APIView):
+    """
+    POST /api/users/password-reset/confirm/
+    Validates the token and updates the user's password.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        uidb64 = request.data.get('uid')
+        token = request.data.get('token')
+        new_password = request.data.get('password')
+
+        if not uidb64 or not token or not new_password:
+            return Response({"error": "uid, token, and new password are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            user = None
+
+        if user is not None and default_token_generator.check_token(user, token):
+            try:
+                validate_password(new_password, user=user)
+            except ValidationError as e:
+                return Response({"error": e.messages}, status=status.HTTP_400_BAD_REQUEST)
+
+            user.set_password(new_password)
+            user.save()
+            return Response({"message": "Password has been reset successfully."}, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)

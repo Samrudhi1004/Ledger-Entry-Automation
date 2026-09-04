@@ -124,19 +124,36 @@ export default function DowntimeReportsPage() {
     });
   };
 
-  // Compute total downtime live per row
-  const calculateRowTotal = (r) => {
-    return (
-      (Number(r.no_load) || 0) +
-      (Number(r.no_operator) || 0) +
-      (Number(r.um) || 0) +
-      (Number(r.setting) || 0) +
-      (Number(r.inspection_wait) || 0) +
-      (Number(r.tool_change) || 0) +
-      (Number(r.power_off) || 0) +
-      (Number(r.rework) || 0) +
-      (Number(r.tool_problem) || 0)
-    );
+  // Compute mathematical expected downtime
+  const getExpectedTotal = (r) => {
+    if (r.expected_downtime !== undefined && r.expected_downtime !== null) {
+      return Number(r.expected_downtime);
+    }
+    const target = Number(r.target) || 0;
+    const produced = Number(r.produced) || 0;
+    const cycleTime = Number(r.cycle_time_mins) || 0;
+    return Math.max(0, Math.round((target - produced) * cycleTime));
+  };
+
+  // Compute live sum of accounted breakdown fields
+  const getAccountedTotal = (r) => {
+    return (Number(r.no_load) || 0) +
+           (Number(r.no_operator) || 0) +
+           (Number(r.um) || 0) +
+           (Number(r.setting) || 0) +
+           (Number(r.inspection_wait) || 0) +
+           (Number(r.tool_change) || 0) +
+           (Number(r.power_off) || 0) +
+           (Number(r.rework) || 0) +
+           (Number(r.tool_problem) || 0);
+  };
+
+  const getAutoRemark = (r) => {
+    const expected = getExpectedTotal(r);
+    const accounted = getAccountedTotal(r);
+    if (expected === accounted) return "All OK";
+    const diff = accounted - expected;
+    return diff > 0 ? `${diff} min more` : `${Math.abs(diff)} min less`;
   };
 
   // SUBMIT & Save Date-Wise Downtime Report
@@ -162,6 +179,8 @@ export default function DowntimeReportsPage() {
         power_off: Number(r.power_off) || 0,
         rework: Number(r.rework) || 0,
         tool_problem: Number(r.tool_problem) || 0,
+        expected_downtime: getExpectedTotal(r),
+        total_downtime: getAccountedTotal(r),
         remarks: r.remarks || '',
         mark_completed: true,
       }));
@@ -646,7 +665,10 @@ export default function DowntimeReportsPage() {
                         </th>
 
                         <th rowSpan={2} style={{ padding: '5px 2px', border: '1px solid #94A3B8', width: '65px', backgroundColor: '#E0F2FE', color: '#0369A1' }}>
-                          TOTAL DOWN TIME
+                          EXPECTED<br/>(MATH)
+                        </th>
+                        <th rowSpan={2} style={{ padding: '5px 2px', border: '1px solid #94A3B8', width: '65px', backgroundColor: '#E0F2FE', color: '#0369A1' }}>
+                          ACCOUNTED<br/>(SUM)
                         </th>
                         <th rowSpan={2} style={{ padding: '5px 2px', border: '1px solid #94A3B8', width: '80px' }}>
                           REMARKS
@@ -676,7 +698,7 @@ export default function DowntimeReportsPage() {
                     {/* TABLE BODY */}
                     <tbody>
                       {reports.map((r, idx) => {
-                        const rowTotal = calculateRowTotal(r);
+                        const rowTotal = getRowTotal(r);
                         const isSubmitted = r.status === 'COMPLETED';
 
                         const inputStyle = {
@@ -747,21 +769,35 @@ export default function DowntimeReportsPage() {
                               <input type="number" min="0" value={r.tool_problem ?? 0} onChange={(e) => handleCellChange(idx, 'tool_problem', e.target.value)} disabled={isSubmitted} style={inputStyle} />
                             </td>
 
-                            {/* TOTAL DOWNTIME */}
-                            <td style={{ padding: '4px 2px', border: '1px solid #CBD5E1', backgroundColor: '#EFF6FF', fontWeight: '800', color: '#0369A1', fontSize: '11px' }}>
-                              {rowTotal} Min.
+                            {/* EXPECTED DOWNTIME */}
+                            <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1', backgroundColor: getExpectedTotal(r) === getAccountedTotal(r) ? '#DCFCE7' : '#FEE2E2' }}>
+                              <div style={{ textAlign: 'center', fontWeight: '800', color: getExpectedTotal(r) === getAccountedTotal(r) ? '#166534' : '#991B1B', fontSize: '12px' }}>
+                                {getExpectedTotal(r)}
+                              </div>
+                            </td>
+
+                            {/* ACCOUNTED DOWNTIME */}
+                            <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1', backgroundColor: '#EFF6FF' }}>
+                              <div style={{ textAlign: 'center', fontWeight: '800', color: '#0369A1', fontSize: '12px' }}>
+                                {getAccountedTotal(r)}
+                              </div>
                             </td>
 
                             {/* REMARKS */}
                             <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1' }}>
-                              <input
-                                type="text"
-                                value={r.remarks || ''}
-                                onChange={(e) => handleCellChange(idx, 'remarks', e.target.value)}
-                                placeholder="Remarks..."
-                                disabled={isSubmitted}
-                                style={{ ...inputStyle, width: '75px', textAlign: 'left', padding: '2px 4px' }}
-                              />
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ fontSize: '9px', fontWeight: 'bold', color: getExpectedTotal(r) === getAccountedTotal(r) ? '#166534' : '#991B1B', padding: '0 4px' }}>
+                                  {getAutoRemark(r)}
+                                </span>
+                                <input
+                                  type="text"
+                                  value={r.remarks || ''}
+                                  onChange={(e) => handleCellChange(idx, 'remarks', e.target.value)}
+                                  placeholder="Justify diff..."
+                                  disabled={isSubmitted}
+                                  style={{ ...inputStyle, width: '75px', textAlign: 'left', padding: '2px 4px' }}
+                                />
+                              </div>
                             </td>
 
                             {/* STATUS BADGE */}

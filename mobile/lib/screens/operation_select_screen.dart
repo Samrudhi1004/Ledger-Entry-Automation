@@ -502,6 +502,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                 ? customName
                                 : _getOpTitle(version);
                             final paramCount = t['configured_parameter_count'] ?? t['target_parameter_count'] ?? 18;
+                            final cycleTimeMins = (t['cycle_time_mins'] is num) ? (t['cycle_time_mins'] as num).toDouble() : 0.0;
                             final isPublished = t['is_published'] == true || t['is_active'] == true;
 
                             return Card(
@@ -596,6 +597,15 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                                   '⚡ $paramCount Params',
                                                   style: const TextStyle(color: Color(0xFF2563EB), fontSize: 12, fontWeight: FontWeight.bold),
                                                 ),
+                                                if (cycleTimeMins > 0) ...[
+                                                  const SizedBox(width: 8),
+                                                  const Text('•', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    '⏱️ $cycleTimeMins min',
+                                                    style: const TextStyle(color: Color(0xFF059669), fontSize: 12, fontWeight: FontWeight.bold),
+                                                  ),
+                                                ],
                                               ],
                                             ),
                                           ],

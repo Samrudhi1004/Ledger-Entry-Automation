@@ -65,6 +65,8 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
     progress_percent = serializers.IntegerField(read_only=True)
     hourly_slot     = serializers.IntegerField(source='hourly_unlocked_slot', read_only=True)
     rejected_parameters = serializers.SerializerMethodField()
+    shift_duration_hours = serializers.IntegerField(source='machine.plant.shift_duration_hours', read_only=True)
+    total_break_mins = serializers.IntegerField(source='machine.plant.total_break_mins', read_only=True)
 
     class Meta:
         model  = InspectionSession
@@ -72,7 +74,7 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
             'session_id', 'part_number', 'part_name', 'machine_code',
             'operator_name', 'supervisor_name', 'inspector_name',
             'template_id', 'template_name', 'template_version',
-            'inspection_type', 'shift', 'status',
+            'inspection_type', 'shift', 'status', 'shift_duration_hours', 'total_break_mins',
             'trial_number', 'hourly_unlocked_slot', 'hourly_slot', 'parent_session', 'rejection_reason',
             'total_parameters', 'recorded_count', 'progress_percent',
             'has_ooc', 'has_critical_fail', 'is_setup_approved', 'is_first_piece_finalized',
@@ -211,6 +213,7 @@ class DowntimeReportSerializer(serializers.ModelSerializer):
     cr = serializers.IntegerField(source='production_report.cr_count', read_only=True)
     mr = serializers.IntegerField(source='production_report.mr_count', read_only=True)
     rw = serializers.IntegerField(source='production_report.rw_count', read_only=True)
+    cycle_time_mins = serializers.SerializerMethodField()
 
     class Meta:
         model = DowntimeReport
@@ -221,7 +224,7 @@ class DowntimeReportSerializer(serializers.ModelSerializer):
             'target', 'produced', 'accepted_actual', 'cr', 'mr', 'rw',
             'no_load', 'no_operator', 'um', 'setting', 'inspection_wait',
             'tool_change', 'power_off', 'rework', 'tool_problem',
-            'total_downtime', 'remarks', 'status',
+            'total_downtime', 'expected_downtime', 'remarks', 'status', 'cycle_time_mins',
             'created_by', 'created_at', 'updated_at', 'completed_at'
         ]
         read_only_fields = [
@@ -236,6 +239,25 @@ class DowntimeReportSerializer(serializers.ModelSerializer):
 
     def get_operator_name(self, obj):
         return self.get_operator(obj)
+
+    def get_cycle_time_mins(self, obj):
+        from apps.parts.models import InspectionTemplate
+        prod = obj.production_report
+        if not prod:
+            return 0.0
+        template = InspectionTemplate.objects.filter(
+            machine=prod.machine,
+            part=prod.part,
+            part_operation_name=prod.operation
+        ).first()
+        if not template:
+            template = InspectionTemplate.objects.filter(
+                machine=prod.machine,
+                part=prod.part
+            ).first()
+        if template:
+            return float(template.cycle_time_mins)
+        return 0.0
 
     def validate(self, attrs):
         fields = [

@@ -34,6 +34,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'id':          self.user.id,
             'username':    self.user.username,
             'email':       self.user.email,
+            'is_email_verified': self.user.is_email_verified,
             'full_name':   self.user.get_full_name(),
             'role':        self.user.role,
             'employee_id': self.user.employee_id,
@@ -83,11 +84,18 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model  = User
         fields = [
-            'id', 'username', 'email', 'first_name', 'last_name',
+            'id', 'username', 'email', 'is_email_verified', 'first_name', 'last_name',
             'employee_id', 'role', 'phone', 'plant', 'plant_name',
             'profile_photo', 'profile_photo_url', 'is_active', 'date_joined', 'created_at',
         ]
-        read_only_fields = ['id', 'username', 'date_joined', 'created_at']
+        read_only_fields = ['id', 'username', 'date_joined', 'created_at', 'is_email_verified']
+
+    def update(self, instance, validated_data):
+        new_email = validated_data.get('email', instance.email)
+        if new_email != instance.email:
+            instance.is_email_verified = False
+            instance.email_verification_token = None
+        return super().update(instance, validated_data)
 
 
 # ─── User List (Admin view) ────────────────────────────────────────────────
@@ -97,7 +105,7 @@ class UserListSerializer(serializers.ModelSerializer):
     class Meta:
         model  = User
         fields = [
-            'id', 'username', 'email', 'phone', 'full_name', 'employee_id',
+            'id', 'username', 'email', 'is_email_verified', 'phone', 'full_name', 'employee_id',
             'role', 'plant_name', 'is_active', 'created_at',
         ]
 

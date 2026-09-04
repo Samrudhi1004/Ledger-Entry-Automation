@@ -29,6 +29,9 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _calculateTarget();
+    });
     _targetController.addListener(_validateInputs);
     _completedController.addListener(_validateInputs);
     _correctController.addListener(_validateInputs);
@@ -49,6 +52,22 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     _rwController.dispose();
     _remarksController.dispose();
     super.dispose();
+  }
+
+  void _calculateTarget() {
+    final provider = Provider.of<InspectionProvider>(context, listen: false);
+    final machine = provider.selectedMachine;
+    final template = provider.selectedTemplate;
+    if (machine != null && template != null) {
+      final shiftHours = (machine['shift_duration_hours'] as num?)?.toInt() ?? 8;
+      final breakMins = (machine['total_break_mins'] as num?)?.toInt() ?? 60;
+      final cycleTime = (template['cycle_time_mins'] as num?)?.toDouble() ?? 0.0;
+      
+      if (cycleTime > 0) {
+        final target = ((shiftHours * 60) - breakMins) / cycleTime;
+        _targetController.text = target.toInt().toString();
+      }
+    }
   }
 
   void _validateInputs() {

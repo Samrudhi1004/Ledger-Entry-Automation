@@ -61,6 +61,7 @@ class InspectionTemplate(models.Model):
     is_active       = models.BooleanField(default=True)
     is_published    = models.BooleanField(default=True, help_text='Dispatched and live for operators and inspectors on mobile')
     published_at    = models.DateTimeField(null=True, blank=True)
+    cycle_time_mins = models.FloatField(default=0.0, help_text='Cycle time per operation in minutes')
     created_by      = models.ForeignKey(
         'users.User',
         on_delete=models.SET_NULL,

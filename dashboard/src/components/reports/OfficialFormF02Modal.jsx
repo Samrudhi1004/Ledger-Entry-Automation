@@ -21,6 +21,9 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
   const shiftStr = session?.shift || 'A';
   const isSetupReport = session?.is_setup_approval_only === true;
   
+  const shiftDuration = session?.shift_duration_hours || 8;
+  const shiftSlots = Array.from({ length: shiftDuration }, (_, i) => i + 1);
+
   const reportPrefix = isSetupReport ? 'Setup_Approval_Report' : 'Form_F02_Report';
   const fileName = `${reportPrefix}_${dateStr}_Shift_${shiftStr}_${cleanMachine}_${cleanPart}.pdf`;
 
@@ -30,21 +33,40 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
 
     setDownloading(true);
 
+    const originalWidth = element.style.width;
+    const originalMaxWidth = element.style.maxWidth;
+    element.style.width = '1122px';
+    element.style.maxWidth = 'none';
+
     const opt = {
       margin:       [5, 5, 5, 5],
       filename:     fileName,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1122 },
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' }
     };
 
     const savePDF = () => {
       if (window.html2pdf) {
-        window.html2pdf().set(opt).from(element).save().then(() => {
+        try {
+          window.html2pdf().set(opt).from(element).save().then(() => {
+            element.style.width = originalWidth;
+            element.style.maxWidth = originalMaxWidth;
+            setDownloading(false);
+          }).catch(() => {
+            element.style.width = originalWidth;
+            element.style.maxWidth = originalMaxWidth;
+            setDownloading(false);
+          });
+        } catch (error) {
+          element.style.width = originalWidth;
+          element.style.maxWidth = originalMaxWidth;
           setDownloading(false);
-        }).catch(() => setDownloading(false));
+        }
       } else {
         alert('PDF library is loading. Please try again in a moment.');
+        element.style.width = originalWidth;
+        element.style.maxWidth = originalMaxWidth;
         setDownloading(false);
       }
     };
@@ -326,18 +348,9 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
               <th style={{ border: '1px solid #000000', padding: '3px 1px', width: isSetupReport ? '7%' : '5%', background: '#cbd5e1' }}>1st #2</th>
               <th style={{ border: '1px solid #000000', padding: '3px 1px', width: isSetupReport ? '7%' : '5%', background: '#cbd5e1' }}>1st #3</th>
               
-              {!isSetupReport && (
-                <>
-                  <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: '#dcfce7' }}>1/Hr</th>
-                  <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: '#dcfce7' }}>2/Hr</th>
-                  <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: '#dcfce7' }}>3/Hr</th>
-                  <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: '#dcfce7' }}>4/Hr</th>
-                  <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: '#dcfce7' }}>5/Hr</th>
-                  <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: '#dcfce7' }}>6/Hr</th>
-                  <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: '#dcfce7' }}>7/Hr</th>
-                  <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: '#dcfce7' }}>8/Hr</th>
-                </>
-              )}
+              {!isSetupReport && shiftSlots.map(slot => (
+                <th key={slot} style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: '#dcfce7' }}>{slot}/Hr</th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -395,7 +408,7 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
                     {tr3 !== undefined ? tr3 : '—'}
                   </td>
 
-                  {!isSetupReport && [1, 2, 3, 4, 5, 6, 7, 8].map((slot) => {
+                  {!isSetupReport && shiftSlots.map((slot) => {
                     const hVal = hr[slot];
                     const hOOC = p.hourlyOOC?.[slot] || isValOOC(hVal, p.lower_limit, p.upper_limit);
                     return (

@@ -34,6 +34,8 @@ class Plant(models.Model):
     factory   = models.ForeignKey(Factory, on_delete=models.CASCADE, related_name='plants')
     name      = models.CharField(max_length=100)
     code      = models.CharField(max_length=20, unique=True)   # e.g. PLT-01
+    shift_duration_hours = models.PositiveIntegerField(default=8)
+    total_break_mins = models.PositiveIntegerField(default=60)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
