@@ -39,7 +39,18 @@ for u in demo_users:
         print(f'Demo user {u[\"username\"]} created successfully!')
 
 from apps.machines.models import Factory, Plant
-factory, _ = Factory.objects.get_or_create(code='FAC-01', defaults={'name': 'Mantri Metallics', 'location': 'Main Factory'})
+factory, _ = Factory.objects.get_or_create(
+    code='FAC-01',
+    defaults={
+        'name': 'Mantri Metallics',
+        'location': 'Main Factory',
+        'contact_email': 'info@mantrimetallics.com',
+        'phone': '+91 98765 43210',
+        'address': 'Plot No. 42, Industrial Area, Phase II',
+        'gstin': '27AAAAA0000A1Z5',
+        'industry_type': 'Precision Component Manufacturing',
+    }
+)
 plant, _ = Plant.objects.get_or_create(code='PLT-01', defaults={'factory': factory, 'name': 'Shop Floor Plant 1'})
 print(f'Default Factory ({factory.name}) and Plant ({plant.name}, ID: {plant.id}) created successfully!')
 

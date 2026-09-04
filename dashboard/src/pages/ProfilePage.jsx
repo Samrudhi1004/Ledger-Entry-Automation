@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { NavLink } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import { useAuth } from '../context/AuthContext';
 import { updateProfile, uploadProfilePhoto, changePassword, requestEmailVerification } from '../api/auth';
@@ -178,6 +179,64 @@ export default function ProfilePage() {
 
       <div className="page-content bg-gradient-animated">
         <div style={{ maxWidth: 1040, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+          {/* ── Admin Sub-Navigation Tabs (Only visible to admin) ────────────── */}
+          {user?.role === 'admin' && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                background: 'var(--bg-card)',
+                padding: '6px 12px',
+                borderRadius: 'var(--radius-lg)',
+                border: '1px solid var(--border)',
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            >
+              <NavLink
+                to="/profile"
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 16px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.88rem',
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                  color: isActive ? '#ffffff' : 'var(--text-muted)',
+                  background: isActive ? 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' : 'transparent',
+                  boxShadow: isActive ? '0 2px 8px rgba(15,23,42,0.25)' : 'none',
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <User size={16} /> My Profile
+              </NavLink>
+
+              <NavLink
+                to="/company"
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 16px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.88rem',
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--text-white)' : 'var(--text-muted)',
+                  background: isActive ? 'var(--accent-blue)' : 'transparent',
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <Building2 size={16} /> Company Details
+                <span className="badge badge-purple" style={{ fontSize: '0.68rem', padding: '2px 6px', marginLeft: 4 }}>
+                  ADMIN
+                </span>
+              </NavLink>
+            </div>
+          )}
 
           {/* ── 1. Header Profile Banner Card ───────────────────────────────── */}
           <div className="card" style={{ padding: '28px 32px' }}>

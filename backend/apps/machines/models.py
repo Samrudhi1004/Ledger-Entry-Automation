@@ -8,11 +8,16 @@ from django.db import models
 class Factory(models.Model):
     """Top-level organisational unit — e.g. 'Liha Tech Plant 1'."""
 
-    name      = models.CharField(max_length=100)
-    code      = models.CharField(max_length=20, unique=True)   # e.g. FAC-01
-    location  = models.CharField(max_length=200, blank=True)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    name          = models.CharField(max_length=100)
+    code          = models.CharField(max_length=20, unique=True)   # e.g. FAC-01
+    location      = models.CharField(max_length=200, blank=True)
+    contact_email = models.EmailField(blank=True, default='')
+    phone         = models.CharField(max_length=30, blank=True, default='')
+    address       = models.TextField(blank=True, default='')
+    gstin         = models.CharField(max_length=30, blank=True, default='')
+    industry_type = models.CharField(max_length=100, blank=True, default='Precision Component Manufacturing')
+    is_active     = models.BooleanField(default=True)
+    created_at    = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table  = 'factories'

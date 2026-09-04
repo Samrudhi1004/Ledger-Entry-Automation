@@ -17,6 +17,7 @@ import MachineDetailPage from './pages/MachineDetailPage';
 import ParametersPage from './pages/ParametersPage';
 import UsersPage from './pages/UsersPage';
 import ProfilePage from './pages/ProfilePage';
+import CompanyDetailsPage from './pages/CompanyDetailsPage';
 import TasksPage from './pages/TasksPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -208,6 +209,15 @@ export default function App() {
       />
 
       <Route
+        path="/company"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
+            <CompanyDetailsPage />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
         path="/calibration"
         element={
           <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
@@ -230,6 +240,24 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
             <CalibrationPage view="register" />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
+        path="/calibration/plan"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
+            <CalibrationPage view="plan" />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
+        path="/calibration/equipment/:equipmentId/history"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
+            <CalibrationPage view="history" />
           </ProtectedLayout>
         }
       />
