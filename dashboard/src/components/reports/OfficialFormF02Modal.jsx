@@ -40,8 +40,6 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
       html2canvas:  { scale: 2, useCORS: true, logging: false, width: scrollW, windowWidth: scrollW, scrollX: 0, scrollY: 0 },
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' }
     };
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    };
 
     const savePDF = () => {
       if (window.html2pdf) {
@@ -371,12 +369,6 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
                     const tr3 = pp.trials[3];
                     const isAltRow = i % 2 === 1;
 
-<<<<<<< HEAD
-                  {!isSetupReport && shiftSlots.map((slot) => {
-                    const hVal = hr[slot];
-                    const hOOC = p.hourlyOOC?.[slot] || isValOOC(hVal, p.lower_limit, p.upper_limit);
-=======
->>>>>>> dbaffc8 (Add Shift Configuration, Setup Approval Form F02 enhancements and Enterprise Modules)
                     return (
                       <tr key={`proc-${i}`} style={{ borderBottom: '1px solid #000000', background: isAltRow ? '#f8fafc' : '#ffffff' }}>
                         <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: 'bold' }}>10.</td>
