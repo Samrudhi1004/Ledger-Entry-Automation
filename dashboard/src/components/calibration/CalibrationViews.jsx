@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import {
   Bar, BarChart, CartesianGrid, Cell,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
-  AlarmClock, CalendarClock, CircleCheckBig, CircleX,
+  AlarmClock, CalendarClock, CircleCheckBig,
   CalendarDays, ChevronLeft, ChevronRight, ClipboardCheck, ClipboardList,
-  LayoutDashboard, PackageCheck, Pencil, Plus,
-  Search, TriangleAlert,
+  FileClock, LayoutDashboard, PackageCheck, Pencil, Plus, Printer,
+  Search, Trash2, TriangleAlert,
 } from 'lucide-react';
 
 import StatCard from '../cards/StatCard';
@@ -26,25 +26,15 @@ const STATUS_COLORS = {
   failed: '#991b1b',
 };
 
-const EQUIPMENT_STATUS_COLORS = {
-  Valid: STATUS_COLORS.valid,
-  'Due Soon': STATUS_COLORS.dueSoon,
-  'Due Today': STATUS_COLORS.dueToday,
-  Overdue: STATUS_COLORS.overdue,
-  Failed: STATUS_COLORS.failed,
-};
-
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-function localDateKey(date) {
-  const pad = (value) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
+const MONTHS = Array.from({ length: 12 }, (_, month) =>
+  new Date(2026, month, 1).toLocaleDateString('en-IN', { month: 'long' })
+);
 
 export function CalibrationNavigation() {
   const links = [
     ['/calibration', 'Dashboard', LayoutDashboard],
     ['/calibration/equipment', 'Equipment Management', ClipboardList],
+    ['/calibration/plan', 'Calibration Plan', CalendarDays],
   ];
   return (
     <nav className="calibration-nav" aria-label="Calibration module navigation">
@@ -87,94 +77,33 @@ function ChartLegend({ data, selectedFilter, onFilterChange, label }) {
   );
 }
 
-function CalibrationCalendar({ equipment, selectedFilter, onFilterChange }) {
-  const [visibleMonth, setVisibleMonth] = useState(() => {
-    const today = new Date();
-    return new Date(today.getFullYear(), today.getMonth(), 1);
-  });
-  const year = visibleMonth.getFullYear();
-  const month = visibleMonth.getMonth();
-  const leadingDays = (new Date(year, month, 1).getDay() + 6) % 7;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cellCount = 42;
-  const todayKey = localDateKey(new Date());
-  const equipmentByDate = equipment.reduce((dates, item) => {
-    if (!item.next_calibration_date) return dates;
-    dates[item.next_calibration_date] = [...(dates[item.next_calibration_date] ?? []), item];
-    return dates;
-  }, {});
-  const cells = Array.from({ length: cellCount }, (_, index) => {
-    const day = index - leadingDays + 1;
-    return day > 0 && day <= daysInMonth ? day : null;
-  });
-  const monthLabel = visibleMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-
-  const moveMonth = (amount) => setVisibleMonth(new Date(year, month + amount, 1));
-  const showCurrentMonth = () => {
-    const today = new Date();
-    setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-  };
+function CalibrationYearOverview({ equipment, selectedFilter, onFilterChange }) {
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const counts = MONTHS.map((_, month) => equipment.filter((item) =>
+    item.next_calibration_date?.startsWith(`${year}-${String(month + 1).padStart(2, '0')}`)
+  ).length);
 
   return (
     <section className="card calibration-calendar-card" aria-labelledby="calibration-calendar-title">
       <div className="section-header calibration-calendar-header">
         <div>
-          <h2 className="section-title" id="calibration-calendar-title"><CalendarDays size={16} aria-hidden="true" /> Calibration Calendar</h2>
-          <p className="text-xs text-muted mt-4">Hover or focus a marked date for equipment details. Select it to filter the list.</p>
+          <h2 className="section-title" id="calibration-calendar-title"><CalendarDays size={16} aria-hidden="true" /> Yearly Calibration Calendar</h2>
+          <p className="text-xs text-muted mt-4">Select a month to show every item planned for calibration.</p>
         </div>
-        <div className="calibration-calendar-toolbar" aria-label="Calendar month controls">
-          <button type="button" className="btn btn-ghost calibration-calendar-icon-button" onClick={() => moveMonth(-1)} aria-label="Previous month"><ChevronLeft size={18} aria-hidden="true" /></button>
-          <strong className="calibration-calendar-month" aria-live="polite">{monthLabel}</strong>
-          <button type="button" className="btn btn-ghost calibration-calendar-icon-button" onClick={() => moveMonth(1)} aria-label="Next month"><ChevronRight size={18} aria-hidden="true" /></button>
-          <button type="button" className="btn btn-ghost btn-sm calibration-calendar-today" onClick={showCurrentMonth}>Today</button>
+        <div className="calibration-calendar-toolbar" aria-label="Calendar year controls">
+          <button type="button" className="btn btn-ghost calibration-calendar-icon-button" onClick={() => setYear((value) => value - 1)} aria-label="Previous year"><ChevronLeft size={18} aria-hidden="true" /></button>
+          <strong className="calibration-calendar-month" aria-live="polite">{year}</strong>
+          <button type="button" className="btn btn-ghost calibration-calendar-icon-button" onClick={() => setYear((value) => value + 1)} aria-label="Next year"><ChevronRight size={18} aria-hidden="true" /></button>
+          <button type="button" className="btn btn-ghost btn-sm calibration-calendar-today" onClick={() => setYear(new Date().getFullYear())}>Current year</button>
         </div>
       </div>
-
-      <div className="calibration-calendar-weekdays" aria-hidden="true">
-        {WEEKDAYS.map((day) => <span key={day}>{day}</span>)}
-      </div>
-      <div className="calibration-calendar-grid" role="group" aria-label={`${monthLabel} calibration due dates`}>
-        {cells.map((day, index) => {
-          if (!day) return <span key={`blank-${index}`} className="calibration-calendar-blank" aria-hidden="true" />;
-          const dateKey = localDateKey(new Date(year, month, day));
-          const dateEquipment = equipmentByDate[dateKey] ?? [];
-          const filter = `date:${dateKey}`;
-          const isSelected = selectedFilter === filter;
-          const placementClass = `${index % 7 >= 5 ? ' tooltip-right' : ''}${index >= cells.length - 7 ? ' tooltip-up' : ''}`;
-
-          if (dateEquipment.length === 0) {
-            return <span key={dateKey} className={`calibration-calendar-day${dateKey === todayKey ? ' today' : ''}`}><span>{day}</span></span>;
-          }
-
-          const equipmentNames = dateEquipment.map((item) => `${item.equipment_id} ${item.equipment_name}`).join(', ');
+      <div className="calibration-month-grid" role="group" aria-label={`${year} calibration months`}>
+        {MONTHS.map((name, month) => {
+          const filter = `month:${year}-${String(month + 1).padStart(2, '0')}`;
           return (
-            <span key={dateKey} className={`calibration-calendar-day has-equipment${dateKey === todayKey ? ' today' : ''}${isSelected ? ' selected' : ''}${placementClass}`}>
-              <button
-                type="button"
-                className="calibration-calendar-date-button"
-                onClick={() => onFilterChange(filter)}
-                aria-pressed={isSelected}
-                aria-label={`${formatDate(dateKey)}: ${dateEquipment.length} equipment due. ${equipmentNames}`}
-              >
-                <span className="calibration-calendar-date-number">{day}</span>
-                <span className="calibration-calendar-count">{dateEquipment.length}</span>
-                <span className="calibration-calendar-status-dots" aria-hidden="true">
-                  {dateEquipment.slice(0, 4).map((item) => <span key={item.id} style={{ backgroundColor: EQUIPMENT_STATUS_COLORS[item.status] ?? 'var(--text-muted)' }} />)}
-                </span>
-                <span className="calibration-calendar-tooltip" role="tooltip">
-                  <strong>{formatDate(dateKey)}</strong>
-                  {dateEquipment.slice(0, 4).map((item) => (
-                    <span className="calibration-calendar-tooltip-item" key={item.id}>
-                      <span><b>{item.equipment_id}</b><em style={{ color: EQUIPMENT_STATUS_COLORS[item.status] }}>{item.status}</em></span>
-                      <span>{item.equipment_name}</span>
-                      <small>{item.equipment_type} · {item.department} / {item.location}</small>
-                    </span>
-                  ))}
-                  {dateEquipment.length > 4 && <small>+{dateEquipment.length - 4} more equipment</small>}
-                  <small className="calibration-calendar-tooltip-hint">Select date to show the full list</small>
-                </span>
-              </button>
-            </span>
+            <button key={name} type="button" className={`calibration-month-card${selectedFilter === filter ? ' selected' : ''}`} onClick={() => onFilterChange(filter)} aria-pressed={selectedFilter === filter}>
+              <span>{name}</span><strong>{counts[month]}</strong><small>planned</small>
+            </button>
           );
         })}
       </div>
@@ -219,11 +148,11 @@ function DueWindowChart({ equipment, selectedFilter, onFilterChange }) {
   );
 }
 
-function DashboardEquipmentDetails({ equipment, selectedFilter, onFilterChange, openStatus }) {
+function DashboardEquipmentDetails({ equipment, selectedFilter, onFilterChange, openStatus, detailsRef }) {
   const title = dashboardFilterLabel(selectedFilter);
   const isDateFilter = selectedFilter.startsWith('date:');
   return (
-    <section className="card calibration-detail-card" aria-labelledby="calibration-detail-title">
+    <section ref={detailsRef} tabIndex="-1" className="card calibration-detail-card" aria-labelledby="calibration-detail-title">
       <div className="section-header calibration-detail-header">
         <div>
           <h2 className="section-title" id="calibration-detail-title"><span className="dot" /> {title}</h2>
@@ -269,13 +198,23 @@ function DashboardEquipmentDetails({ equipment, selectedFilter, onFilterChange, 
 export function CalibrationDashboard({ summary, equipment, selectedFilter, onFilterChange, openStatus }) {
   const cards = [
     { filter: 'all', label: 'Total Equipment', value: summary.total_equipment, sub: 'Registered assets', accent: 'var(--accent-blue)', icon: <PackageCheck /> },
-    { filter: 'valid', label: 'Valid Equipment', value: summary.valid_equipment, sub: 'More than 30 days', accent: 'var(--accent-green)', icon: <CircleCheckBig /> },
     { filter: 'due30', label: 'Due Within 30 Days', value: summary.due_within_30_days, sub: 'Includes due today', accent: 'var(--accent-purple)', icon: <CalendarClock /> },
     { filter: 'due7', label: 'Due Within 7 Days', value: summary.due_within_7_days, sub: 'Includes due today', accent: 'var(--accent-yellow)', icon: <AlarmClock /> },
     { filter: 'overdue', label: 'Overdue Equipment', value: summary.overdue_equipment, sub: 'Past calibration date', accent: 'var(--accent-red)', alert: summary.overdue_equipment > 0, icon: <TriangleAlert /> },
-    { filter: 'failed', label: 'Failed Equipment', value: summary.failed_equipment, sub: 'Retained in registry', accent: 'var(--accent-red)', alert: summary.failed_equipment > 0, icon: <CircleX /> },
   ];
   const selectedEquipment = filterDashboardEquipment(equipment, selectedFilter);
+  const detailsRef = useRef(null);
+  const showFilteredList = (filter) => {
+    if (!filter) return;
+    onFilterChange(filter);
+    requestAnimationFrame(() => {
+      detailsRef.current?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start',
+      });
+      detailsRef.current?.focus({ preventScroll: true });
+    });
+  };
 
   return (
     <>
@@ -285,7 +224,7 @@ export function CalibrationDashboard({ summary, equipment, selectedFilter, onFil
             key={card.filter}
             type="button"
             className={`calibration-stat-filter${selectedFilter === card.filter ? ' active' : ''}`}
-            onClick={() => onFilterChange(card.filter)}
+            onClick={() => showFilteredList(card.filter)}
             aria-pressed={selectedFilter === card.filter}
             aria-label={`${card.label}: ${card.value}. Show matching equipment.`}
           >
@@ -295,11 +234,11 @@ export function CalibrationDashboard({ summary, equipment, selectedFilter, onFil
       </div>
 
       <div className="calibration-charts-grid">
-        <CalibrationCalendar equipment={equipment} selectedFilter={selectedFilter} onFilterChange={onFilterChange} />
-        <DueWindowChart equipment={equipment} selectedFilter={selectedFilter} onFilterChange={onFilterChange} />
+        <CalibrationYearOverview equipment={equipment} selectedFilter={selectedFilter} onFilterChange={showFilteredList} />
+        <DueWindowChart equipment={equipment} selectedFilter={selectedFilter} onFilterChange={showFilteredList} />
       </div>
 
-      <DashboardEquipmentDetails equipment={selectedEquipment} selectedFilter={selectedFilter} onFilterChange={onFilterChange} openStatus={openStatus} />
+      <DashboardEquipmentDetails equipment={selectedEquipment} selectedFilter={selectedFilter} onFilterChange={showFilteredList} openStatus={openStatus} detailsRef={detailsRef} />
     </>
   );
 }
@@ -342,6 +281,7 @@ function EquipmentTable({ equipment, openEdit, openStatus }) {
             <td><div className="calibration-actions">
               <button className="btn btn-ghost btn-sm" onClick={() => openEdit(item)} aria-label={`Edit ${item.equipment_id}`}><Pencil size={14} aria-hidden="true" /> Edit</button>
               <button className="btn btn-ghost btn-sm" onClick={() => openStatus(item)} aria-label={`Record passed or failed calibration result for ${item.equipment_id}`}><ClipboardCheck size={14} aria-hidden="true" /> Pass / Fail</button>
+              <Link className="btn btn-ghost btn-sm" to={`/calibration/equipment/${item.id}/history`} aria-label={`View history card for ${item.equipment_id}`}><FileClock size={14} aria-hidden="true" /> History</Link>
             </div></td>
           </tr>
         ))}</tbody>
@@ -362,6 +302,104 @@ export function EquipmentRegistryForm({ formData, formError, submitting, onChang
           <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? 'Registering...' : 'Register Equipment'}</button>
         </div>
       </form>
+    </section>
+  );
+}
+
+function planDateCell(date, year, month) {
+  if (!date) return null;
+  const parsed = new Date(`${date}T00:00:00`);
+  return parsed.getFullYear() === year && parsed.getMonth() === month ? parsed.getDate() : null;
+}
+
+export function CalibrationPlanReport({ year, setYear, rows, openEditor, removeEntry }) {
+  return (
+    <section className="card calibration-report-card">
+      <div className="section-header calibration-report-toolbar">
+        <div><h2 className="section-title"><CalendarDays size={16} aria-hidden="true" /> Annual Calibration Plan</h2><p className="text-xs text-muted mt-4">Planned dates and recorded results for {year}.</p></div>
+        <div className="calibration-report-actions">
+          <div className="calibration-report-year" aria-label="Plan year controls">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setYear((value) => value - 1)} aria-label="Previous plan year" disabled={year <= 2000}><ChevronLeft size={16} aria-hidden="true" /></button>
+            <strong>{year}</strong>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setYear((value) => value + 1)} aria-label="Next plan year" disabled={year >= 2100}><ChevronRight size={16} aria-hidden="true" /></button>
+          </div>
+          <button type="button" className="btn btn-primary" onClick={() => window.print()}><Printer size={16} aria-hidden="true" /> Print</button>
+          <button type="button" className="btn btn-primary" onClick={() => openEditor()}><Plus size={16} aria-hidden="true" /> Add Plan Entry</button>
+        </div>
+      </div>
+      <div className="calibration-plan-management table-wrapper" role="region" aria-label={`${year} calibration plan entries`} tabIndex="0">
+        <table className="calibration-report-table">
+          <thead><tr><th>Equipment</th><th>Instrument ID / Serial No.</th><th>Planned Date</th><th>Actual Date</th><th>Result</th><th>Remarks</th><th>Controls</th></tr></thead>
+          <tbody>{rows.length === 0 ? <tr><td colSpan="7">No equipment scheduled for {year}. Use Add Plan Entry to select from the permanent equipment master.</td></tr> : rows.map((row) => (
+            <tr key={row.key}><td>{row.equipment_name}</td><td>{row.equipment_id}<br /><span className="text-xs text-muted">{row.serial_number}</span></td><td>{formatDate(row.planned_date)}</td><td>{formatDate(row.actual_date)}</td><td>{row.result}</td><td>{row.remarks || '—'}</td><td><div className="calibration-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditor(row)}><Pencil size={14} aria-hidden="true" /> Edit</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEntry(row)}><Trash2 size={14} aria-hidden="true" /> Remove</button></div></td></tr>
+          ))}</tbody>
+        </table>
+      </div>
+      <div className="calibration-print-sheet">
+        <div className="calibration-plan-document-header">
+          <strong>Inspection Hub</strong>
+          <h1>Measuring Instrument Calibration Plan {year}</h1>
+          <span>FORMAT NO: QA/FR/54<br />REV: 00</span>
+        </div>
+        <div className="table-wrapper">
+          <table className="calibration-plan-template">
+            <thead>
+              <tr><th rowSpan="2">Sr. No.</th><th rowSpan="2">Description</th><th rowSpan="2">Instrument<br />ID No. / Sr. No.</th><th rowSpan="2">Plan vs<br />Actual</th><th colSpan="12">Month</th><th rowSpan="2">Remarks</th></tr>
+              <tr>{MONTHS.map((month) => <th key={month}>{month.slice(0, 3)}'{String(year).slice(-2)}</th>)}</tr>
+            </thead>
+            <tbody>{rows.length === 0 ? <tr><td colSpan="17">No equipment scheduled for this year.</td></tr> : rows.map((row, index) => (
+              <Fragment key={row.key}>
+                <tr>
+                  <td rowSpan="2">{index + 1}</td><td rowSpan="2">{row.equipment_name}</td><td rowSpan="2">{row.equipment_id}<br />{row.serial_number}</td><td>Plan</td>
+                  {MONTHS.map((month, monthIndex) => { const day = planDateCell(row.planned_date, year, monthIndex); return <td key={month} className={day ? 'calibration-plan-mark planned' : ''}>{day || ''}</td>; })}
+                  <td rowSpan="2">{row.remarks || ''}</td>
+                </tr>
+                <tr><td>Actual</td>{MONTHS.map((month, monthIndex) => { const day = planDateCell(row.actual_date, year, monthIndex); return <td key={month} className={day ? `calibration-plan-mark ${row.result === 'Failed' ? 'failed' : 'actual'}` : ''}>{day || ''}</td>; })}</tr>
+              </Fragment>
+            ))}</tbody>
+          </table>
+        </div>
+        <div className="calibration-plan-signatures"><span>Prepared By</span><span>Verified By</span></div>
+      </div>
+    </section>
+  );
+}
+
+function EquipmentDetail({ label, value }) {
+  return <div><span>{label}</span><strong>{value || '—'}</strong></div>;
+}
+
+export function CalibrationHistoryCard({ data, onDownloadReport }) {
+  const equipment = data?.equipment;
+  const records = data?.records ?? [];
+  if (!equipment) return null;
+  return (
+    <section className="card calibration-report-card">
+      <div className="section-header calibration-report-toolbar">
+        <div><h2 className="section-title"><FileClock size={16} aria-hidden="true" /> Equipment History Card</h2><p className="text-xs text-muted mt-4">Permanent calibration record for {equipment.equipment_id}.</p></div>
+        <button type="button" className="btn btn-primary" onClick={() => window.print()}><Printer size={16} aria-hidden="true" /> Print</button>
+      </div>
+      <div className="calibration-print-sheet">
+        <div className="calibration-report-heading"><h1>INSTRUMENT / GAUGE HISTORY CARD</h1><strong>{equipment.history_card_number || equipment.equipment_id}</strong></div>
+        <div className="calibration-equipment-details">
+          <EquipmentDetail label="Equipment" value={equipment.equipment_name} /><EquipmentDetail label="Equipment ID" value={equipment.equipment_id} />
+          <EquipmentDetail label="Type" value={equipment.equipment_type} /><EquipmentDetail label="Serial No." value={equipment.serial_number} />
+          <EquipmentDetail label="Manufacturer / Make" value={equipment.manufacturer} /><EquipmentDetail label="Model" value={equipment.model_number} />
+          <EquipmentDetail label="Range / Size" value={equipment.range_size} /><EquipmentDetail label="Least Count" value={equipment.least_count} />
+          <EquipmentDetail label="Frequency" value={`${equipment.calibration_frequency_days} days`} /><EquipmentDetail label="Acceptable Error" value={equipment.acceptable_error} />
+          <EquipmentDetail label="Department" value={equipment.department} /><EquipmentDetail label="Location" value={equipment.location} />
+          <EquipmentDetail label="Last Calibration" value={formatDate(equipment.last_calibration_date)} /><EquipmentDetail label="Next Due" value={formatDate(equipment.next_calibration_date)} />
+          <EquipmentDetail label="Acceptance Criteria" value={equipment.acceptance_criteria} />
+        </div>
+        <div className="table-wrapper">
+          <table className="calibration-report-table calibration-history-table">
+            <thead><tr><th>Date</th><th>Agency</th><th>Report / Certificate</th><th>Evidence</th><th>Traceability</th><th>Specified Size</th><th>Details</th><th>Result</th><th>Next Due</th><th>Remarks</th></tr></thead>
+            <tbody>{records.length === 0 ? <tr><td colSpan="10">No calibration results have been recorded yet.</td></tr> : records.map((record) => (
+              <tr key={record.id}><td>{formatDate(record.calibration_date)}</td><td>{record.calibration_agency || '—'}</td><td>{record.report_number || '—'}<br />{record.certificate_number || '—'}</td><td>{record.has_report ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => onDownloadReport(record)}>Download<br />{record.report_file_name}</button> : '—'}</td><td>{record.traceability_certificate_number || '—'}</td><td>{record.specified_size || '—'}</td><td>{record.calibration_details || '—'}</td><td>{record.result}</td><td>{formatDate(record.next_due_date)}</td><td>{record.remarks || '—'}</td></tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </div>
     </section>
   );
 }

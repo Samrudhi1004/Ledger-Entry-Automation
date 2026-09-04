@@ -239,6 +239,24 @@ export default function App() {
       />
 
       <Route
+        path="/calibration/plan"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
+            <CalibrationPage view="plan" />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
+        path="/calibration/equipment/:equipmentId/history"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
+            <CalibrationPage view="history" />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
         path="/tasks"
         element={
           <ProtectedLayout pendingCount={pendingCount}>
