@@ -60,7 +60,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     final template = provider.selectedTemplate;
     if (machine != null && template != null) {
       final shiftHours = (machine['shift_duration_hours'] as num?)?.toInt() ?? 8;
-      final breakMins = (machine['total_break_mins'] as num?)?.toInt() ?? 45;
+      final breakMins = (machine['total_break_mins'] as num?)?.toInt() ?? 60;
       final cycleTime = (template['cycle_time_mins'] as num?)?.toDouble() ?? 0.0;
       
       if (cycleTime > 0) {

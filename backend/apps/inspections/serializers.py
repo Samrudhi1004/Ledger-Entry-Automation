@@ -224,7 +224,7 @@ class DowntimeReportSerializer(serializers.ModelSerializer):
             'target', 'produced', 'accepted_actual', 'cr', 'mr', 'rw',
             'no_load', 'no_operator', 'um', 'setting', 'inspection_wait',
             'tool_change', 'power_off', 'rework', 'tool_problem',
-            'total_downtime', 'remarks', 'status', 'cycle_time_mins',
+            'total_downtime', 'expected_downtime', 'remarks', 'status', 'cycle_time_mins',
             'created_by', 'created_at', 'updated_at', 'completed_at'
         ]
         read_only_fields = [

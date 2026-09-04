@@ -13,8 +13,11 @@ from django.core.mail import send_mail
 from django.utils.crypto import get_random_string
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
+from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
 
 from .models import User
 from .serializers import (
@@ -352,13 +355,16 @@ class RequestEmailVerificationView(APIView):
         if user.is_email_verified:
             return Response({"message": "Email is already verified."}, status=status.HTTP_200_OK)
 
-        token = get_random_string(length=32)
-        user.email_verification_token = token
+        base_token = get_random_string(length=32)
+        user.email_verification_token = base_token
         user.save(update_fields=['email_verification_token'])
+
+        signer = TimestampSigner()
+        signed_token = signer.sign(base_token)
 
         # Frontend verification URL
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
-        verify_url = f"{frontend_url}/verify-email/{token}"
+        verify_url = f"{frontend_url}/verify-email/{signed_token}"
 
         subject = "Verify your email address"
         message = f"Hi {user.first_name},\n\nPlease click the following link to verify your email address:\n{verify_url}\n\nIf you did not request this, please ignore this email."
@@ -414,9 +420,18 @@ class VerifyEmailView(APIView):
         if not token:
             return Response({"error": "Token is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.filter(email_verification_token=token).first()
+        signer = TimestampSigner()
+        try:
+            # Token expires after 24 hours (86400 seconds)
+            base_token = signer.unsign(token, max_age=86400)
+        except SignatureExpired:
+            return Response({"error": "Verification token has expired."}, status=status.HTTP_400_BAD_REQUEST)
+        except BadSignature:
+            return Response({"error": "Invalid verification token."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email_verification_token=base_token).first()
         if not user:
-            return Response({"error": "Invalid or expired verification token."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Invalid verification token."}, status=status.HTTP_400_BAD_REQUEST)
 
         user.is_email_verified = True
         user.email_verification_token = None
@@ -515,6 +530,11 @@ class ResetPasswordConfirmView(APIView):
             user = None
 
         if user is not None and default_token_generator.check_token(user, token):
+            try:
+                validate_password(new_password, user=user)
+            except ValidationError as e:
+                return Response({"error": e.messages}, status=status.HTTP_400_BAD_REQUEST)
+
             user.set_password(new_password)
             user.save()
             return Response({"message": "Password has been reset successfully."}, status=status.HTTP_200_OK)

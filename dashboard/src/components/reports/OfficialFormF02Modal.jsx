@@ -48,15 +48,21 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
 
     const savePDF = () => {
       if (window.html2pdf) {
-        window.html2pdf().set(opt).from(element).save().then(() => {
+        try {
+          window.html2pdf().set(opt).from(element).save().then(() => {
+            element.style.width = originalWidth;
+            element.style.maxWidth = originalMaxWidth;
+            setDownloading(false);
+          }).catch(() => {
+            element.style.width = originalWidth;
+            element.style.maxWidth = originalMaxWidth;
+            setDownloading(false);
+          });
+        } catch (error) {
           element.style.width = originalWidth;
           element.style.maxWidth = originalMaxWidth;
           setDownloading(false);
-        }).catch(() => {
-          element.style.width = originalWidth;
-          element.style.maxWidth = originalMaxWidth;
-          setDownloading(false);
-        });
+        }
       } else {
         alert('PDF library is loading. Please try again in a moment.');
         element.style.width = originalWidth;

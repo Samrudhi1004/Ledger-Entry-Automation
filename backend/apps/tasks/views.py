@@ -32,6 +32,10 @@ class TaskViewSet(viewsets.ModelViewSet):
             # Send email notification in background
             if task.allocated_to and task.allocated_to.email:
                 def send_task_email():
+                    from django.utils.html import escape
+                    safe_title = escape(task.title)
+                    safe_description = escape(task.description)
+                    
                     subject = f"New Task Allocated: {task.title}"
                     message = f"Hi {task.allocated_to.first_name or 'User'},\n\nA new task '{task.title}' has been assigned to you by {user.first_name} {user.last_name}.\n\nDescription: {task.description}\nDeadline: {task.deadline}"
                     html_message = f"""
@@ -45,8 +49,8 @@ class TaskViewSet(viewsets.ModelViewSet):
                                 A new task has been assigned to you by <strong>{user.first_name} {user.last_name}</strong>.
                             </p>
                             <div style="background-color: #f3f4f6; padding: 16px; border-radius: 6px; margin-bottom: 24px;">
-                                <h3 style="margin-top: 0; color: #111827;">{task.title}</h3>
-                                <p style="font-size: 14px; margin-bottom: 8px;"><strong>Description:</strong> {task.description}</p>
+                                <h3 style="margin-top: 0; color: #111827;">{safe_title}</h3>
+                                <p style="font-size: 14px; margin-bottom: 8px;"><strong>Description:</strong> {safe_description}</p>
                                 <p style="font-size: 14px; margin-bottom: 0; color: #dc2626;"><strong>Deadline:</strong> {task.deadline}</p>
                             </div>
                             <p style="font-size: 14px; color: #6b7280; margin-bottom: 0;">
