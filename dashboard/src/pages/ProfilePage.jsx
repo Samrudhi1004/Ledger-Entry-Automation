@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Header from '../components/layout/Header';
 import { useAuth } from '../context/AuthContext';
-import { updateProfile, uploadProfilePhoto, changePassword } from '../api/auth';
+import { updateProfile, uploadProfilePhoto, changePassword, requestEmailVerification } from '../api/auth';
 import {
   User, Mail, Phone, Lock, Camera, CheckCircle2, AlertCircle,
   Building2, Calendar, IdCard, Shield, KeyRound, Eye, EyeOff, UploadCloud, RefreshCw, Sparkles
@@ -69,6 +69,23 @@ export default function ProfilePage() {
     }
   };
 
+  // ── Email Verification State ──────────────────────────────────────────
+  const [emailVerifyLoading, setEmailVerifyLoading] = useState(false);
+  const handleRequestVerification = async () => {
+    setEmailVerifyLoading(true);
+    setDetailsSuccess('');
+    setDetailsError('');
+    try {
+      await requestEmailVerification();
+      setDetailsSuccess('Verification email sent! Please check your inbox.');
+    } catch (err) {
+      const d = err.response?.data;
+      setDetailsError(d?.error || d?.message || 'Failed to send verification email.');
+    } finally {
+      setEmailVerifyLoading(false);
+    }
+  };
+
   // ── Photo Upload State ──────────────────────────────────────────────
   const [photoPreview, setPhotoPreview] = useState(null);
   const [photoFile,    setPhotoFile]    = useState(null);
@@ -109,9 +126,8 @@ export default function ProfilePage() {
     }
   };
 
-  // ── Password Form State ─────────────────────────────────────────────
-  const [passwords, setPasswords] = useState({ old_password: '', new_password: '', confirm: '' });
-  const [showOld, setShowOld]     = useState(false);
+  // ── Password Change State ───────────────────────────────────────────
+  const [passwords, setPasswords] = useState({ new_password: '', confirm: '' });
   const [showNew, setShowNew]     = useState(false);
   const [pwSaving, setPwSaving]   = useState(false);
   const [pwSuccess, setPwSuccess] = useState('');
@@ -125,26 +141,23 @@ export default function ProfilePage() {
 
   const handlePasswordSave = async (e) => {
     e.preventDefault();
-    setPwSuccess('');
-    setPwError('');
-
     if (passwords.new_password !== passwords.confirm) {
-      setPwError('New passwords do not match.');
+      setPwError("New passwords don't match.");
       return;
     }
     if (passwords.new_password.length < 6) {
-      setPwError('New password must be at least 6 characters long.');
+      setPwError("Password must be at least 6 characters.");
       return;
     }
 
     setPwSaving(true);
     try {
-      await changePassword({ old_password: passwords.old_password, new_password: passwords.new_password });
-      setPwSuccess('Password updated successfully.');
-      setPasswords({ old_password: '', new_password: '', confirm: '' });
+      await changePassword({ new_password: passwords.new_password });
+      setPwSuccess('Password changed successfully.');
+      setPasswords({ new_password: '', confirm: '' });
     } catch (err) {
       const d = err.response?.data;
-      const msg = d?.old_password?.[0] || d?.new_password?.[0] || d?.detail || d?.message || 'Failed to update password.';
+      const msg = d?.new_password?.[0] || d?.detail || d?.message || 'Failed to update password.';
       setPwError(msg);
     } finally {
       setPwSaving(false);
@@ -333,15 +346,50 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Email Address</label>
-                  <input
-                    className="form-input"
-                    name="email"
-                    type="email"
-                    value={details.email}
-                    onChange={handleDetailsChange}
-                    placeholder="admin@example.com"
-                  />
+                  <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Email Address</span>
+                    {user?.is_email_verified ? (
+                      <span style={{ fontSize: '0.75rem', color: '#15803d', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                        <CheckCircle2 size={12} /> Verified
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.75rem', color: '#ea580c', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                        <AlertCircle size={12} /> Unverified
+                      </span>
+                    )}
+                  </label>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <input
+                      className="form-input"
+                      name="email"
+                      type="email"
+                      value={details.email}
+                      onChange={handleDetailsChange}
+                      placeholder="admin@example.com"
+                      style={{ flex: 1 }}
+                    />
+                    {!user?.is_email_verified && (
+                      <button
+                        type="button"
+                        onClick={handleRequestVerification}
+                        disabled={emailVerifyLoading || !details.email || details.email !== user?.email}
+                        title={details.email !== user?.email ? "Save email before verifying" : "Send verification link"}
+                        style={{
+                          background: 'var(--accent-blue)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: 'var(--radius-sm)',
+                          padding: '0 16px',
+                          fontSize: '0.85rem',
+                          fontWeight: 500,
+                          cursor: (emailVerifyLoading || !details.email || details.email !== user?.email) ? 'not-allowed' : 'pointer',
+                          opacity: (emailVerifyLoading || !details.email || details.email !== user?.email) ? 0.7 : 1,
+                        }}
+                      >
+                        {emailVerifyLoading ? 'Sending...' : 'Verify'}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
@@ -367,96 +415,7 @@ export default function ProfilePage() {
               </form>
             </div>
 
-            {/* Security & Password Form Card */}
-            <div className="card" style={{ padding: '28px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
-                <KeyRound size={18} color="var(--accent-blue)" />
-                <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                  Security & Password
-                </h3>
-              </div>
 
-              {pwSuccess && (
-                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <CheckCircle2 size={15} /> {pwSuccess}
-                </div>
-              )}
-
-              {pwError && (
-                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <AlertCircle size={15} /> {pwError}
-                </div>
-              )}
-
-              <form onSubmit={handlePasswordSave} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Current Password</label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      className="form-input"
-                      type={showOld ? 'text' : 'password'}
-                      name="old_password"
-                      value={passwords.old_password}
-                      onChange={handlePasswordChange}
-                      placeholder="Enter current password"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowOld(!showOld)}
-                      style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-                    >
-                      {showOld ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">New Password</label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      className="form-input"
-                      type={showNew ? 'text' : 'password'}
-                      name="new_password"
-                      value={passwords.new_password}
-                      onChange={handlePasswordChange}
-                      placeholder="Min. 6 characters"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNew(!showNew)}
-                      style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-                    >
-                      {showNew ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Confirm New Password</label>
-                  <input
-                    className="form-input"
-                    type="password"
-                    name="confirm"
-                    value={passwords.confirm}
-                    onChange={handlePasswordChange}
-                    placeholder="Repeat new password"
-                    required
-                  />
-                </div>
-
-                <div style={{ paddingTop: 6 }}>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={pwSaving}
-                  >
-                    {pwSaving ? 'Updating Password...' : 'Update Password'}
-                  </button>
-                </div>
-              </form>
-            </div>
 
           </div>
 

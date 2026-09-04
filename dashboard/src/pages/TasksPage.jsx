@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Header from '../components/layout/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
-import { getTasks, resolveIssue } from '../api/tasks';
+import { getTasks, resolveIssue, acceptTask, completeTask, flagIssue } from '../api/tasks';
 import { formatDateTime } from '../utils/formatters';
 import TaskModal from '../components/tasks/TaskModal';
 import {
@@ -78,6 +78,46 @@ function ResolveModal({ task, onClose, onConfirm }) {
   );
 }
 
+function FlagIssueModal({ task, onClose, onConfirm }) {
+  const [description, setDescription] = useState('');
+
+  if (!task) return null;
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-content" style={{ width: 400 }}>
+        <h3 style={{ margin: '0 0 16px 0' }}>Flag Issue</h3>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 20 }}>
+          Please describe the issue preventing you from completing <strong>{task.title}</strong>:
+        </p>
+        
+        <div className="form-group" style={{ marginBottom: 24 }}>
+          <textarea
+            className="form-textarea"
+            placeholder="Describe the issue..."
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            style={{ minHeight: 80 }}
+            autoFocus
+          />
+        </div>
+
+        <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button 
+            className="btn btn-primary" 
+            style={{ background: 'var(--accent-red)', border: 'none' }}
+            onClick={() => onConfirm(description)}
+            disabled={!description.trim()}
+          >
+            Submit Issue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Shared Helpers ────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
@@ -111,18 +151,36 @@ function DeadlinePill({ deadlineStr, status }) {
 }
 
 // Expandable issue row used in all table views
-function TaskRow({ task, currentUser, onResolve, showAllocatedBy = true }) {
+function TaskRow({ task, currentUser, onResolve, onAccept, onComplete, onFlagIssue, showAllocatedBy = true }) {
   const [expanded, setExpanded] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
   const cfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending;
   const isAllocator = task.allocated_by?.id === currentUser?.id || currentUser?.role === 'admin';
+  const isAssignee = task.allocated_to?.id === currentUser?.id;
+
+  const needsExpansion = task.description && (task.description.length > 40 || task.description.includes('\n'));
 
   return (
     <>
       <tr className={cfg.rowClass}>
-        <td>
-          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{task.title}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {task.description}
+        <td style={{ verticalAlign: 'top' }}>
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{task.title}</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', maxWidth: 280 }}>
+            <div style={{ 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis', 
+              whiteSpace: descExpanded ? 'pre-wrap' : 'nowrap'
+            }}>
+              {task.description}
+            </div>
+            {needsExpansion && (
+              <button 
+                onClick={() => setDescExpanded(!descExpanded)}
+                style={{ background: 'none', border: 'none', color: 'var(--accent-blue)', fontSize: '0.7rem', padding: 0, marginTop: 4, cursor: 'pointer', fontWeight: 600 }}
+              >
+                {descExpanded ? 'Show less' : 'Read more'}
+              </button>
+            )}
           </div>
         </td>
         {showAllocatedBy && (
@@ -144,6 +202,25 @@ function TaskRow({ task, currentUser, onResolve, showAllocatedBy = true }) {
         <td><DeadlinePill deadlineStr={task.deadline} status={task.status} /></td>
         <td><span className={`badge ${cfg.badgeClass}`}>{cfg.label}</span></td>
         <td style={{ textAlign: 'right' }}>
+          {isAssignee && (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginBottom: 4 }}>
+              {task.status === 'pending' && (
+                <button className="btn btn-sm" style={{ background: 'var(--accent-blue)', color: '#fff', border: 'none' }} onClick={() => onAccept(task)}>
+                  Accept
+                </button>
+              )}
+              {task.status === 'accepted' && (
+                <button className="btn btn-sm" style={{ background: 'var(--accent-green)', color: '#fff', border: 'none' }} onClick={() => onComplete(task)}>
+                  Complete
+                </button>
+              )}
+              {(task.status === 'pending' || task.status === 'accepted') && (
+                <button className="btn btn-sm" style={{ background: 'transparent', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }} onClick={() => onFlagIssue(task)}>
+                  Flag Issue
+                </button>
+              )}
+            </div>
+          )}
           {task.status === 'flagged_issue' && isAllocator && (
             <button className="btn btn-ghost btn-sm" onClick={() => setExpanded(v => !v)} style={{ gap: 4 }}>
               {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -184,7 +261,7 @@ function TaskRow({ task, currentUser, onResolve, showAllocatedBy = true }) {
 
 // ─── ADMIN VIEW: Full analytics + all tasks ────────────────────────────────────
 
-function AdminTasksView({ tasks, loading, refreshing, onRefresh, onAllocate, onResolve, currentUser }) {
+function AdminTasksView({ tasks, loading, refreshing, onRefresh, onAllocate, onResolve, onAccept, onComplete, onFlagIssue, currentUser }) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [viewTab, setViewTab] = useState('all');
 
@@ -297,7 +374,7 @@ function AdminTasksView({ tasks, loading, refreshing, onRefresh, onAllocate, onR
               </thead>
               <tbody>
                 {filteredTasks.map(task => (
-                  <TaskRow key={task.id} task={task} currentUser={currentUser} onResolve={onResolve} showAllocatedBy={true} />
+                  <TaskRow key={task.id} task={task} currentUser={currentUser} onResolve={onResolve} onAccept={onAccept} onComplete={onComplete} onFlagIssue={onFlagIssue} showAllocatedBy={true} />
                 ))}
               </tbody>
             </table>
@@ -310,7 +387,7 @@ function AdminTasksView({ tasks, loading, refreshing, onRefresh, onAllocate, onR
 
 // ─── SUPERVISOR / INSPECTOR VIEW: My tasks only + allocate ─────────────────────
 
-function UserTasksView({ tasks, loading, refreshing, onRefresh, onAllocate, onResolve, currentUser }) {
+function UserTasksView({ tasks, loading, refreshing, onRefresh, onAllocate, onResolve, onAccept, onComplete, onFlagIssue, currentUser }) {
   const [activeTab, setActiveTab] = useState('assigned');
 
   const assignedToMe = useMemo(() => tasks.filter(t => t.allocated_to?.id === currentUser?.id), [tasks, currentUser]);
@@ -398,6 +475,9 @@ function UserTasksView({ tasks, loading, refreshing, onRefresh, onAllocate, onRe
                   task={task}
                   currentUser={currentUser}
                   onResolve={onResolve}
+                  onAccept={onAccept}
+                  onComplete={onComplete}
+                  onFlagIssue={onFlagIssue}
                   showAllocatedBy={activeTab === 'assigned'}
                 />
               ))}
@@ -418,6 +498,7 @@ export default function TasksPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [resolvingTask, setResolvingTask] = useState(null);
+  const [flaggingTask, setFlaggingTask] = useState(null);
 
   const fetchTasks = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -450,6 +531,35 @@ export default function TasksPage() {
     }
   };
 
+  const handleAcceptTask = async (task) => {
+    try {
+      await acceptTask(task.id);
+      fetchTasks(true);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to accept task');
+    }
+  };
+
+  const handleCompleteTask = async (task) => {
+    try {
+      await completeTask(task.id);
+      fetchTasks(true);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to complete task');
+    }
+  };
+
+  const handleFlagIssueSubmit = async (description) => {
+    if (!flaggingTask) return;
+    try {
+      await flagIssue(flaggingTask.id, description);
+      fetchTasks(true);
+      setFlaggingTask(null);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to flag issue');
+    }
+  };
+
   if (user?.role === 'operator') {
     return (
       <div className="page-container" style={{ padding: '64px 24px', textAlign: 'center' }}>
@@ -478,6 +588,9 @@ export default function TasksPage() {
             onRefresh={() => fetchTasks(true)}
             onAllocate={() => setShowModal(true)}
             onResolve={task => setResolvingTask(task)}
+            onAccept={handleAcceptTask}
+            onComplete={handleCompleteTask}
+            onFlagIssue={task => setFlaggingTask(task)}
             currentUser={user}
           />
         ) : (
@@ -488,6 +601,9 @@ export default function TasksPage() {
             onRefresh={() => fetchTasks(true)}
             onAllocate={() => setShowModal(true)}
             onResolve={task => setResolvingTask(task)}
+            onAccept={handleAcceptTask}
+            onComplete={handleCompleteTask}
+            onFlagIssue={task => setFlaggingTask(task)}
             currentUser={user}
           />
         )}
@@ -506,6 +622,14 @@ export default function TasksPage() {
           task={resolvingTask} 
           onClose={() => setResolvingTask(null)}
           onConfirm={handleResolveIssue}
+        />
+      )}
+
+      {flaggingTask && (
+        <FlagIssueModal
+          task={flaggingTask}
+          onClose={() => setFlaggingTask(null)}
+          onConfirm={handleFlagIssueSubmit}
         />
       )}
     </div>

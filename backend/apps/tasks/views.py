@@ -2,6 +2,9 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
+from django.core.mail import send_mail
+from django.conf import settings
+import threading
 from .models import Task
 from .serializers import TaskSerializer, TaskCreateSerializer
 
@@ -25,6 +28,41 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = TaskCreateSerializer(data=request.data)
         if serializer.is_valid():
             task = serializer.save(allocated_by=user)
+            
+            # Send email notification in background
+            if task.allocated_to and task.allocated_to.email:
+                def send_task_email():
+                    subject = f"New Task Allocated: {task.title}"
+                    message = f"Hi {task.allocated_to.first_name or 'User'},\n\nA new task '{task.title}' has been assigned to you by {user.first_name} {user.last_name}.\n\nDescription: {task.description}\nDeadline: {task.deadline}"
+                    html_message = f"""
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+                        <div style="background-color: #2563eb; padding: 24px; text-align: center;">
+                            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">New Task Allocated</h1>
+                        </div>
+                        <div style="padding: 32px 24px; background-color: #ffffff; color: #374151;">
+                            <p style="font-size: 16px; margin-top: 0;">Hi <strong>{task.allocated_to.first_name or 'User'}</strong>,</p>
+                            <p style="font-size: 16px; line-height: 1.5; margin-bottom: 24px;">
+                                A new task has been assigned to you by <strong>{user.first_name} {user.last_name}</strong>.
+                            </p>
+                            <div style="background-color: #f3f4f6; padding: 16px; border-radius: 6px; margin-bottom: 24px;">
+                                <h3 style="margin-top: 0; color: #111827;">{task.title}</h3>
+                                <p style="font-size: 14px; margin-bottom: 8px;"><strong>Description:</strong> {task.description}</p>
+                                <p style="font-size: 14px; margin-bottom: 0; color: #dc2626;"><strong>Deadline:</strong> {task.deadline}</p>
+                            </div>
+                            <p style="font-size: 14px; color: #6b7280; margin-bottom: 0;">
+                                Please check your dashboard to accept and manage this task.
+                            </p>
+                        </div>
+                    </div>
+                    """
+                    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
+                    try:
+                        send_mail(subject, message, from_email, [task.allocated_to.email], fail_silently=True, html_message=html_message)
+                    except Exception:
+                        pass
+                
+                threading.Thread(target=send_task_email).start()
+
             return Response(TaskSerializer(task).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

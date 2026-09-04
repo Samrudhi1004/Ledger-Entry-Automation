@@ -9,6 +9,10 @@ from .views import (
     ChangePasswordView,
     UserListView,
     UserDetailView,
+    RequestEmailVerificationView,
+    VerifyEmailView,
+    ForgotPasswordRequestView,
+    ResetPasswordConfirmView,
 )
 
 urlpatterns = [
@@ -21,10 +25,17 @@ urlpatterns = [
     # Registration (Admin only)
     path('register/',        RegisterView.as_view(),       name='user-register'),
 
-    # Own profile
     path('me/',              ProfileView.as_view(),             name='user-profile'),
     path('me/photo/',        UpdateProfilePhotoView.as_view(),  name='user-profile-photo'),
     path('change-password/', ChangePasswordView.as_view(),      name='change-password'),
+
+    # Email Verification
+    path('verify-email/request/', RequestEmailVerificationView.as_view(), name='verify-email-request'),
+    path('verify-email/confirm/', VerifyEmailView.as_view(), name='verify-email-confirm'),
+
+    # Password Reset
+    path('password-reset/request/', ForgotPasswordRequestView.as_view(), name='password-reset-request'),
+    path('password-reset/confirm/', ResetPasswordConfirmView.as_view(), name='password-reset-confirm'),
 
     # Admin: user management
     path('',                 UserListView.as_view(),       name='user-list'),

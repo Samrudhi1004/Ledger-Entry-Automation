@@ -25,6 +25,10 @@ class User(AbstractUser):
     employee_id = models.CharField(max_length=50, unique=True, null=True, blank=True)
     phone       = models.CharField(max_length=15, blank=True)
 
+    # Verification fields
+    is_email_verified = models.BooleanField(default=False)
+    email_verification_token = models.CharField(max_length=100, null=True, blank=True)
+
     # Plant assignment (operators/supervisors belong to a plant)
     plant = models.ForeignKey(
         'machines.Plant',

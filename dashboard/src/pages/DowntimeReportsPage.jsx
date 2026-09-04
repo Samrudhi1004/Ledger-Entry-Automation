@@ -125,18 +125,33 @@ export default function DowntimeReportsPage() {
   };
 
   // Compute total downtime live per row
-  const calculateRowTotal = (r) => {
-    return (
-      (Number(r.no_load) || 0) +
-      (Number(r.no_operator) || 0) +
-      (Number(r.um) || 0) +
-      (Number(r.setting) || 0) +
-      (Number(r.inspection_wait) || 0) +
-      (Number(r.tool_change) || 0) +
-      (Number(r.power_off) || 0) +
-      (Number(r.rework) || 0) +
-      (Number(r.tool_problem) || 0)
-    );
+  const getCalculatedTotal = (r) => {
+    const target = Number(r.target) || 0;
+    const produced = Number(r.produced) || 0;
+    const cycleTime = Number(r.cycle_time_mins) || 0;
+    return Math.max(0, Math.round((target - produced) * cycleTime));
+  };
+
+  const handleTotalChange = (idx, value) => {
+    const newReports = [...reports];
+    const r = newReports[idx];
+    const calcTotal = getCalculatedTotal(r);
+    const newVal = value === '' ? '' : Number(value);
+    
+    if (newVal !== calcTotal && newVal !== '') {
+      const confirmChange = window.confirm("You are modifying the auto-calculated Downtime Total. Please ensure you explain the reason in the Remarks field. Continue?");
+      if (!confirmChange) return;
+    }
+    
+    r.total_downtime = newVal;
+    setReports(newReports);
+  };
+
+  const getRowTotal = (r) => {
+    if (r.total_downtime !== undefined && r.total_downtime !== null && r.total_downtime !== '') {
+      return Number(r.total_downtime);
+    }
+    return getCalculatedTotal(r);
   };
 
   // SUBMIT & Save Date-Wise Downtime Report
@@ -162,6 +177,7 @@ export default function DowntimeReportsPage() {
         power_off: Number(r.power_off) || 0,
         rework: Number(r.rework) || 0,
         tool_problem: Number(r.tool_problem) || 0,
+        total_downtime: getRowTotal(r),
         remarks: r.remarks || '',
         mark_completed: true,
       }));
@@ -676,7 +692,7 @@ export default function DowntimeReportsPage() {
                     {/* TABLE BODY */}
                     <tbody>
                       {reports.map((r, idx) => {
-                        const rowTotal = calculateRowTotal(r);
+                        const rowTotal = getRowTotal(r);
                         const isSubmitted = r.status === 'COMPLETED';
 
                         const inputStyle = {
@@ -748,8 +764,15 @@ export default function DowntimeReportsPage() {
                             </td>
 
                             {/* TOTAL DOWNTIME */}
-                            <td style={{ padding: '4px 2px', border: '1px solid #CBD5E1', backgroundColor: '#EFF6FF', fontWeight: '800', color: '#0369A1', fontSize: '11px' }}>
-                              {rowTotal} Min.
+                            <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1', backgroundColor: '#EFF6FF' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                value={r.total_downtime !== undefined ? r.total_downtime : getCalculatedTotal(r)}
+                                onChange={(e) => handleTotalChange(idx, e.target.value)}
+                                disabled={isSubmitted}
+                                style={{ ...inputStyle, width: '45px', fontWeight: '800', color: '#0369A1' }}
+                              />
                             </td>
 
                             {/* REMARKS */}

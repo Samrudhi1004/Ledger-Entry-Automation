@@ -22,3 +22,9 @@ export const uploadProfilePhoto = (file) => {
 
 export const changePassword = (data) =>
   api.post('/api/users/change-password/', data);
+
+export const requestEmailVerification = () =>
+  api.post('/api/users/verify-email/request/');
+
+export const verifyEmail = (token) =>
+  api.post('/api/users/verify-email/confirm/', { token });

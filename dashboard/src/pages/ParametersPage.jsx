@@ -80,9 +80,11 @@ export default function ParametersPage() {
   const [newOpName, setNewOpName] = useState('');
   const [newOpType, setNewOpType] = useState('first_piece');
   const [newOpTargetCount, setNewOpTargetCount] = useState(10);
+  const [newOpCycleTime, setNewOpCycleTime] = useState('');
 
   const [showEditTargetModal, setShowEditTargetModal] = useState(false);
   const [editTargetCount, setEditTargetCount] = useState(10);
+  const [editCycleTime, setEditCycleTime] = useState('');
 
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -363,11 +365,13 @@ export default function ParametersPage() {
         name: opTitle,
         inspection_type: newOpType,
         target_parameter_count: targetCount,
+        cycle_time_mins: parseFloat(newOpCycleTime) || 0.0,
         is_active: true
       });
       setSuccessMsg(`Operation "${opTitle}" created with target of ${targetCount} parameters!`);
       setShowAddOpModal(false);
       setNewOpName('');
+      setNewOpCycleTime('');
       await loadTemplates();
       if (res.data?.id) setSelectedTemplate(res.data);
     } catch (err) {
@@ -382,7 +386,11 @@ export default function ParametersPage() {
       setError('');
       setSuccessMsg('');
       const targetVal = parseInt(editTargetCount) || 10;
-      const res = await updateTemplate(selectedTemplate.id, { target_parameter_count: targetVal });
+      const cycleVal = parseFloat(editCycleTime) || 0.0;
+      const res = await updateTemplate(selectedTemplate.id, { 
+        target_parameter_count: targetVal,
+        cycle_time_mins: cycleVal
+      });
       setSelectedTemplate(res.data);
       setSuccessMsg(`Target parameter count updated to ${targetVal} for this operation!`);
       setShowEditTargetModal(false);
@@ -1469,7 +1477,7 @@ export default function ParametersPage() {
                     </span>
                   )}
                   <button
-                    onClick={() => { setEditTargetCount(target); setShowEditTargetModal(true); }}
+                    onClick={() => { setEditTargetCount(target); setEditCycleTime(selectedTemplate?.cycle_time_mins || ''); setShowEditTargetModal(true); }}
                     style={{
                       padding: '5px 12px', fontSize: 11, fontWeight: 700,
                       background: '#EFF6FF', border: '1px solid #BAE6FD',
@@ -1723,6 +1731,23 @@ export default function ParametersPage() {
                     />
                     <small style={{ color: '#94A3B8', fontSize: 12, marginTop: 4, display: 'block' }}>
                       Set expected parameter count for this operation (e.g. 18 parameters for full check).
+                    </small>
+                  </div>
+
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 'bold' }}>
+                      Cycle Time (Minutes)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      className="form-input"
+                      value={newOpCycleTime}
+                      onChange={(e) => setNewOpCycleTime(e.target.value)}
+                    />
+                    <small style={{ color: '#94A3B8', fontSize: 12, marginTop: 4, display: 'block' }}>
+                      Time taken for one operation cycle in minutes.
                     </small>
                   </div>
                 </div>
@@ -2095,6 +2120,22 @@ export default function ParametersPage() {
                     />
                     <small style={{ color: '#94A3B8', fontSize: 12, marginTop: 4, display: 'block' }}>
                       Set the required number of parameters expected for this operation sheet.
+                    </small>
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 'bold' }}>
+                      Cycle Time (Minutes)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      className="form-input"
+                      value={editCycleTime}
+                      onChange={(e) => setEditCycleTime(e.target.value)}
+                    />
+                    <small style={{ color: '#94A3B8', fontSize: 12, marginTop: 4, display: 'block' }}>
+                      Time taken for one operation cycle in minutes.
                     </small>
                   </div>
                 </div>

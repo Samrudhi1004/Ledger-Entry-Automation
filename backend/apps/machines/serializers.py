@@ -16,13 +16,15 @@ class PlantSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Plant
-        fields = ['id', 'factory', 'factory_name', 'name', 'code', 'is_active', 'machine_count', 'created_at']
+        fields = ['id', 'factory', 'factory_name', 'name', 'code', 'shift_duration_hours', 'total_break_mins', 'is_active', 'machine_count', 'created_at']
 
 
 class MachineSerializer(serializers.ModelSerializer):
     plant = serializers.PrimaryKeyRelatedField(queryset=Plant.objects.all(), required=False, allow_null=True)
     plant_name   = serializers.SerializerMethodField()
     factory_name = serializers.SerializerMethodField()
+    shift_duration_hours = serializers.IntegerField(source='plant.shift_duration_hours', read_only=True)
+    total_break_mins = serializers.IntegerField(source='plant.total_break_mins', read_only=True)
 
     class Meta:
         model  = Machine
@@ -31,6 +33,7 @@ class MachineSerializer(serializers.ModelSerializer):
             'name', 'machine_code', 'machine_type',
             'manufacturer', 'model_number', 'status',
             'qr_code', 'is_active', 'created_at',
+            'shift_duration_hours', 'total_break_mins',
         ]
 
     def get_plant_name(self, obj):

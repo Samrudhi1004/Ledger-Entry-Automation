@@ -47,7 +47,7 @@ class InspectionTemplateSerializer(serializers.ModelSerializer):
             'id', 'name', 'part', 'part_number', 'part_name',
             'inspection_type', 'version', 'target_parameter_count',
             'configured_parameter_count', 'is_configuration_complete',
-            'is_active', 'is_published', 'published_at',
+            'is_active', 'is_published', 'published_at', 'cycle_time_mins',
             'created_by', 'created_by_name', 'created_at',
             'parameters', 'process_parameters',
         ]
@@ -65,7 +65,7 @@ class InspectionTemplateListSerializer(serializers.ModelSerializer):
         model  = InspectionTemplate
         fields = [
             'id', 'name', 'part_number', 'inspection_type', 'version', 'is_active',
-            'is_published', 'published_at',
+            'is_published', 'published_at', 'cycle_time_mins',
             'parameter_count', 'target_parameter_count',
             'configured_parameter_count', 'is_configuration_complete'
         ]
