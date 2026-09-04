@@ -8,7 +8,11 @@ export default function Modal({ title, onClose, children, footer, size }) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const modalClass = `modal${size === 'xl' ? ' modal-xl' : size === 'lg' ? ' modal-lg' : ''}`;
+  const modalClass = `modal${
+    size === '2xl' || size === 'full' ? ' modal-2xl' : 
+    size === 'xl' ? ' modal-xl' : 
+    size === 'lg' ? ' modal-lg' : ''
+  }`;
 
   return (
     <div

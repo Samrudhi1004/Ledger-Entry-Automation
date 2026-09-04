@@ -13,27 +13,32 @@ import {
   ChevronDown,
   ChevronRight,
   CheckSquare,
+  ShoppingCart,
+  Wrench,
+  Cpu,
+  TrendingUp,
+  BarChart3,
 } from 'lucide-react';
 
 const MODULES = [
+  // Existing Modules Retained at Top
   {
     key: 'master',
     label: 'Master Database',
     icon: Database,
     items: [
-      { icon: Users, label: 'Users & Operators', to: '/users' },
       { icon: Sliders, label: 'Master Parameters', to: '/parameters' },
     ],
   },
   {
-    key: 'qa',
+    key: 'qa_reports',
     label: 'Reports',
     icon: ShieldCheck,
     to: '/reports',
     items: [],
   },
   {
-    key: 'production',
+    key: 'production_old',
     label: 'Production Module',
     icon: Layers,
     to: '/production',
@@ -44,6 +49,51 @@ const MODULES = [
     label: 'Tasks Management',
     icon: CheckSquare,
     to: '/tasks',
+    items: [],
+  },
+
+  // New Enterprise Modules Appended Below
+  {
+    key: 'quality_analyzer',
+    label: 'Quality Analyzer',
+    icon: BarChart3,
+    to: '/quality-analyzer',
+    items: [],
+  },
+  {
+    key: 'hr',
+    label: 'HR',
+    icon: Users,
+    items: [
+      { icon: Users, label: 'Users & Operators', to: '/users' },
+    ],
+  },
+  {
+    key: 'purchase',
+    label: 'Purchase',
+    icon: ShoppingCart,
+    to: '/purchase',
+    items: [],
+  },
+  {
+    key: 'maintenance',
+    label: 'Maintenance',
+    icon: Wrench,
+    to: '/maintenance',
+    items: [],
+  },
+  {
+    key: 'development',
+    label: 'Development',
+    icon: Cpu,
+    to: '/development',
+    items: [],
+  },
+  {
+    key: 'marketing',
+    label: 'Marketing',
+    icon: TrendingUp,
+    to: '/marketing',
     items: [],
   },
 ];
@@ -95,7 +145,6 @@ export default function Sidebar({ pendingCount = 0 }) {
   const visibleModules = isCalibrator
     ? CALIBRATION_MODULES
     : MODULES.filter((module) => {
-        if (user?.role === 'admin') return module.key === 'master' || module.key === 'tasks';
         if (user?.role === 'operator') return module.key !== 'tasks'; // operators use mobile app
         return true;
       });
@@ -117,8 +166,8 @@ export default function Sidebar({ pendingCount = 0 }) {
       <nav className="sidebar-nav">
         {visibleModules.map((m) => {
           let module = m;
-          if (module.key === 'master' && user?.role !== 'admin') {
-            module = { ...m, items: m.items.filter(item => item.to !== '/users' && item.to !== '/company') };
+          if (module.key === 'hr' && user?.role !== 'admin') {
+            module = { ...m, items: m.items.filter(item => item.to !== '/users') };
           }
           const ModuleIcon = module.icon;
 

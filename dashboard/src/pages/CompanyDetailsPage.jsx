@@ -4,8 +4,7 @@ import Header from '../components/layout/Header';
 import { useAuth } from '../context/AuthContext';
 import { getCompanyDetails, updateCompanyDetails, getCompanyPlants } from '../api/company';
 import {
-  Building2, Factory, Mail, Phone, MapPin, FileText, CheckCircle2,
-  AlertCircle, Save, RefreshCw, User, ShieldCheck, Layers, Cpu, Hash
+  Building2, CheckCircle2, AlertCircle, Save, RefreshCw, User, Clock, Zap
 } from 'lucide-react';
 
 export default function CompanyDetailsPage() {
@@ -25,6 +24,11 @@ export default function CompanyDetailsPage() {
     address: 'Plot No. 42, Industrial Area, Phase II',
     gstin: '27AAAAA0000A1Z5',
     industry_type: 'Precision Component Manufacturing',
+    shift_hours: 8,
+    total_shifts_per_day: 3,
+    lunch_break_minutes: 30,
+    tea_break_minutes: 30,
+    available_working_minutes: 420,
     is_active: true,
   });
 
@@ -47,6 +51,13 @@ export default function CompanyDetailsPage() {
       if (compRes?.data && compRes.data.length > 0) {
         const primary = compRes.data[0];
         setCompanyId(primary.id);
+        const shiftHrs = primary.shift_hours || 8;
+        const shiftsPerDay = shiftHrs === 12 ? 2 : 3;
+        const lunchMins = primary.lunch_break_minutes ?? 30;
+        const teaMins = primary.tea_break_minutes ?? 30;
+        const grossMins = shiftHrs * 60;
+        const availMins = Math.max(0, grossMins - (lunchMins + teaMins));
+
         setCompany({
           name: primary.name || 'Mantri Metallics',
           code: primary.code || 'FAC-01',
@@ -56,6 +67,11 @@ export default function CompanyDetailsPage() {
           address: primary.address || '',
           gstin: primary.gstin || '',
           industry_type: primary.industry_type || 'Precision Component Manufacturing',
+          shift_hours: shiftHrs,
+          total_shifts_per_day: shiftsPerDay,
+          lunch_break_minutes: lunchMins,
+          tea_break_minutes: teaMins,
+          available_working_minutes: availMins,
           is_active: primary.is_active !== false,
         });
       }
@@ -73,7 +89,23 @@ export default function CompanyDetailsPage() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setCompany((prev) => ({ ...prev, [name]: value }));
+    setCompany((prev) => {
+      const updated = { ...prev, [name]: value };
+      
+      const shiftHrs = Number(updated.shift_hours) === 12 ? 12 : 8;
+      const shiftsCount = shiftHrs === 12 ? 2 : 3;
+      const grossShiftMins = shiftHrs * 60;
+      const lunchMins = Number(updated.lunch_break_minutes) || 0;
+      const teaMins = Number(updated.tea_break_minutes) || 0;
+      const netWorkingMins = Math.max(0, grossShiftMins - (lunchMins + teaMins));
+
+      return {
+        ...updated,
+        shift_hours: shiftHrs,
+        total_shifts_per_day: shiftsCount,
+        available_working_minutes: netWorkingMins,
+      };
+    });
     setSuccess('');
     setError('');
   };
@@ -88,10 +120,9 @@ export default function CompanyDetailsPage() {
       if (companyId) {
         await updateCompanyDetails(companyId, company);
       } else {
-        // Fallback simulated save
         await new Promise((resolve) => setTimeout(resolve, 600));
       }
-      setSuccess('Company details updated successfully!');
+      setSuccess('Company profile and shift schedule updated successfully!');
     } catch (err) {
       const d = err.response?.data;
       setError(d?.detail || d?.message || 'Failed to update company details.');
@@ -100,19 +131,23 @@ export default function CompanyDetailsPage() {
     }
   };
 
-  const totalMachines = plants.reduce((sum, p) => sum + (p.machine_count || 0), 0);
+  // Calculations for live UI feedback
+  const grossShiftMins = (Number(company.shift_hours) || 8) * 60;
+  const totalBreakMins = (Number(company.lunch_break_minutes) || 0) + (Number(company.tea_break_minutes) || 0);
+  const netAvailableWorkingMins = Math.max(0, grossShiftMins - totalBreakMins);
+  const dailyTotalUptimeMins = netAvailableWorkingMins * (company.total_shifts_per_day || 3);
 
   return (
     <>
       <Header
         title="Company & Organization Settings"
-        subtitle="Manage company profile, registered office details, tax identifiers, and connected plants — Admin Only"
+        subtitle="Manage organization profile, registered office identifiers, and plant shift parameters"
       />
 
       <div className="page-content bg-gradient-animated">
-        <div style={{ maxWidth: 1040, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ maxWidth: 980, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-          {/* ── Sub-Navigation Tabs (Profile vs Company) ──────────────────────── */}
+          {/* ── Sub-Navigation Tabs ────────────────────────────────────────────── */}
           <div
             style={{
               display: 'flex',
@@ -136,8 +171,9 @@ export default function CompanyDetailsPage() {
                 fontSize: '0.88rem',
                 fontWeight: 600,
                 textDecoration: 'none',
-                color: isActive ? 'var(--text-white)' : 'var(--text-muted)',
-                background: isActive ? 'var(--accent-blue)' : 'transparent',
+                color: isActive ? '#ffffff' : 'var(--text-muted)',
+                background: isActive ? 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' : 'transparent',
+                boxShadow: isActive ? '0 2px 8px rgba(15,23,42,0.25)' : 'none',
                 transition: 'all 0.2s ease',
               })}
             >
@@ -168,85 +204,86 @@ export default function CompanyDetailsPage() {
             </NavLink>
           </div>
 
-          {/* ── Main Form Grid ───────────────────────────────────────────────── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 24 }}>
+          {/* ── Main Organization Card ────────────────────────────────────────── */}
+          <div className="card" style={{ padding: '32px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, paddingBottom: 14, borderBottom: '1px solid var(--border)' }}>
+              <Building2 size={20} color="var(--accent-blue)" />
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                Company Profile & Registration Details
+              </h3>
+            </div>
 
-            {/* Left Card: Company Profile Edit Form */}
-            <div className="card" style={{ padding: '28px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
-                <Building2 size={18} color="var(--accent-blue)" />
-                <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                  Company Profile & Registration
-                </h3>
+            {success && (
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '12px 16px', borderRadius: 'var(--radius-md)', fontSize: '0.85rem', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CheckCircle2 size={16} /> {success}
               </div>
+            )}
 
-              {success && (
-                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <CheckCircle2 size={15} /> {success}
-                </div>
-              )}
+            {error && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '12px 16px', borderRadius: 'var(--radius-md)', fontSize: '0.85rem', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <AlertCircle size={16} /> {error}
+              </div>
+            )}
 
-              {error && (
-                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <AlertCircle size={15} /> {error}
-                </div>
-              )}
-
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Company / Factory Name</label>
-                    <input
-                      className="form-input"
-                      name="name"
-                      value={company.name}
-                      onChange={handleChange}
-                      placeholder="e.g. Mantri Metallics"
-                      required
-                    />
-                  </div>
-
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Factory Identifier Code</label>
-                    <input
-                      className="form-input font-mono"
-                      name="code"
-                      value={company.code}
-                      onChange={handleChange}
-                      placeholder="e.g. FAC-01"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Official Contact Email</label>
-                    <input
-                      className="form-input"
-                      type="email"
-                      name="contact_email"
-                      value={company.contact_email}
-                      onChange={handleChange}
-                      placeholder="info@company.com"
-                    />
-                  </div>
-
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Official Phone Number</label>
-                    <input
-                      className="form-input"
-                      name="phone"
-                      value={company.phone}
-                      onChange={handleChange}
-                      placeholder="+91 98765 43210"
-                    />
-                  </div>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              
+              {/* Row 1: Name & Code */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Company / Factory Name</label>
+                  <input
+                    className="form-input"
+                    name="name"
+                    value={company.name}
+                    onChange={handleChange}
+                    placeholder="e.g. Mantri Metallics"
+                    required
+                  />
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Industry Sector / Type</label>
+                  <label className="form-label">Factory Code</label>
+                  <input
+                    className="form-input font-mono"
+                    name="code"
+                    value={company.code}
+                    onChange={handleChange}
+                    placeholder="e.g. FAC-01"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Row 2: Email & Phone */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Official Email Address</label>
+                  <input
+                    className="form-input"
+                    type="email"
+                    name="contact_email"
+                    value={company.contact_email}
+                    onChange={handleChange}
+                    placeholder="info@company.com"
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Contact Phone Number</label>
+                  <input
+                    className="form-input"
+                    name="phone"
+                    value={company.phone}
+                    onChange={handleChange}
+                    placeholder="+91 98765 43210"
+                  />
+                </div>
+              </div>
+
+              {/* Row 3: Industry & GSTIN */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Industry Type</label>
                   <input
                     className="form-input"
                     name="industry_type"
@@ -257,7 +294,7 @@ export default function CompanyDetailsPage() {
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">GSTIN / Tax ID Number</label>
+                  <label className="form-label">GSTIN / Tax Registration No.</label>
                   <input
                     className="form-input font-mono"
                     name="gstin"
@@ -266,41 +303,208 @@ export default function CompanyDetailsPage() {
                     placeholder="27AAAAA0000A1Z5"
                   />
                 </div>
+              </div>
 
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Registered Office Address</label>
-                  <textarea
-                    className="form-input"
-                    name="address"
-                    rows={3}
-                    value={company.address}
-                    onChange={handleChange}
-                    placeholder="Enter full physical address"
-                    style={{ resize: 'vertical' }}
-                  />
+              {/* Row 4: Registered Address */}
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Registered Office Address</label>
+                <textarea
+                  className="form-input"
+                  name="address"
+                  rows={2}
+                  value={company.address}
+                  onChange={handleChange}
+                  placeholder="Enter full registered office address"
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              {/* ── Section 2: Shift & Operating Hours Configuration ──────────────── */}
+              <div style={{ marginTop: 12, paddingTop: 24, borderTop: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+                  <Clock size={19} color="var(--accent-blue)" />
+                  <div>
+                    <h4 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                      Shift & Operating Hours Configuration
+                    </h4>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      Define shift patterns, meal intervals, and net available operating time per shift.
+                    </span>
+                  </div>
                 </div>
 
-                <div style={{ paddingTop: 6 }}>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={saving || loading}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  
+                  {/* Shift Pattern Selector */}
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 600, marginBottom: 10 }}>
+                      Factory Shift Pattern
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <div
+                        onClick={() => handleChange({ target: { name: 'shift_hours', value: 8 } })}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: 'var(--radius-md)',
+                          border: Number(company.shift_hours) === 8 ? '2px solid var(--accent-blue)' : '1px solid var(--border)',
+                          background: Number(company.shift_hours) === 8 ? 'rgba(56,189,248,0.05)' : 'var(--bg-elevated)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          transition: 'all 0.18s ease',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="shift_hours_radio"
+                          checked={Number(company.shift_hours) === 8}
+                          onChange={() => {}}
+                          style={{ accentColor: 'var(--accent-blue)', width: 16, height: 16 }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                            8-Hour Shift Pattern
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                            3 Shifts / Day • 480 mins gross duration
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        onClick={() => handleChange({ target: { name: 'shift_hours', value: 12 } })}
+                        style={{
+                          padding: '14px 18px',
+                          borderRadius: 'var(--radius-md)',
+                          border: Number(company.shift_hours) === 12 ? '2px solid var(--accent-blue)' : '1px solid var(--border)',
+                          background: Number(company.shift_hours) === 12 ? 'rgba(56,189,248,0.05)' : 'var(--bg-elevated)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          transition: 'all 0.18s ease',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="shift_hours_radio"
+                          checked={Number(company.shift_hours) === 12}
+                          onChange={() => {}}
+                          style={{ accentColor: 'var(--accent-blue)', width: 16, height: 16 }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                            12-Hour Shift Pattern
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                            2 Shifts / Day • 720 mins gross duration
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Break Inputs Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Lunch / Dinner Break (mins)</label>
+                      <input
+                        className="form-input font-mono"
+                        type="number"
+                        name="lunch_break_minutes"
+                        min={0}
+                        max={180}
+                        value={company.lunch_break_minutes}
+                        onChange={handleChange}
+                        placeholder="30"
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Tea & Rest Breaks (mins)</label>
+                      <input
+                        className="form-input font-mono"
+                        type="number"
+                        name="tea_break_minutes"
+                        min={0}
+                        max={180}
+                        value={company.tea_break_minutes}
+                        onChange={handleChange}
+                        placeholder="30"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Clean Enterprise Operating Capacity Summary Card */}
+                  <div
+                    style={{
+                      background: 'var(--bg-elevated)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '20px 24px',
+                      marginTop: 4,
+                    }}
                   >
-                    {saving ? (
-                      <>
-                        <RefreshCw size={14} className="spin" /> Saving Changes...
-                      </>
-                    ) : (
-                      <>
-                        <Save size={14} /> Save Company Details
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.06em', marginBottom: 14 }}>
+                      Operating Capacity Summary
+                    </div>
 
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20, alignItems: 'center' }}>
+                      
+                      <div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Gross Shift Duration</div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: 2 }}>
+                          {grossShiftMins} <span style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-muted)' }}>mins ({company.shift_hours} hrs)</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Total Break Deductions</div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#e11d48', marginTop: 2 }}>
+                          -{totalBreakMins} <span style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-muted)' }}>mins</span>
+                        </div>
+                      </div>
+
+                      <div style={{ paddingLeft: 12, borderLeft: '2px solid var(--accent-blue)' }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--accent-blue)' }}>Net Available Working Time</div>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 2 }}>
+                          {netAvailableWorkingMins} <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>mins / shift</span>
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                          Total Plant Uptime: {dailyTotalUptimeMins} mins ({company.total_shifts_per_day} shifts/day)
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Submit Action Button */}
+              <div style={{ paddingTop: 12 }}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={saving || loading}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 24px', fontSize: '0.9rem', fontWeight: 600 }}
+                >
+                  {saving ? (
+                    <>
+                      <RefreshCw size={15} className="spin" /> Saving Configuration...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={15} /> Save Company & Shift Details
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </form>
           </div>
 
         </div>

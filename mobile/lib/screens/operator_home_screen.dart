@@ -385,19 +385,19 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                   width: 1.5,
                 ),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.verified_rounded,
                     color: Color(0xFF10B981),
                     size: 32,
                   ),
-                  SizedBox(width: 14),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           '✓ TODAY\'S INSPECTION REPORT ACTIVE',
                           style: TextStyle(
                             color: Color(0xFF10B981),
@@ -405,10 +405,10 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                             fontSize: 13,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          'Hourly In-Process Inspections (1/HR..8/HR) active & ready for voice entry into the single report.',
-                          style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
+                          'Hourly In-Process Inspections (1/HR..${provider.shiftHours}/HR) active & ready for voice entry into the single report.',
+                          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
                         ),
                       ],
                     ),
@@ -441,11 +441,11 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      if (provider.completedHourlySlots.length < 8) {
+                      if (provider.completedHourlySlots.length < provider.shiftHours) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('🔒 You must complete all 8 hourly inspections before submitting the Daily Production Report.'),
-                            backgroundColor: Color(0xFFF59E0B),
+                          SnackBar(
+                            content: Text('🔒 You must complete all ${provider.shiftHours} hourly inspections before submitting the Daily Production Report.'),
+                            backgroundColor: const Color(0xFFF59E0B),
                             behavior: SnackBarBehavior.floating,
                           ),
                         );
@@ -457,13 +457,13 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: provider.completedHourlySlots.length < 8 ? const Color(0xFF94A3B8) : const Color(0xFFEA580C),
+                      backgroundColor: provider.completedHourlySlots.length < provider.shiftHours ? const Color(0xFF94A3B8) : const Color(0xFFEA580C),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: provider.completedHourlySlots.length < 8 ? 0 : 2,
+                      elevation: provider.completedHourlySlots.length < provider.shiftHours ? 0 : 2,
                     ),
-                    icon: Icon(provider.completedHourlySlots.length < 8 ? Icons.lock_rounded : Icons.bar_chart_rounded, size: 16),
+                    icon: Icon(provider.completedHourlySlots.length < provider.shiftHours ? Icons.lock_rounded : Icons.bar_chart_rounded, size: 16),
                     label: const Text('DAILY PRODUCTION', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                   ),
                 ),
@@ -471,9 +471,9 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
             ),
 
             const SizedBox(height: 22),
-            const Text(
-              'HOURLY IN-PROCESS INSPECTION SLOTS (1/HR - 8/HR)',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.1),
+            Text(
+              'HOURLY IN-PROCESS INSPECTION SLOTS (1/HR - ${provider.shiftHours}/HR)',
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.1),
             ),
             const SizedBox(height: 12),
 
@@ -482,7 +482,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
               height: 52,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
-                itemCount: 8,
+                itemCount: provider.shiftHours,
                 itemBuilder: (context, index) {
                   final slotNum = index + 1;
                   final isUnlocked = provider.isHourlySlotUnlocked(slotNum);

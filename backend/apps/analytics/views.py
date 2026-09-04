@@ -227,9 +227,10 @@ class DailyCompletedReportsView(APIView):
         ).all()
 
         # Strict completion filter
+        from django.db.models import F
         qs = qs.filter(
             Q(status__in=['completed', 'finalized_passed', 'approved']) |
-            Q(is_setup_approved=True, hourly_unlocked_slot__gte=8)
+            Q(is_setup_approved=True, hourly_unlocked_slot__gte=F('machine__plant__factory__shift_hours'))
         ).exclude(
             status__in=['draft', 'in_progress', 'pending_review', 'rejected', 'finalized_failed']
         )

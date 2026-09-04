@@ -20,6 +20,8 @@ class InspectionProvider with ChangeNotifier {
   Map<String, Map<String, dynamic>> pendingBatchValues = {};
   bool isLoading = false;
   String? errorMessage;
+  int shiftHours = 8;
+  int get totalHourlySlots => shiftHours;
 
   void selectMachine(Map<String, dynamic> machine) {
     selectedMachine = machine;
@@ -43,9 +45,26 @@ class InspectionProvider with ChangeNotifier {
     trialNumber = 1;
     parentSessionId = null;
     recordedResults.clear();
+    pendingBatchValues.clear();
     activeRejectionNotice = null;
     isLoading = false;
     errorMessage = null;
+    notifyListeners();
+  }
+
+  Future<void> resetSessionState() async {
+    sessionId = null;
+    parentSessionId = null;
+    trialNumber = 1;
+    hourlySlot = 1;
+    inspectionType = 'first_piece';
+    parameters = [];
+    currentParamIndex = 0;
+    recordedResults.clear();
+    pendingBatchValues.clear();
+    completedHourlySlots.clear();
+    activeRejectionNotice = null;
+    await PersistenceService.clearState();
     notifyListeners();
   }
 
@@ -275,21 +294,35 @@ class InspectionProvider with ChangeNotifier {
         syncCompletedSlots(slots);
       }
 
+      if (setupStatus['shift_hours'] is int) {
+        shiftHours = setupStatus['shift_hours'];
+      } else if (setupStatus['total_hourly_slots'] is int) {
+        shiftHours = setupStatus['total_hourly_slots'];
+      }
+
       if (setupStatus['next_unlocked_slot'] is int) {
         final int next = setupStatus['next_unlocked_slot'];
-        if (next > 0 && next <= 8) {
+        if (next > 0 && next <= shiftHours) {
           hourlySlot = next;
         }
       }
 
       try {
         final doc = await ApiService.getSessionDetail(sessionId!);
-        if (doc != null && doc['measurements'] is List) {
-          recordedResults.clear();
-          for (var m in doc['measurements']) {
-            final code = m['parameter_code'];
-            if (code != null) {
-              recordedResults[code.toString()] = m;
+        if (doc != null) {
+          if (doc['shift_hours'] is int) {
+            shiftHours = doc['shift_hours'];
+          } else if (doc['total_hourly_slots'] is int) {
+            shiftHours = doc['total_hourly_slots'];
+          }
+
+          if (doc['measurements'] is List) {
+            recordedResults.clear();
+            for (var m in doc['measurements']) {
+              final code = m['parameter_code'];
+              if (code != null) {
+                recordedResults[code.toString()] = m;
+              }
             }
           }
         }
@@ -382,7 +415,12 @@ class InspectionProvider with ChangeNotifier {
 
     isLoading = false;
     if (result != null) {
-      recordedResults[param['parameter_code']] = result;
+      final resultMap = Map<String, dynamic>.from(result);
+      if (!resultMap.containsKey('trial_number')) {
+        resultMap['trial_number'] = trialNumber;
+      }
+      recordedResults[param['parameter_code']] = resultMap;
+      setPendingValue(param['parameter_code'], value, voiceRawText, method: method);
       saveCurrentState();
       notifyListeners();
     }
@@ -415,7 +453,27 @@ class InspectionProvider with ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
-    final measurementsList = pendingBatchValues.values.toList();
+    var measurementsList = pendingBatchValues.values.toList();
+    if (measurementsList.isEmpty && recordedResults.isNotEmpty) {
+      debugPrint('[PROVIDER] pendingBatchValues empty, constructing from recordedResults...');
+      for (var entry in recordedResults.entries) {
+        final code = entry.key;
+        final data = entry.value;
+        final rawVal = data['measured_value'] ?? data['value'];
+        if (rawVal != null) {
+          final doubleVal = (rawVal is num)
+              ? rawVal.toDouble()
+              : (double.tryParse(rawVal.toString()) ?? 0.0);
+          measurementsList.add({
+            'parameter_code': code,
+            'measured_value': doubleVal,
+            'voice_raw_text': data['voice_raw_text'] ?? '',
+            'method': data['method'] ?? 'voice',
+          });
+        }
+      }
+    }
+
     debugPrint('[PROVIDER] Submitting ${measurementsList.length} measurement(s): '
         '${measurementsList.map((m) => "${m['parameter_code']}=${m['measured_value']}").join(", ")}');
 

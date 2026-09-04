@@ -19,11 +19,44 @@ class OperationSelectScreen extends StatefulWidget {
 class _OperationSelectScreenState extends State<OperationSelectScreen> {
   List<dynamic> _templates = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
 
   @override
   void initState() {
     super.initState();
     _loadTemplates();
+  }
+
+  Future<void> _handleRefresh() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    final provider = Provider.of<InspectionProvider>(context, listen: false);
+    final machineId = provider.selectedMachine?['id'] ?? 2;
+
+    try {
+      final setupStatus = await ApiService.checkSetupApproved(machineId);
+      final hasReport = setupStatus['has_today_report'] == true || setupStatus['session_id'] != null;
+      if (hasReport) {
+        await provider.restoreActiveReportState(setupStatus);
+      } else {
+        await provider.resetSessionState();
+      }
+      await _loadTemplates();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🔄 Synced with server. Ready for new entries.'),
+            backgroundColor: Color(0xFF10B981),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Refresh error: $e');
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
   }
 
   Future<void> _loadTemplates() async {
@@ -37,6 +70,8 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
         final setupStatus = await ApiService.checkSetupApproved(machineId);
         if (setupStatus['has_today_report'] == true || setupStatus['session_id'] != null) {
           await provider.restoreActiveReportState(setupStatus);
+        } else {
+          await provider.resetSessionState();
         }
       } catch (_) {}
 
@@ -169,6 +204,17 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
           style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 17),
         ),
         actions: [
+          IconButton(
+            icon: _isRefreshing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                  )
+                : const Icon(Icons.refresh_rounded, color: Color(0xFF2563EB)),
+            tooltip: 'Refresh / Sync with Server',
+            onPressed: _isRefreshing ? null : _handleRefresh,
+          ),
           IconButton(
             icon: const Icon(Icons.home_rounded, color: Color(0xFF64748B)),
             tooltip: 'Go to Home',
@@ -361,9 +407,9 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
 
               if (!isInspector) ...[
                 const SizedBox(height: 20),
-                const Text(
-                  'HOURLY IN-PROCESS INSPECTION SLOTS (1/HR - 8/HR)',
-                  style: TextStyle(color: Color(0xFF475569), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                Text(
+                  'HOURLY IN-PROCESS INSPECTION SLOTS (1/HR - ${provider.shiftHours}/HR)',
+                  style: const TextStyle(color: Color(0xFF475569), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.0),
                 ),
                 const SizedBox(height: 10),
 
@@ -372,7 +418,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                   height: 50,
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
-                    itemCount: 8,
+                    itemCount: provider.shiftHours,
                     itemBuilder: (context, index) {
                       final slotNum = index + 1;
                       final isUnlocked = provider.isHourlySlotUnlocked(slotNum);

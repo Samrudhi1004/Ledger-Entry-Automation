@@ -412,14 +412,11 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
               <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', background: '#cbd5e1' }}>1st #1</th>
               <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', background: '#cbd5e1' }}>1st #2</th>
               <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', background: '#cbd5e1' }}>1st #3</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: isApproved ? '#dcfce7' : '#f1f5f9' }}>1/Hr</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: isApproved ? '#dcfce7' : '#f1f5f9' }}>2/Hr</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: isApproved ? '#dcfce7' : '#f1f5f9' }}>3/Hr</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: isApproved ? '#dcfce7' : '#f1f5f9' }}>4/Hr</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: isApproved ? '#dcfce7' : '#f1f5f9' }}>5/Hr</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: isApproved ? '#dcfce7' : '#f1f5f9' }}>6/Hr</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: isApproved ? '#dcfce7' : '#f1f5f9' }}>7/Hr</th>
-              <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '4%', background: isApproved ? '#dcfce7' : '#f1f5f9' }}>8/Hr</th>
+              {Array.from({ length: session.shift_hours || session.total_hourly_slots || 8 }, (_, i) => i + 1).map((sNum) => (
+                <th key={sNum} style={{ border: '1px solid #000000', padding: '3px 1px', width: `${34 / (session.shift_hours || session.total_hourly_slots || 8)}%`, background: isApproved ? '#dcfce7' : '#f1f5f9' }}>
+                  {sNum}/Hr
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -512,8 +509,8 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
                     {tr3 !== undefined ? fmt(tr3) : '—'}
                   </td>
 
-                  {/* Hourly Readings (1/Hr .. 8/Hr) — OOC values in RED */}
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((slot) => {
+                  {/* Hourly Readings (1/Hr .. 8/Hr or 12/Hr) — OOC values in RED */}
+                  {Array.from({ length: session.shift_hours || session.total_hourly_slots || 8 }, (_, i) => i + 1).map((slot) => {
                     const hVal = hr[slot];
                     const hOOC = p.hourlyOOC?.[slot] || isValOOC(hVal, p.lower_limit, p.upper_limit);
                     return (

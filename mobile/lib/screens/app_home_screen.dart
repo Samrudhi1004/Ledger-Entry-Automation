@@ -47,6 +47,12 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
         final res = await ApiService.checkSetupApproved(machineId);
         approved = res['is_setup_approved'] == true;
         msg = res['message'] ?? '';
+        final hasReport = res['has_today_report'] == true || res['session_id'] != null;
+        if (hasReport) {
+          await provider.restoreActiveReportState(res);
+        } else {
+          await provider.resetSessionState();
+        }
       }
 
       // 3. Build Notifications List from Supervisor Actions

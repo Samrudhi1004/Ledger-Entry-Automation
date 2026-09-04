@@ -22,6 +22,12 @@ import TasksPage from './pages/TasksPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import QualityAnalyzerPage from './pages/QualityAnalyzerPage';
+import HRModulePage from './pages/HRModulePage';
+import PurchaseModulePage from './pages/PurchaseModulePage';
+import MaintenanceModulePage from './pages/MaintenanceModulePage';
+import DevelopmentModulePage from './pages/DevelopmentModulePage';
+import MarketingModulePage from './pages/MarketingModulePage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
 
@@ -137,6 +143,62 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <ProductionModulePage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/quality-analyzer"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <QualityAnalyzerPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/qa"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <QualityAnalyzerPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/hr"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <HRModulePage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/purchase"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <PurchaseModulePage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/maintenance"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <MaintenanceModulePage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/development"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <DevelopmentModulePage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/marketing"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <MarketingModulePage />
           </ProtectedLayout>
         }
       />

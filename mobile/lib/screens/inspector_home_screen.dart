@@ -4,7 +4,6 @@ import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../services/api_service.dart';
 import 'inspection_voice_screen.dart';
-import 'piece_entry_form_screen.dart';
 import 'parameter_list_screen.dart';
 import 'machine_select_screen.dart';
 import 'report_sheet_screen.dart';
@@ -78,6 +77,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
 
   Future<void> _startFpiTrial(Map<String, dynamic> template, int trialNumber) async {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
+    provider.clearPendingValues();
     if (trialNumber == 1) {
       await provider.loadParameters(template);
     } else {
@@ -99,10 +99,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => PieceEntryFormScreen(
-            pieceNumber: trialNumber,
-            attemptNumber: 1,
-          ),
+          builder: (_) => const InspectionVoiceScreen(),
         ),
       );
     }

@@ -49,10 +49,15 @@ export default function InspectionGridSheet({ session, onUpdate }) {
       {/* Header Block Replica */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid var(--border)', paddingBottom: '16px' }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--accent-blue)' }}>
-            MMPL — 1ST PIECE CUM IN-PROCESS INSPECTION REPORT
-          </h3>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--accent-blue)' }}>
+              MMPL — 1ST PIECE CUM IN-PROCESS INSPECTION REPORT
+            </h3>
+            <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '20px', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
+              ⚡ {maxSlots}-Hour Shift ({maxSlots} Slots)
+            </span>
+          </div>
+          <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
             Part: <strong style={{ color: '#fff' }}>{session.part_number} ({session.part_name || 'POLY V PULLEY'})</strong> | Machine: <strong style={{ color: '#fff' }}>{session.machine_code}</strong> | Shift: <strong>{session.shift}</strong>
           </p>
         </div>
@@ -67,23 +72,20 @@ export default function InspectionGridSheet({ session, onUpdate }) {
       </div>
 
       {/* Main Digital Report Matrix */}
-      <div className="table-wrapper" style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+      <div className="table-wrapper" style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
+        <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse', textAlign: 'center' }}>
           <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.03)', textAlign: 'center' }}>
-              <th style={{ textAlign: 'left', padding: '10px' }}>PARAMETER</th>
-              <th style={{ padding: '10px' }}>SPECIFICATION</th>
-              <th style={{ padding: '10px', background: 'rgba(59, 130, 246, 0.1)' }}>1ST PC #1</th>
-              <th style={{ padding: '10px', background: 'rgba(245, 158, 11, 0.1)' }}>1ST PC #2</th>
-              <th style={{ padding: '10px', background: 'rgba(239, 68, 68, 0.1)' }}>1ST PC #3 (SUP. OVERRIDE)</th>
-              <th style={{ padding: '8px' }}>1/HR</th>
-              <th style={{ padding: '8px' }}>2/HR</th>
-              <th style={{ padding: '8px' }}>3/HR</th>
-              <th style={{ padding: '8px' }}>4/HR</th>
-              <th style={{ padding: '8px' }}>5/HR</th>
-              <th style={{ padding: '8px' }}>6/HR</th>
-              <th style={{ padding: '8px' }}>7/HR</th>
-              <th style={{ padding: '8px' }}>8/HR</th>
+            <tr style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '2px solid var(--border)' }}>
+              <th style={{ textAlign: 'left', padding: '12px 14px', minWidth: '160px' }}>PARAMETER</th>
+              <th style={{ padding: '12px', minWidth: '140px' }}>SPECIFICATION</th>
+              <th style={{ padding: '12px', background: 'rgba(59, 130, 246, 0.12)', borderLeft: '1px solid var(--border)', minWidth: '85px' }}>1ST PC #1</th>
+              <th style={{ padding: '12px', background: 'rgba(245, 158, 11, 0.12)', borderLeft: '1px solid var(--border)', minWidth: '85px' }}>1ST PC #2</th>
+              <th style={{ padding: '12px', background: 'rgba(239, 68, 68, 0.12)', borderLeft: '1px solid var(--border)', minWidth: '110px' }}>1ST PC #3 (SUP.)</th>
+              {slotNumbers.map((sNum) => (
+                <th key={sNum} style={{ padding: '10px 6px', borderLeft: '1px solid var(--border)', background: 'rgba(16, 185, 129, 0.08)', color: '#34d399', fontSize: '12px', minWidth: '65px' }}>
+                  {sNum}/HR
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -198,8 +200,8 @@ export default function InspectionGridSheet({ session, onUpdate }) {
                     )}
                   </td>
 
-                  {/* 1/HR through 8/HR Hourly Columns */}
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((slotNum) => {
+                  {/* Dynamic Hourly Slot Columns (1..8 or 1..12) */}
+                  {slotNumbers.map((slotNum) => {
                     const hrVal = hourlyMeas[slotNum];
                     return (
                       <td key={slotNum} style={{ textAlign: 'center', padding: '8px', color: hrVal !== undefined ? '#ffffff' : 'var(--text-muted)', fontSize: '12px', fontWeight: hrVal !== undefined ? 'bold' : 'normal' }}>

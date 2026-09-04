@@ -324,14 +324,17 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFF2563EB),
                     side: const BorderSide(color: Color(0xFF2563EB)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   icon: const Icon(Icons.search_rounded, size: 16),
-                  label: const Text('REVIEW READINGS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('REVIEW READINGS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () async {
@@ -340,10 +343,15 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                       _isSubmitModalOpen = false;
                       if (context.mounted) {
                         Navigator.pop(ctx);
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const SummaryScreen()),
-                        );
+                        final isComplete = res['piece_complete'] == true;
+                        if (isComplete) {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(builder: (_) => const SummaryScreen()),
+                          );
+                        } else {
+                          _showRetrialModal(res);
+                        }
                       }
                     } else {
                       if (context.mounted) {
@@ -360,12 +368,15 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF059669),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     elevation: 0,
                   ),
                   icon: const Icon(Icons.send_rounded, size: 16),
-                  label: const Text('SUBMIT REPORT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('SUBMIT REPORT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
                 ),
               ),
             ],
@@ -375,6 +386,156 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     ).then((_) {
       _isSubmitModalOpen = false;
     });
+  }
+
+  void _showRetrialModal(Map<String, dynamic> res) {
+    if (!mounted) return;
+    final provider = Provider.of<InspectionProvider>(context, listen: false);
+    final currentTrial = provider.trialNumber;
+    final failedCount = res['failed_count'] ?? (res['failed_codes'] as List?)?.length ?? 1;
+    final failedCodes = (res['failed_codes'] as List?)?.map((e) => e.toString()).toList() ?? [];
+
+    final isMaxTrials = currentTrial >= 3;
+    final nextTrial = currentTrial + 1;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: isMaxTrials ? const Color(0xFFEF4444) : const Color(0xFFF59E0B),
+            width: 2,
+          ),
+        ),
+        title: Column(
+          children: [
+            Icon(
+              isMaxTrials ? Icons.cancel_rounded : Icons.warning_amber_rounded,
+              color: isMaxTrials ? const Color(0xFFEF4444) : const Color(0xFFF59E0B),
+              size: 48,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              isMaxTrials
+                  ? 'MAXIMUM TRIALS FAILED (3/3)'
+                  : '1ST PC #$currentTrial OUT OF SPEC',
+              style: TextStyle(
+                color: isMaxTrials ? const Color(0xFFEF4444) : const Color(0xFFF59E0B),
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+                letterSpacing: 0.8,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isMaxTrials
+                  ? '3 consecutive First Piece trials have failed. Please notify quality supervisor for setup adjustment.'
+                  : '$failedCount parameter(s) failed specification limits in 1ST PC #$currentTrial trial.',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+            if (failedCodes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF334155)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'FAILED PARAMETERS:',
+                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      failedCodes.join(', '),
+                      style: const TextStyle(color: Color(0xFFEF4444), fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SummaryScreen()),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF94A3B8),
+                    side: const BorderSide(color: Color(0xFF475569)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('VIEW SUMMARY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ),
+              if (!isMaxTrials) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      final template = provider.selectedTemplate;
+                      if (template != null) {
+                        await provider.loadParametersForRetrial(template, trial: nextTrial);
+                        final started = await provider.startSession(
+                          trial: nextTrial,
+                          inspectionType: 'first_piece',
+                        );
+                        if (started && mounted) {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+                          );
+                        }
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 0,
+                    ),
+                    icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('START 1PC#$nextTrial', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   void _showParameterGridModal(BuildContext context) {
@@ -779,8 +940,9 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _buildRuleBadge(rule),
-                        if (isCritical)
+                        Flexible(child: _buildRuleBadge(rule)),
+                        if (isCritical) ...[
+                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
@@ -789,6 +951,7 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                               border: Border.all(color: const Color(0xFFFCA5A5)),
                             ),
                             child: const Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 12),
                                 SizedBox(width: 4),
@@ -796,6 +959,7 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                               ],
                             ),
                           ),
+                        ],
                       ],
                     ),
 
@@ -812,9 +976,13 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                         children: [
                           const Icon(Icons.construction_rounded, color: Color(0xFF64748B), size: 13),
                           const SizedBox(width: 5),
-                          Text(
-                            'Tool / Tech: ${param['measurement_technique']}',
-                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                          Expanded(
+                            child: Text(
+                              'Tool / Tech: ${param['measurement_technique']}',
+                              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ],
                       ),

@@ -450,20 +450,14 @@ class _ReportSheetScreenState extends State<ReportSheetScreen> {
                                             // Table Header Row
                                             TableRow(
                                               decoration: const BoxDecoration(color: Color(0xFFE2E8F0)),
-                                              children: const [
-                                                _HeaderCell('PARAMETER', width: 140, alignLeft: true),
-                                                _HeaderCell('SPECIFICATION', width: 130),
-                                                _HeaderCell('1ST PC #1', width: 90, color: Color(0xFF1E40AF)),
-                                                _HeaderCell('1ST PC #2', width: 90, color: Color(0xFFB45309)),
-                                                _HeaderCell('1ST PC #3', width: 90, color: Color(0xFF047857)),
-                                                _HeaderCell('1/HR', width: 65),
-                                                _HeaderCell('2/HR', width: 65),
-                                                _HeaderCell('3/HR', width: 65),
-                                                _HeaderCell('4/HR', width: 65),
-                                                _HeaderCell('5/HR', width: 65),
-                                                _HeaderCell('6/HR', width: 65),
-                                                _HeaderCell('7/HR', width: 65),
-                                                _HeaderCell('8/HR', width: 65),
+                                              children: [
+                                                const _HeaderCell('PARAMETER', width: 140, alignLeft: true),
+                                                const _HeaderCell('SPECIFICATION', width: 130),
+                                                const _HeaderCell('1ST PC #1', width: 90, color: Color(0xFF1E40AF)),
+                                                const _HeaderCell('1ST PC #2', width: 90, color: Color(0xFFB45309)),
+                                                const _HeaderCell('1ST PC #3', width: 90, color: Color(0xFF047857)),
+                                                for (int i = 1; i <= provider.shiftHours; i++)
+                                                  _HeaderCell('$i/HR', width: 65),
                                               ],
                                             ),
 

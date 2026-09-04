@@ -64,9 +64,10 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
     template_version = serializers.SerializerMethodField()
     progress_percent = serializers.IntegerField(read_only=True)
     hourly_slot     = serializers.IntegerField(source='hourly_unlocked_slot', read_only=True)
-    rejected_parameters = serializers.SerializerMethodField()
     shift_duration_hours = serializers.IntegerField(source='machine.plant.shift_duration_hours', read_only=True)
     total_break_mins = serializers.IntegerField(source='machine.plant.total_break_mins', read_only=True)
+    shift_hours = serializers.SerializerMethodField()
+    total_hourly_slots = serializers.SerializerMethodField()
 
     class Meta:
         model  = InspectionSession
@@ -74,13 +75,21 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
             'session_id', 'part_number', 'part_name', 'machine_code',
             'operator_name', 'supervisor_name', 'inspector_name',
             'template_id', 'template_name', 'template_version',
-            'inspection_type', 'shift', 'status', 'shift_duration_hours', 'total_break_mins',
+            'inspection_type', 'shift', 'status', 'shift_hours', 'total_hourly_slots', 'shift_duration_hours', 'total_break_mins',
             'trial_number', 'hourly_unlocked_slot', 'hourly_slot', 'parent_session', 'rejection_reason',
             'total_parameters', 'recorded_count', 'progress_percent',
             'has_ooc', 'has_critical_fail', 'is_setup_approved', 'is_first_piece_finalized',
             'started_at', 'completed_at', 'reviewed_at', 'finalized_at',
             'supervisor_remark', 'rejected_parameters',
         ]
+
+    def get_shift_hours(self, obj):
+        if obj.machine and obj.machine.plant and obj.machine.plant.factory:
+            return obj.machine.plant.factory.shift_hours or 8
+        return 8
+
+    def get_total_hourly_slots(self, obj):
+        return self.get_shift_hours(obj)
 
     def get_operator_name(self, obj):
         if obj.operator:

@@ -30,6 +30,19 @@ class FactoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class   = FactorySerializer
     permission_classes = [IsSupervisorOrAbove]
 
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        shift_hrs = instance.shift_hours or 8
+        try:
+            from config.db import get_mongo_db
+            db = get_mongo_db()
+            db.inspection_documents.update_many(
+                {},
+                {'$set': {'shift_hours': shift_hrs, 'total_hourly_slots': shift_hrs}}
+            )
+        except Exception:
+            pass
+
 
 # ─── Plant ────────────────────────────────────────────────────────────────
 class PlantListCreateView(generics.ListCreateAPIView):

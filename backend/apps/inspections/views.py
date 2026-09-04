@@ -589,11 +589,17 @@ class SetupStatusView(APIView):
         part_name = session.part.part_name if session.part else None
         machine_id = session.machine.id if session.machine else None
 
+        shift_hrs = 8
+        if session.machine and session.machine.plant and session.machine.plant.factory:
+            shift_hrs = session.machine.plant.factory.shift_hours or 8
+
         return Response({
             'has_today_report': has_today,
             'is_setup_approved': is_approved,
             'session_id': str(session.session_id),
             'status': session.status,
+            'shift_hours': shift_hrs,
+            'total_hourly_slots': shift_hrs,
             'machine_id': machine_id,
             'part_id': part_id,
             'part_number': part_no,
@@ -638,12 +644,10 @@ class FirstPiecePDFView(APIView):
             session = InspectionSession.objects.get(session_id=session_id)
             doc = _service.get_session_document(session_id) or {}
             
-            pdf_path = session.pdf_report_path
-            if not pdf_path or not os.path.exists(os.path.join(settings.BASE_DIR, pdf_path)):
-                from .pdf_generator import generate_first_piece_pdf
-                pdf_path = generate_first_piece_pdf(session, doc)
-                session.pdf_report_path = pdf_path
-                session.save(update_fields=['pdf_report_path'])
+            from .pdf_generator import generate_first_piece_pdf
+            pdf_path = generate_first_piece_pdf(session, doc)
+            session.pdf_report_path = pdf_path
+            session.save(update_fields=['pdf_report_path'])
 
             abs_pdf_path = os.path.join(settings.BASE_DIR, pdf_path)
             if not os.path.exists(abs_pdf_path):

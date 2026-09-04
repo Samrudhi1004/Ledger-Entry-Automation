@@ -104,6 +104,32 @@ class _SetupApprovalScreenState extends State<SetupApprovalScreen>
         _productResults.putIfAbsent(code, () => {});
         _productResults[code]![trial] = val['measured_value']?.toString() ?? '-';
       });
+
+      // Populate Section 1 Product Parameters from backend inspection session details across 1PC#1, #2, #3
+      final machineCode = provider.selectedMachine?['machine_code']?.toString();
+      if (machineCode != null && machineCode.isNotEmpty) {
+        final sessions = await ApiService.getSessions(machineCode: machineCode);
+        for (final s in sessions) {
+          final sId = s['session_id']?.toString() ?? s['id']?.toString() ?? '';
+          final type = s['inspection_type']?.toString().toLowerCase() ?? '';
+          if (sId.isNotEmpty && (type == 'first_piece' || type.contains('first'))) {
+            final detail = await ApiService.getSessionDetail(sId);
+            if (detail != null && detail['measurements'] is List) {
+              for (final m in (detail['measurements'] as List)) {
+                final code = m['parameter_code']?.toString() ?? '';
+                final trial = (m['trial_number'] ?? detail['trial_number'] ?? 1).toString();
+                final val = m['measured_value']?.toString() ?? m['value']?.toString() ?? '-';
+                if (code.isNotEmpty) {
+                  _productResults.putIfAbsent(code, () => {});
+                  if (_productResults[code]![trial] == null || _productResults[code]![trial] == '-') {
+                    _productResults[code]![trial] = val;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
       setState(() => _isLoading = false);
     } catch (e) {
       setState(() { _isLoading = false; _errorMessage = 'Failed to load data: $e'; });

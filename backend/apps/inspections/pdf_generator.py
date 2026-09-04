@@ -13,28 +13,53 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     file_name = f"FirstPiece_Report_{session.session_id}.pdf"
     file_path = os.path.join(media_pdf_dir, file_name)
 
+    from reportlab.platypus import PageBreak
+
     doc = SimpleDocTemplate(
         file_path,
         pagesize=landscape(A4),
-        rightMargin=20,
-        leftMargin=20,
-        topMargin=20,
-        bottomMargin=20
+        rightMargin=15,
+        leftMargin=15,
+        topMargin=15,
+        bottomMargin=15
     )
 
     styles = getSampleStyleSheet()
 
     # Styles
     title_style = ParagraphStyle('Title', fontName='Helvetica-Bold', fontSize=12, alignment=1)
-    subtitle_style = ParagraphStyle('SubTitle', fontName='Helvetica-Bold', fontSize=10, alignment=1)
+    subtitle_style = ParagraphStyle('SubTitle', fontName='Helvetica-Bold', fontSize=9.5, alignment=1)
     doc_ref_style = ParagraphStyle('DocRef', fontName='Helvetica-Bold', fontSize=7, alignment=2)
     mmpl_style = ParagraphStyle('MMPL', fontName='Helvetica-Bold', fontSize=16, textColor=colors.white, alignment=1)
     
-    cell_style = ParagraphStyle('Cell', fontName='Helvetica', fontSize=7, alignment=1)
-    cell_left = ParagraphStyle('CellLeft', fontName='Helvetica', fontSize=7, alignment=0)
-    bold_cell = ParagraphStyle('BoldCell', fontName='Helvetica-Bold', fontSize=7, alignment=1)
-    red_cell = ParagraphStyle('RedCell', fontName='Helvetica-Bold', fontSize=7, textColor=colors.red, alignment=1)
-    header_style = ParagraphStyle('Header', fontName='Helvetica-Bold', fontSize=7, alignment=1, textColor=colors.HexColor('#6B7280'))
+    cell_style = ParagraphStyle('Cell', fontName='Helvetica', fontSize=7, alignment=1, leading=8)
+    cell_left = ParagraphStyle('CellLeft', fontName='Helvetica', fontSize=7, alignment=0, leading=8)
+    bold_cell = ParagraphStyle('BoldCell', fontName='Helvetica-Bold', fontSize=7, alignment=1, leading=8)
+    red_cell = ParagraphStyle('RedCell', fontName='Helvetica-Bold', fontSize=7, textColor=colors.red, alignment=1, leading=8)
+    header_style = ParagraphStyle('Header', fontName='Helvetica-Bold', fontSize=7, alignment=1, leading=8, textColor=colors.HexColor('#1E293B'))
+
+    # Determine shift hours for layout (8 or 12)
+    factory_hrs = 8
+    if session and hasattr(session, 'machine') and session.machine and session.machine.plant and session.machine.plant.factory:
+        factory_hrs = session.machine.plant.factory.shift_hours or 8
+    
+    shift_hrs = factory_hrs
+
+    inspector_name = session.finalized_by.get_full_name() if session.finalized_by else (session.supervisor.get_full_name() if session.supervisor else "Quality Inspector")
+    operator_name = session.operator.get_full_name() if session.operator else "Operator User"
+    final_time_str = session.finalized_at.strftime(f"%d %b %Y | Shift {session.shift or 'A'}") if session.finalized_at else datetime.now().strftime(f"%d %b %Y | Shift {session.shift or 'A'}")
+    status_label = "PASSED" if session.status in ['finalized_passed', 'approved'] or session.is_setup_approved else ("COMPLETED" if session.status == 'completed' else "PENDING REVIEW")
+
+    param_summary = doc_data.get('parameter_summary') or []
+    measurements = doc_data.get('measurements') or []
+
+    meas_map = {}
+    for m in measurements:
+        p_code = m.get('parameter_code')
+        if p_code:
+            if p_code not in meas_map:
+                meas_map[p_code] = {'all_measurements': []}
+            meas_map[p_code]['all_measurements'].append(m)
 
     elements = []
 
@@ -46,248 +71,146 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
             Paragraph("DOC REF: MMPL/PRD/F02<br/>REV: 02 (15.8.2013)<br/>PAGE 1 OF 1", doc_ref_style)
         ]
     ]
-    header_table = Table(header_data, colWidths=[100, 550, 150])
+    header_table = Table(header_data, colWidths=[90, 580, 150])
     header_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, 0), colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
         ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
-        ('PADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
     ]))
     elements.append(header_table)
 
     # 2. META INFO (Process, Part, Operator, Machine, Date, Status)
-    inspector_name = session.finalized_by.get_full_name() if session.finalized_by else (session.supervisor.get_full_name() if session.supervisor else "Quality Inspector")
-    operator_name = session.operator.get_full_name() if session.operator else "Operator User"
-    final_time_str = session.finalized_at.strftime(f"%d %b %Y | Shift {session.shift or 'A'}") if session.finalized_at else datetime.now().strftime(f"%d %b %Y | Shift {session.shift or 'A'}")
-    status_label = "PASSED" if session.status in ['finalized_passed', 'approved'] or session.is_setup_approved else ("COMPLETED" if session.status == 'completed' else "PENDING REVIEW")
-
     meta_data = [
         [
             Paragraph("PROCESS NO: <font name='Helvetica-Bold'>10.</font>", cell_left),
             Paragraph(f"PART NAME & NO: <font name='Helvetica-Bold'>{session.part.part_number} ({session.part.part_name})</font>", cell_left),
-            Paragraph(f"OPERATOR: <font name='Helvetica-Bold'>{operator_name}</font>", cell_left)
+            Paragraph(f"INSPECTOR / OPERATOR: <font name='Helvetica-Bold'>{operator_name}</font>", cell_left)
         ],
         [
             Paragraph(f"MACHINE NO: <font name='Helvetica-Bold'>{session.machine.machine_code}</font>", cell_left),
             Paragraph(f"DATE & SHIFT: <font name='Helvetica-Bold'>{final_time_str}</font>", cell_left),
-            Paragraph(f"STATUS: <font name='Helvetica-Bold'>{status_label}</font>", cell_left)
+            Paragraph(f"SETUP STATUS: <font name='Helvetica-Bold'>{status_label}</font>", cell_left)
         ]
     ]
-    meta_table = Table(meta_data, colWidths=[150, 450, 200])
+    meta_table = Table(meta_data, colWidths=[150, 490, 180])
     meta_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
         ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
-        ('PADDING', (0, 0), (-1, -1), 4),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#6B7280')),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#4B5563')),
     ]))
     elements.append(meta_table)
 
     # 3. MEASUREMENTS TABLE
-    param_summary = doc_data.get('parameter_summary') or []
-    proc_param_summary = doc_data.get('process_parameter_summary') or []
-    measurements = doc_data.get('measurements') or []
-
-    is_setup = session.inspection_type == 'first_piece'
-
-    meas_map = {m.get('parameter_code'): m for m in measurements if m.get('parameter_code')}
-
-    if is_setup:
-        # 11-column Setup Approval layout (No hourly columns)
-        table_data = [
-            [
-                Paragraph("P.NO", header_style), Paragraph("NO", header_style), Paragraph("PARAMETER NAME & DESCRIPTION", header_style),
-                Paragraph("CLASS", header_style), Paragraph("SPECIFICATION", header_style), Paragraph("EVALUATION TECHNIQUE", header_style),
-                Paragraph("SAMPLE FREQ", header_style), Paragraph("1ST #1", header_style), Paragraph("1ST #2", header_style), Paragraph("1ST #3", header_style),
-                Paragraph("REMA", header_style)
-            ],
-            # Section 1 Subheader
-            [
-                Paragraph("SECTION 1: PRODUCT PARAMETERS (QUALITY CHARACTERISTICS & DIMENSIONS)", ParagraphStyle('SecHead', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white)),
-                "", "", "", "", "", "", "", "", "", ""
-            ]
+    slot_headers = [Paragraph(f"{i}/HR", header_style) for i in range(1, shift_hrs + 1)]
+    
+    table_data = [
+        [
+            Paragraph("P.NO", header_style), Paragraph("NO", header_style), Paragraph("PARAMETER NAME", header_style),
+            Paragraph("CLASS", header_style), Paragraph("SPECIFICATION", header_style), Paragraph("EVALUATION TECHNIQUE", header_style),
+            Paragraph("SAMPLE FREQ", header_style), Paragraph("1ST #1", header_style), Paragraph("1ST #2", header_style), Paragraph("1ST #3", header_style),
+            *slot_headers,
+            Paragraph("REMA", header_style)
         ]
+    ]
 
-        # Add Product Parameters
-        for idx, p in enumerate(param_summary, 1):
-            code = p.get('parameter_code', str(idx).zfill(2))
-            m_info = meas_map.get(code, p)
-            val = m_info.get('measured_value')
-            
-            nom = float(p.get('nominal', 0))
-            ll = p.get('lower_limit')
-            ul = p.get('upper_limit')
-            unit = p.get('unit', 'mm')
-            
-            if ll is not None and ul is not None:
-                spec = f"{nom} {unit} [{float(ll):.2f} to {float(ul):.2f}]"
+    for idx, p in enumerate(param_summary, 1):
+        code = p.get('parameter_code', str(idx).zfill(2))
+        p_info = meas_map.get(code, {})
+        p_meas_list = p_info.get('all_measurements', [])
+        
+        fp1 = next((m for m in p_meas_list if m.get('inspection_type') == 'first_piece' and (m.get('trial_number') or 1) == 1), None)
+        fp2 = next((m for m in p_meas_list if m.get('inspection_type') == 'first_piece' and m.get('trial_number') == 2), None)
+        fp3 = next((m for m in p_meas_list if m.get('inspection_type') == 'first_piece' and m.get('trial_number') == 3), None)
+
+        nom = float(p.get('nominal', 0))
+        ll = p.get('lower_limit')
+        ul = p.get('upper_limit')
+        unit = p.get('unit', 'mm')
+        
+        if ll is not None and ul is not None:
+            spec = f"{nom} {unit} [{float(ll):.2f} to {float(ul):.2f}]"
+        else:
+            spec = f"{nom} {unit}"
+
+        is_crit = p.get('is_critical', False)
+        class_str = "CRITICAL" if is_crit else "—"
+        method_str = p.get('measurement_technique') or p.get('evaluation_technique') or p.get('gauge_used') or "VERNIER CALIPER"
+        sample_str = p.get('sample_size') or p.get('sample_frequency') or "5NOS/SHIFT"
+
+        fmt_val = lambda m: (f"{float(m['measured_value']):.2f}" if isinstance(m.get('measured_value'), (int, float)) else str(m.get('measured_value', '—'))) if m else "—"
+        fmt_para = lambda m: Paragraph(fmt_val(m), red_cell if (m and m.get('status') == 'out_of_spec') else cell_style)
+
+        hourly_slot_map = {}
+        for hm in p_meas_list:
+            if hm.get('inspection_type') == 'hourly' and hm.get('hourly_slot'):
+                hourly_slot_map[hm.get('hourly_slot')] = hm
+
+        hourly_cells = []
+        for slot_i in range(1, shift_hrs + 1):
+            hm = hourly_slot_map.get(slot_i)
+            if hm and hm.get('measured_value') is not None:
+                h_val = hm.get('measured_value')
+                h_status = hm.get('status', 'ok')
+                h_str = f"{float(h_val):.2f}" if isinstance(h_val, (int, float)) else str(h_val)
+                hourly_cells.append(Paragraph(h_str, red_cell if h_status == 'out_of_spec' else cell_style))
             else:
-                spec = f"{nom} {unit}"
+                hourly_cells.append(Paragraph("—", cell_style))
 
-            status = m_info.get('status', 'ok')
-            val_str = f"{float(val):.3f}" if val is not None else "—"
-            val_para = Paragraph(val_str, red_cell if status == 'out_of_spec' else bold_cell)
-
-            is_crit = p.get('is_critical', False)
-            class_str = "CRITICAL" if is_crit else "—"
-            method_str = p.get('measurement_technique') or p.get('evaluation_technique') or p.get('gauge_used') or "VERNIER CALIPER"
-            sample_str = p.get('sample_size') or p.get('sample_frequency') or "5NOS/SHIFT"
-
-            table_data.append([
-                Paragraph("10.", bold_cell),
-                Paragraph(str(idx).zfill(2), bold_cell),
-                Paragraph(p.get('parameter_name', code), cell_left),
-                Paragraph(class_str, red_cell if is_crit else cell_style),
-                Paragraph(spec, bold_cell),
-                Paragraph(method_str, cell_style),
-                Paragraph(sample_str, cell_style),
-                val_para,                   # 1ST #1
-                Paragraph("—", cell_style), # 1ST #2
-                Paragraph("—", cell_style), # 1ST #3
-                Paragraph("OK", cell_style),
-            ])
-
-        # Section 2 Subheader
         table_data.append([
-            Paragraph("SECTION 2: PROCESS PARAMETERS (FIRST PIECE SETUP APPROVAL CHECKS)", ParagraphStyle('SecHead2', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white)),
-            "", "", "", "", "", "", "", "", "", ""
+            Paragraph("10.", bold_cell),
+            Paragraph(str(idx).zfill(2), bold_cell),
+            Paragraph(p.get('parameter_name', code), cell_left),
+            Paragraph(class_str, red_cell if is_crit else cell_style),
+            Paragraph(spec, bold_cell),
+            Paragraph(method_str, cell_style),
+            Paragraph(sample_str, cell_style),
+            fmt_para(fp1),
+            fmt_para(fp2),
+            fmt_para(fp3),
+            *hourly_cells,
+            Paragraph("—", cell_style),
         ])
 
-        # Add Process Parameters
-        for idx, pp in enumerate(proc_param_summary, 1):
-            code = pp.get('parameter_code', f"PR{idx}")
-            m_info = meas_map.get(code, pp)
-            val = m_info.get('measured_value')
-            raw_text = m_info.get('voice_raw_text')
-            spec = pp.get('specification') or '—'
-            dt = pp.get('data_type', 'numeric')
-            unit = pp.get('unit', '')
-            
-            val_str = raw_text or (str(val) if val is not None else "—")
-            if dt == 'numeric' and val is not None and not raw_text:
-                try:
-                    val_str = f"{float(val):.2f} {unit}".strip()
-                except (ValueError, TypeError):
-                    val_str = str(val)
-
-            val_para = Paragraph(val_str, bold_cell)
-
-            table_data.append([
-                Paragraph("10.", bold_cell),
-                Paragraph(str(idx).zfill(2), bold_cell),
-                Paragraph(f"[PROC] {pp.get('parameter_name', code)}", cell_left),
-                Paragraph("PROC", cell_style),
-                Paragraph(f"{spec} {unit}".strip(), bold_cell),
-                Paragraph("CHECKLIST", cell_style),
-                Paragraph("1ST PC ONLY", cell_style),
-                val_para,                   # 1ST #1
-                Paragraph("—", cell_style), # 1ST #2
-                Paragraph("—", cell_style), # 1ST #3
-                Paragraph("OK", cell_style),
-            ])
-
-        col_widths = [25, 25, 180, 45, 120, 130, 85, 55, 55, 55, 25]
-        
-        param_table = Table(table_data, colWidths=col_widths, repeatRows=1)
-        
-        # Build style list for setup table with span rows for section headers
-        table_styles = [
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOX', (0, 0), (-1, -1), 1, colors.black),
-            ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
-            ('PADDING', (0, 0), (-1, -1), 3),
-            ('SPAN', (0, 1), (10, 1)), # Section 1 header span
-            ('BACKGROUND', (0, 1), (10, 1), colors.HexColor('#0F172A')),
-        ]
-        
-        sec2_row_idx = len(param_summary) + 2
-        table_styles.append(('SPAN', (0, sec2_row_idx), (10, sec2_row_idx)))
-        table_styles.append(('BACKGROUND', (0, sec2_row_idx), (10, sec2_row_idx), colors.HexColor('#312E81')))
-        
-        param_table.setStyle(TableStyle(table_styles))
-        elements.append(param_table)
-
-    else:
-        # Standard 19-column Daily In-Process layout
-        table_data = [
-            [
-                Paragraph("P.NO", header_style), Paragraph("NO", header_style), Paragraph("PRODUCT CHARACTERISTIC", header_style),
-                Paragraph("CLASS", header_style), Paragraph("SPECIFICATION", header_style), Paragraph("EVALUATION TECHNIQUE", header_style),
-                Paragraph("SAMPLE FREQ", header_style), Paragraph("1ST #1", header_style), Paragraph("1ST #2", header_style), Paragraph("1ST #3", header_style),
-                Paragraph("1/HR", header_style), Paragraph("2/HR", header_style), Paragraph("3/HR", header_style), Paragraph("4/HR", header_style),
-                Paragraph("5/HR", header_style), Paragraph("6/HR", header_style), Paragraph("7/HR", header_style), Paragraph("8/HR", header_style),
-                Paragraph("REMA", header_style)
-            ]
-        ]
-
-        for idx, p in enumerate(param_summary, 1):
-            code = p.get('parameter_code', str(idx).zfill(2))
-            m_info = meas_map.get(code, p)
-            val = m_info.get('measured_value')
-            
-            nom = float(p.get('nominal', 0))
-            ll = p.get('lower_limit')
-            ul = p.get('upper_limit')
-            unit = p.get('unit', 'mm')
-            
-            if ll is not None and ul is not None:
-                spec = f"{nom} {unit} [{float(ll):.2f} to {float(ul):.2f}]"
-            else:
-                spec = f"{nom} {unit}"
-
-            status = m_info.get('status', 'ok')
-            val_str = f"{float(val):.3f}" if val is not None else "—"
-            val_para = Paragraph(val_str, red_cell if status == 'out_of_spec' else bold_cell)
-
-            is_crit = p.get('is_critical', False)
-            class_str = "CRITICAL" if is_crit else "—"
-            method_str = p.get('measurement_technique') or p.get('evaluation_technique') or p.get('gauge_used') or "VERNIER CALIPER"
-            sample_str = p.get('sample_size') or p.get('sample_frequency') or "5NOS/SHIFT"
-
-            table_data.append([
-                Paragraph("10.", bold_cell),
-                Paragraph(str(idx).zfill(2), bold_cell),
-                Paragraph(p.get('parameter_name', code), cell_left),
-                Paragraph(class_str, red_cell if is_crit else cell_style),
-                Paragraph(spec, bold_cell),
-                Paragraph(method_str, cell_style),
-                Paragraph(sample_str, cell_style),
-                val_para,                   # 1ST #1
-                Paragraph("—", cell_style), # 1ST #2
-                Paragraph("—", cell_style), # 1ST #3
-                Paragraph("—", cell_style), # 1/HR
-                Paragraph("—", cell_style), # 2/HR
-                Paragraph("—", cell_style), # 3/HR
-                Paragraph("—", cell_style), # 4/HR
-                Paragraph("—", cell_style), # 5/HR
-                Paragraph("—", cell_style), # 6/HR
-                Paragraph("—", cell_style), # 7/HR
-                Paragraph("—", cell_style), # 8/HR
-                Paragraph("—", cell_style), # REMARK
-            ])
-
-        col_widths = [25, 25, 140, 35, 90, 100, 65, 35, 35, 35, 25, 25, 25, 25, 25, 25, 25, 25, 34]
-        
-        param_table = Table(table_data, colWidths=col_widths, repeatRows=1)
-        param_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOX', (0, 0), (-1, -1), 1, colors.black),
-            ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
-            ('PADDING', (0, 0), (-1, -1), 3),
-        ]))
-        elements.append(param_table)
+    base_widths = [18, 18, 90, 26, 65, 70, 45, 24, 24, 24] # Total base: 404pt
+    remark_width = 24
+    remaining_slot_width = 820 - (sum(base_widths) + remark_width) # 392pt available
+    slot_width = round(remaining_slot_width / shift_hrs, 2)
+    
+    col_widths = base_widths + [slot_width] * shift_hrs + [remark_width]
+    
+    param_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    param_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
+        ('LEFTPADDING', (0, 0), (-1, -1), 1),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 1),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('BACKGROUND', (10, 0), (10 + shift_hrs - 1, 0), colors.HexColor('#DCFCE7')),
+    ]))
     elements.append(param_table)
 
     # 4. REACTION PLAN
     reaction_data = [[Paragraph("REACTION PLAN: <font color='#4B5563'>REJECT, REWORK, SEGREGATE, INFORM SUPERVISOR OR READJUST THE PROCESS</font>", ParagraphStyle('React', fontName='Helvetica-Bold', fontSize=7))]]
-    reaction_table = Table(reaction_data, colWidths=[800])
+    reaction_table = Table(reaction_data, colWidths=[810])
     reaction_table.setStyle(TableStyle([
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
-        ('PADDING', (0, 0), (-1, -1), 4),
+        ('PADDING', (0, 0), (-1, -1), 3),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
     ]))
     elements.append(reaction_table)
-    elements.append(Spacer(1, 25))
+    elements.append(Spacer(1, 12))
 
     # 5. FOOTER SIGNATURES
     footer_data = [
@@ -307,7 +230,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
             Paragraph("<b>SUPERVISOR SIGNATURE</b>", bold_cell)
         ]
     ]
-    footer_table = Table(footer_data, colWidths=[266, 266, 266])
+    footer_table = Table(footer_data, colWidths=[270, 270, 270])
     footer_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
         ('PADDING', (0, 0), (-1, -1), 2),

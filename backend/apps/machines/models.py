@@ -16,6 +16,11 @@ class Factory(models.Model):
     address       = models.TextField(blank=True, default='')
     gstin         = models.CharField(max_length=30, blank=True, default='')
     industry_type = models.CharField(max_length=100, blank=True, default='Precision Component Manufacturing')
+    shift_hours   = models.IntegerField(default=8)
+    total_shifts_per_day = models.IntegerField(default=3)
+    lunch_break_minutes = models.IntegerField(default=30)
+    tea_break_minutes  = models.IntegerField(default=30)
+    available_working_minutes = models.IntegerField(default=420)
     is_active     = models.BooleanField(default=True)
     created_at    = models.DateTimeField(auto_now_add=True)
 

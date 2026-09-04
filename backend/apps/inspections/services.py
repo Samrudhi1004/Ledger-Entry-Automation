@@ -868,8 +868,13 @@ class InspectionService:
             return None
 
         doc['_id'] = str(doc['_id'])
-        session_obj = InspectionSession.objects.filter(session_id=str(session_id)).select_related('operator', 'supervisor', 'finalized_by', 'machine', 'part').first()
+        session_obj = InspectionSession.objects.filter(session_id=str(session_id)).select_related('operator', 'supervisor', 'finalized_by', 'machine__plant__factory', 'part').first()
         if session_obj:
+            shift_hrs = 8
+            if session_obj.machine and session_obj.machine.plant and session_obj.machine.plant.factory:
+                shift_hrs = session_obj.machine.plant.factory.shift_hours or 8
+            doc['shift_hours'] = shift_hrs
+            doc['total_hourly_slots'] = shift_hrs
             doc['inspection_type'] = session_obj.inspection_type
             doc['hourly_slot'] = session_obj.hourly_unlocked_slot or 1
             doc['hourly_unlocked_slot'] = session_obj.hourly_unlocked_slot
@@ -1152,14 +1157,18 @@ class InspectionService:
 
     # ── Hourly Time-Lock Management ───────────────────────────────────────
     def get_hourly_status(self, session_id: str) -> dict:
-        """Returns time-locked status for hourly slots 1/HR through 8/HR."""
-        session = InspectionSession.objects.get(session_id=session_id)
+        """Returns time-locked status for hourly slots dynamically based on factory shift hours (1..8 or 1..12)."""
+        session = InspectionSession.objects.select_related('machine__plant__factory').get(session_id=session_id)
+        shift_hours = 8
+        if session.machine and session.machine.plant and session.machine.plant.factory:
+            shift_hours = session.machine.plant.factory.shift_hours or 8
+
         now = datetime.now(timezone.utc)
         start = session.shift_start_time or session.started_at
         elapsed_minutes = (now - start).total_seconds() / 60.0
 
         slots = []
-        for i in range(1, 9):
+        for i in range(1, shift_hours + 1):
             unlock_minute = (i - 1) * 60  # 1/HR opens at 0m, 2/HR at 60m...
             is_unlocked = elapsed_minutes >= unlock_minute
             is_overdue  = elapsed_minutes >= (unlock_minute + 75)  # 15m grace period
@@ -1174,6 +1183,8 @@ class InspectionService:
 
         return {
             'session_id':      str(session.session_id),
+            'shift_hours':     shift_hours,
+            'total_slots':     shift_hours,
             'elapsed_minutes': round(elapsed_minutes, 1),
             'slots':           slots,
         }

@@ -879,6 +879,7 @@ td.deviation-ooc { color: var(--accent-red);   font-family: 'JetBrains Mono', mo
   position: relative;
 }
 
+.modal-2xl { max-width: 95vw; width: 95vw; }
 .modal-xl { max-width: 1200px; }
 .modal-lg { max-width: 900px; }
 
