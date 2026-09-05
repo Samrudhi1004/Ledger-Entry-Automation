@@ -53,22 +53,6 @@ export default function ReportsHubPage() {
       link: '/reports/setup-approval',
       disabled: false,
     },
-    {
-      id: 'downtime-reports',
-      title: 'Downtime Reports',
-      badge: '● Form QF/MF-06 Delays',
-      badgeBg: '#E0F2FE',
-      badgeColor: '#0369A1',
-      icon: Clock,
-      iconBg: '#E0F2FE',
-      iconColor: '#0284C7',
-      description:
-        'View and log operator-specific downtime minutes (Form QF/MF-06) linked directly to submitted Daily Production Reports.',
-      details: ['Official Downtime Excel & PDF Exports', '9-Category Downtime Minutes Breakdown', 'Hanuman Engineering Works QF/MF-06 Format'],
-      actionText: 'Open Downtime Reports',
-      link: '/reports/downtime?view=history',
-      disabled: false,
-    },
   ];
 
   return (

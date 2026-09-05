@@ -68,6 +68,7 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
     total_break_mins = serializers.IntegerField(source='machine.plant.total_break_mins', read_only=True)
     shift_hours = serializers.SerializerMethodField()
     total_hourly_slots = serializers.SerializerMethodField()
+    rejected_parameters = serializers.JSONField(read_only=True, required=False, default=list)
 
     class Meta:
         model  = InspectionSession
@@ -252,19 +253,17 @@ class DowntimeReportSerializer(serializers.ModelSerializer):
     def get_cycle_time_mins(self, obj):
         from apps.parts.models import InspectionTemplate
         prod = obj.production_report
-        if not prod:
+        if not prod or not prod.part:
             return 0.0
         template = InspectionTemplate.objects.filter(
-            machine=prod.machine,
             part=prod.part,
-            part_operation_name=prod.operation
+            name=prod.operation
         ).first()
         if not template:
             template = InspectionTemplate.objects.filter(
-                machine=prod.machine,
                 part=prod.part
             ).first()
-        if template:
+        if template and template.cycle_time_mins:
             return float(template.cycle_time_mins)
         return 0.0
 

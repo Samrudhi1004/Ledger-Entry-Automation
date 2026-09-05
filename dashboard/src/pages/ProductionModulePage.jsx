@@ -1,10 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import Header from '../components/layout/Header';
 import { BarChart3, ArrowRight, Layers, CheckCircle2, Factory, Clock } from 'lucide-react';
 
 export default function ProductionModulePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
 
   const productionCards = [
     {
@@ -35,7 +38,7 @@ export default function ProductionModulePage() {
         'Log shift downtime minutes (No Load, No Operator, U/M, Setting, Insp Wait, Tool Change, P/O, R/W, Tool Prob) automatically linked to submitted Daily Production Reports.',
       details: ['Operator & Machine Downtime Log', '9-Category Downtime Minutes Breakdown', 'Form QF/MF-06 Hanuman Engineering Format'],
       actionText: 'Open Downtime Reports',
-      link: '/reports/downtime?view=full',
+      link: isAdmin ? '/reports/downtime?view=history' : '/reports/downtime?view=full',
     },
   ];
 
