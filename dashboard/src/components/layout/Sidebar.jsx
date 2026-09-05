@@ -21,22 +21,6 @@ import {
 } from 'lucide-react';
 
 const MODULES = [
-  // Existing Modules Retained at Top
-  {
-    key: 'master',
-    label: 'Master Database',
-    icon: Database,
-    items: [
-      { icon: Sliders, label: 'Master Parameters', to: '/parameters' },
-    ],
-  },
-  {
-    key: 'qa_reports',
-    label: 'Reports',
-    icon: ShieldCheck,
-    to: '/reports',
-    items: [],
-  },
   {
     key: 'production_old',
     label: 'Production Module',
@@ -52,7 +36,7 @@ const MODULES = [
     items: [],
   },
 
-  // New Enterprise Modules Appended Below
+  // Enterprise Modules
   {
     key: 'quality_analyzer',
     label: 'Quality Analyzer',
@@ -64,9 +48,8 @@ const MODULES = [
     key: 'hr',
     label: 'HR',
     icon: Users,
-    items: [
-      { icon: Users, label: 'Users & Operators', to: '/users' },
-    ],
+    to: '/users',
+    items: [],
   },
   {
     key: 'purchase',
@@ -86,7 +69,7 @@ const MODULES = [
     key: 'development',
     label: 'Development',
     icon: Cpu,
-    to: '/development',
+    to: '/parameters',
     items: [],
   },
   {
@@ -117,7 +100,7 @@ export default function Sidebar({ pendingCount = 0 }) {
   // Initialize expanded state: expand module that contains current active route, or master by default
   const [expanded, setExpanded] = useState(() => {
     const activeMod = MODULES.find((m) => m.items && m.items.some((item) => item.to === location.pathname));
-    return activeMod ? { [activeMod.key]: true } : { master: true };
+    return activeMod ? { [activeMod.key]: true } : { development: true };
   });
 
   // Automatically expand module when route changes
@@ -145,8 +128,19 @@ export default function Sidebar({ pendingCount = 0 }) {
   const visibleModules = isCalibrator
     ? CALIBRATION_MODULES
     : MODULES.filter((module) => {
-        if (user?.role === 'operator') return module.key !== 'tasks'; // operators use mobile app
+        if (user?.role === 'admin') return true;
+        if (user?.role === 'supervisor') {
+          return ['development', 'quality_analyzer', 'production_old', 'tasks'].includes(module.key);
+        }
+        if (user?.role === 'operator') {
+          return ['production_old', 'quality_analyzer'].includes(module.key);
+        }
         return true;
+      }).map((m) => {
+        if (user?.role === 'supervisor' && m.key === 'development') {
+          return { ...m, label: 'Master Parameters' };
+        }
+        return m;
       });
 
   return (

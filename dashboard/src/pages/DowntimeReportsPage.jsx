@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import Header from '../components/layout/Header';
 import api from '../api/axios';
 import {
@@ -17,11 +18,13 @@ import {
 } from 'lucide-react';
 
 export default function DowntimeReportsPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [searchParams] = useSearchParams();
   const viewMode = searchParams.get('view'); // 'history' | 'full' (default: 'full')
 
   // Navigation Tabs: 'active' | 'history'
-  const [activeTab, setActiveTab] = useState(viewMode === 'history' ? 'history' : 'active');
+  const [activeTab, setActiveTab] = useState((viewMode === 'history' || isAdmin) ? 'history' : 'active');
 
   const [reports, setReports] = useState([]);
   const [historyList, setHistoryList] = useState([]);
@@ -42,10 +45,10 @@ export default function DowntimeReportsPage() {
 
   // Update activeTab if query param changes
   useEffect(() => {
-    if (viewMode === 'history') {
+    if (viewMode === 'history' || isAdmin) {
       setActiveTab('history');
     }
-  }, [viewMode]);
+  }, [viewMode, isAdmin]);
 
   // Load Machines metadata
   useEffect(() => {
@@ -62,7 +65,7 @@ export default function DowntimeReportsPage() {
 
   // Fetch Downtime Reports matching active filters
   const fetchDowntimeReports = useCallback(async () => {
-    if (viewMode === 'history') return;
+    if (viewMode === 'history' || isAdmin) return;
     setLoading(true);
     setError(null);
     try {
@@ -80,7 +83,7 @@ export default function DowntimeReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [dateFilter, shiftFilter, machineFilter, viewMode]);
+  }, [dateFilter, shiftFilter, machineFilter, viewMode, isAdmin]);
 
   // Fetch Date-Wise Downtime History
   const fetchDowntimeHistory = useCallback(async () => {
@@ -97,16 +100,16 @@ export default function DowntimeReportsPage() {
   }, []);
 
   useEffect(() => {
-    if (viewMode !== 'history') {
+    if (viewMode !== 'history' && !isAdmin) {
       fetchDowntimeReports();
     }
-  }, [fetchDowntimeReports, viewMode]);
+  }, [fetchDowntimeReports, viewMode, isAdmin]);
 
   useEffect(() => {
-    if (activeTab === 'history' || viewMode === 'history') {
+    if (activeTab === 'history' || viewMode === 'history' || isAdmin) {
       fetchDowntimeHistory();
     }
-  }, [activeTab, viewMode, fetchDowntimeHistory]);
+  }, [activeTab, viewMode, isAdmin, fetchDowntimeHistory]);
 
   // Handle cell edit for downtime fields
   const handleCellChange = (index, field, val) => {
@@ -135,7 +138,6 @@ export default function DowntimeReportsPage() {
     return Math.max(0, Math.round((target - produced) * cycleTime));
   };
 
-  // Compute live sum of accounted breakdown fields
   const getAccountedTotal = (r) => {
     return (Number(r.no_load) || 0) +
            (Number(r.no_operator) || 0) +
@@ -147,6 +149,7 @@ export default function DowntimeReportsPage() {
            (Number(r.rework) || 0) +
            (Number(r.tool_problem) || 0);
   };
+  const getRowTotal = getAccountedTotal;
 
   const getAutoRemark = (r) => {
     const expected = getExpectedTotal(r);
@@ -277,8 +280,8 @@ export default function DowntimeReportsPage() {
 
   const allCompleted = reports.length > 0 && reports.every((r) => r.status === 'COMPLETED');
 
-  // IF MODE IS 'history' (Opened from REPORTS module), render pure Date-by-Date History view ONLY!
-  if (viewMode === 'history') {
+  // IF MODE IS 'history' OR USER IS ADMIN, render pure Date-by-Date History view ONLY!
+  if (viewMode === 'history' || isAdmin) {
     return (
       <>
         <Header
