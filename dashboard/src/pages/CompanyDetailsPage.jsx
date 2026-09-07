@@ -53,7 +53,7 @@ export default function CompanyDetailsPage() {
         const primary = compData[0];
         setCompanyId(primary.id);
         const shiftHrs = primary.shift_hours || 8;
-        const shiftsPerDay = shiftHrs === 12 ? 2 : 3;
+        const shiftsPerDay = primary.total_shifts_per_day || 3;
         const lunchMins = primary.lunch_break_minutes ?? 30;
         const teaMins = primary.tea_break_minutes ?? 30;
         const grossMins = shiftHrs * 60;
