@@ -3,6 +3,7 @@ import Header from '../components/layout/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { getReport, getDailyCompletedReports } from '../api/analytics';
 import { getSessionDetail } from '../api/inspections';
+import { getCompanyDetails } from '../api/company';
 import OfficialFormF02Modal from '../components/reports/OfficialFormF02Modal';
 
 export default function AnalyticsPage() {
@@ -21,6 +22,7 @@ export default function AnalyticsPage() {
   // Daily Completed Reports list & PDF loading state
   const [reportsList, setReportsList]         = useState([]);
   const [loadingReports, setLoadingReports]   = useState(true);
+  const [shiftCount, setShiftCount]           = useState(3);
   const [pdfLoadingId, setPdfLoadingId]       = useState(null);
   const [pdfError, setPdfError]               = useState(null);
   const [selectedSessionDetail, setSelectedSessionDetail] = useState(null);
@@ -35,6 +37,21 @@ export default function AnalyticsPage() {
       setLoadingReport(false);
     }
   };
+
+  useEffect(() => {
+    const fetchCompanyData = async () => {
+      try {
+        const res = await getCompanyDetails();
+        const compData = res?.data?.results || res?.data;
+        if (compData && compData.length > 0) {
+          setShiftCount(compData[0].total_shifts_per_day || 3);
+        }
+      } catch (err) {
+        console.error("Failed to load shift config", err);
+      }
+    };
+    fetchCompanyData();
+  }, []);
 
   const fetchDailyCompletedReports = async () => {
     setLoadingReports(true);
@@ -187,7 +204,7 @@ export default function AnalyticsPage() {
                 <option value="">All Shifts</option>
                 <option value="A">Shift A</option>
                 <option value="B">Shift B</option>
-                <option value="C">Shift C</option>
+                {shiftCount >= 3 && <option value="C">Shift C</option>}
               </select>
             </div>
             <div className="form-group" style={{ marginBottom: 0, flex: '1 1 130px' }}>

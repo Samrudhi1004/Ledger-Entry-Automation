@@ -28,7 +28,12 @@ def get_mongo_client() -> MongoClient:
             serverSelectionTimeoutMS=5000,
             connectTimeoutMS=5000,
         )
-        logger.info("MongoDB client initialised: %s", settings.MONGODB_URI)
+        # S7 FIX: Never log the full URI — it may contain username:password.
+        # Use urlparse to build a safe representation (scheme + host + path only).
+        from urllib.parse import urlparse
+        _parsed = urlparse(settings.MONGODB_URI)
+        _safe_uri = f"{_parsed.scheme}://{_parsed.hostname}{_parsed.path}"
+        logger.info("MongoDB client initialised: %s", _safe_uri)
     return _mongo_client
 
 

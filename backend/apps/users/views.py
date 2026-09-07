@@ -35,42 +35,11 @@ class LoginView(TokenObtainPairView):
     """
     POST /api/users/login/
     Returns access + refresh JWT tokens with embedded role info.
-    Auto-ensures credentials for default demo accounts.
     """
     permission_classes = [AllowAny]
     serializer_class   = CustomTokenObtainPairSerializer
 
-    def post(self, request, *args, **kwargs):
-        username = request.data.get('username', '').strip()
-        password = request.data.get('password', '')
-
-        if username and username.lower() in ['supervisor', 'admin', 'operator', 'inspector']:
-            user = User.objects.filter(username__iexact=username).first()
-            default_pass = f"{username.lower()}123"
-            if user:
-                if not user.check_password(password) and (password == default_pass or password == 'Password123'):
-                    user.set_password(password)
-                    user.save()
-            else:
-                role_map = {
-                    'supervisor': User.Role.SUPERVISOR,
-                    'admin': User.Role.ADMIN,
-                    'operator': User.Role.OPERATOR,
-                    'inspector': User.Role.QUALITY_ENGINEER,
-                }
-                new_user = User(
-                    username=username.lower(),
-                    employee_id=f"EMP-{username.upper()}-01",
-                    role=role_map.get(username.lower(), User.Role.OPERATOR),
-                    first_name=username.capitalize(),
-                    last_name='User',
-                    is_staff=username.lower() in ['supervisor', 'admin'],
-                    is_superuser=username.lower() == 'admin',
-                )
-                new_user.set_password(password if password else default_pass)
-                new_user.save()
-
-        return super().post(request, *args, **kwargs)
+    # Inherits post() directly from TokenObtainPairView.
 
 
 # ─── Logout ───────────────────────────────────────────────────────────────

@@ -25,10 +25,11 @@ except ImportError:
         return decorator if args and callable(args[0]) else decorator
 
 from django.core.cache import cache
-from .services import InspectionService
+# M4 FIX: Import shared singleton — do NOT instantiate InspectionService() here.
+# One instance is shared across views.py, tasks.py, and any future modules.
+from .services import inspection_service as _service
 
 logger = logging.getLogger(__name__)
-_service = InspectionService()
 
 
 def process_measurement_in_background(

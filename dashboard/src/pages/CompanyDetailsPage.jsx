@@ -48,11 +48,12 @@ export default function CompanyDetailsPage() {
         getCompanyPlants().catch(() => null),
       ]);
 
-      if (compRes?.data && compRes.data.length > 0) {
-        const primary = compRes.data[0];
+      const compData = compRes?.data?.results || compRes?.data;
+      if (compData && compData.length > 0) {
+        const primary = compData[0];
         setCompanyId(primary.id);
         const shiftHrs = primary.shift_hours || 8;
-        const shiftsPerDay = shiftHrs === 12 ? 2 : 3;
+        const shiftsPerDay = primary.total_shifts_per_day || 3;
         const lunchMins = primary.lunch_break_minutes ?? 30;
         const teaMins = primary.tea_break_minutes ?? 30;
         const grossMins = shiftHrs * 60;
@@ -76,8 +77,9 @@ export default function CompanyDetailsPage() {
         });
       }
 
-      if (plantRes?.data) {
-        setPlants(Array.isArray(plantRes.data) ? plantRes.data : []);
+      const plantData = plantRes?.data?.results || plantRes?.data;
+      if (plantData) {
+        setPlants(Array.isArray(plantData) ? plantData : []);
       }
     } catch (err) {
       console.error('Failed to load company details', err);

@@ -71,15 +71,16 @@ class VoiceTranscribeView(APIView):
             file_size_kb, save_duration_ms, dispatch_duration_ms, total_post_ms, job_id
         )
 
+        # S4 FIX: 'audio_path' removed — server-side file paths must never be
+        # sent to clients (info disclosure). The client only needs job_id to poll.
         return Response(
             {
-                'job_id':     job_id,
-                'status':     'processing',
-                'audio_path': f'voice_uploads/{filename}',
+                'job_id':  job_id,
+                'status':  'processing',
                 'upload_meta': {
-                    'file_size_kb': file_size_kb,
-                    'save_ms': round(save_duration_ms, 2),
-                    'post_response_ms': round(total_post_ms, 2),
+                    'file_size_kb':      file_size_kb,
+                    'save_ms':           round(save_duration_ms, 2),
+                    'post_response_ms':  round(total_post_ms, 2),
                 }
             },
             status=status.HTTP_202_ACCEPTED,

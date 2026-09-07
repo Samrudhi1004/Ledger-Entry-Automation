@@ -27,7 +27,7 @@ class InspectionSession(models.Model):
         B = 'B', 'Shift B'
         C = 'C', 'Shift C'
 
-    # Unique identifier — same ID used as MongoDB document _id reference
+    # Unique identifier — same ID used as MongoDB document _id reference (unique implies db_index)
     session_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 
     # Relations
@@ -50,9 +50,9 @@ class InspectionSession(models.Model):
     )
 
     # Session metadata
-    inspection_type            = models.CharField(max_length=20)  # first_piece / hourly / final
-    shift                      = models.CharField(max_length=1, choices=Shift.choices, default=Shift.A)
-    status                     = models.CharField(max_length=25, choices=Status.choices, default=Status.IN_PROGRESS)
+    inspection_type            = models.CharField(max_length=20, db_index=True)  # first_piece / hourly / final
+    shift                      = models.CharField(max_length=1, choices=Shift.choices, default=Shift.A, db_index=True)
+    status                     = models.CharField(max_length=25, choices=Status.choices, default=Status.IN_PROGRESS, db_index=True)
     trial_number               = models.IntegerField(default=1)   # 1 for 1st PC #1, 2 for 1st PC #2, 3 for 1st PC #3
     parent_session             = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='child_trials')
     rejection_reason           = models.TextField(blank=True)
@@ -71,7 +71,7 @@ class InspectionSession(models.Model):
     has_critical_fail = models.BooleanField(default=False)
 
     # Timestamps & Reminder tracking
-    started_at          = models.DateTimeField(auto_now_add=True)
+    started_at          = models.DateTimeField(auto_now_add=True, db_index=True)
     last_measurement_at = models.DateTimeField(null=True, blank=True)
     completed_at        = models.DateTimeField(null=True, blank=True)
     reviewed_at         = models.DateTimeField(null=True, blank=True)
@@ -113,11 +113,11 @@ class DailyProductionReport(models.Model):
     Completely separate from inspection session records.
     """
     report_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    date = models.DateField()
+    date = models.DateField(db_index=True)
     machine = models.ForeignKey('machines.Machine', on_delete=models.PROTECT, related_name='production_reports')
     part = models.ForeignKey('parts.Part', on_delete=models.PROTECT, related_name='production_reports')
     operation = models.CharField(max_length=100, blank=True, default='')
-    shift = models.CharField(max_length=20, default='A')
+    shift = models.CharField(max_length=20, default='A', db_index=True)
     operator = models.ForeignKey('users.User', on_delete=models.PROTECT, related_name='production_reports')
 
     production_target = models.PositiveIntegerField(default=0)
@@ -136,9 +136,9 @@ class DailyProductionReport(models.Model):
         DRAFT = 'DRAFT', 'Draft'
         SUBMITTED = 'SUBMITTED', 'Submitted'
 
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.SUBMITTED)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.SUBMITTED, db_index=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -186,7 +186,7 @@ class DowntimeReport(models.Model):
     total_downtime = models.PositiveIntegerField(default=0)
     expected_downtime = models.PositiveIntegerField(default=0, help_text="Mathematically expected downtime")
     remarks = models.TextField(blank=True, default='')
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
 
     created_by = models.ForeignKey(
         'users.User',
@@ -196,7 +196,7 @@ class DowntimeReport(models.Model):
         related_name='created_downtime_reports'
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
@@ -216,7 +216,8 @@ class DowntimeReport(models.Model):
                 raise ValidationError("Downtime values must be non-negative integers.")
 
     def save(self, *args, **kwargs):
-        self.full_clean()
+        # L5 FIX: Removed self.full_clean() here. Validation should be handled by 
+        # the serializer or forms before save() is called.
         self.total_downtime = (
             (self.no_load or 0) +
             (self.no_operator or 0) +

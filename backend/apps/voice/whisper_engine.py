@@ -6,6 +6,7 @@ Model is loaded once at startup and reused for all requests.
 
 import os
 import time
+import threading
 import logging
 from pathlib import Path
 
@@ -14,65 +15,73 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 # ─── Lazy model loader (singleton) ───────────────────────────────────────
-_whisper_model = None
+# H5 FIX: _model_lock ensures only one thread ever loads the model.
+# Without it, two concurrent voice requests both see _whisper_model=None
+# and both load a 150 MB model — potentially crashing the server with OOM.
+_model_lock        = threading.Lock()
+_whisper_model     = None
 _is_faster_whisper = False
 
 
 def _get_local_model():
-    """Load Faster-Whisper (or standard Whisper) once and cache it."""
+    """Load Faster-Whisper (or standard Whisper) once and cache it (thread-safe)."""
     global _whisper_model, _is_faster_whisper
     t_start = time.perf_counter()
-    was_cached = _whisper_model is not None
 
-    if _whisper_model is None:
-        model_name = settings.WHISPER_MODEL  # e.g. 'tiny' or 'base'
-        try:
-            from faster_whisper import WhisperModel
+    # H5 FIX: Acquire the lock BEFORE the None-check so the check+load sequence
+    # is atomic. Concurrent threads block here and reuse the already-loaded model.
+    with _model_lock:
+        was_cached = _whisper_model is not None
 
-            # Determine whether a local cache directory exists.
-            # If yes, skip ALL HuggingFace network calls (local_files_only=True).
-            # This eliminates the ~8-10 s remote metadata check on every cold start.
-            hf_home = os.environ.get('HF_HOME', '')
-            cache_dir = Path(hf_home) / 'hub' if hf_home else None
-            has_local_cache = bool(cache_dir and cache_dir.exists() and any(cache_dir.iterdir()))
-
-            logger.info(
-                "[PERF ENGINE] Loading Faster-Whisper engine model '%s' (CPU int8) "
-                "[local_files_only=%s, hf_home=%s]...",
-                model_name, has_local_cache, hf_home or '(default)',
-            )
-
-            load_kwargs = dict(device="cpu", compute_type="int8")
-            if has_local_cache:
-                load_kwargs['local_files_only'] = True
-
+        if _whisper_model is None:
+            model_name = settings.WHISPER_MODEL  # e.g. 'tiny' or 'base'
             try:
-                _whisper_model = WhisperModel(model_name, **load_kwargs)
-            except Exception as local_err:
-                if has_local_cache:
-                    # Cache present but failed (e.g. corrupted) — retry with download
-                    logger.warning(
-                        "[PERF ENGINE] local_files_only load failed (%s), retrying with download...", local_err
-                    )
-                    load_kwargs.pop('local_files_only', None)
-                    _whisper_model = WhisperModel(model_name, **load_kwargs)
-                else:
-                    raise
+                from faster_whisper import WhisperModel
 
-            _is_faster_whisper = True
-            logger.info(
-                "[PERF ENGINE] Faster-Whisper model '%s' loaded in %.2f ms",
-                model_name, (time.perf_counter() - t_start) * 1000
-            )
-        except ImportError:
-            import whisper
-            logger.info("[PERF ENGINE] Loading standard Whisper model '%s' ...", model_name)
-            _whisper_model = whisper.load_model(model_name)
-            _is_faster_whisper = False
-            logger.info(
-                "[PERF ENGINE] Standard Whisper model '%s' loaded in %.2f ms",
-                model_name, (time.perf_counter() - t_start) * 1000
-            )
+                # Determine whether a local cache directory exists.
+                # If yes, skip ALL HuggingFace network calls (local_files_only=True).
+                # This eliminates the ~8-10 s remote metadata check on every cold start.
+                hf_home = os.environ.get('HF_HOME', '')
+                cache_dir = Path(hf_home) / 'hub' if hf_home else None
+                has_local_cache = bool(cache_dir and cache_dir.exists() and any(cache_dir.iterdir()))
+
+                logger.info(
+                    "[PERF ENGINE] Loading Faster-Whisper engine model '%s' (CPU int8) "
+                    "[local_files_only=%s, hf_home=%s]...",
+                    model_name, has_local_cache, hf_home or '(default)',
+                )
+
+                load_kwargs = dict(device="cpu", compute_type="int8")
+                if has_local_cache:
+                    load_kwargs['local_files_only'] = True
+
+                try:
+                    _whisper_model = WhisperModel(model_name, **load_kwargs)
+                except Exception as local_err:
+                    if has_local_cache:
+                        # Cache present but failed (e.g. corrupted) — retry with download
+                        logger.warning(
+                            "[PERF ENGINE] local_files_only load failed (%s), retrying with download...", local_err
+                        )
+                        load_kwargs.pop('local_files_only', None)
+                        _whisper_model = WhisperModel(model_name, **load_kwargs)
+                    else:
+                        raise
+
+                _is_faster_whisper = True
+                logger.info(
+                    "[PERF ENGINE] Faster-Whisper model '%s' loaded in %.2f ms",
+                    model_name, (time.perf_counter() - t_start) * 1000
+                )
+            except ImportError:
+                import whisper
+                logger.info("[PERF ENGINE] Loading standard Whisper model '%s' ...", model_name)
+                _whisper_model = whisper.load_model(model_name)
+                _is_faster_whisper = False
+                logger.info(
+                    "[PERF ENGINE] Standard Whisper model '%s' loaded in %.2f ms",
+                    model_name, (time.perf_counter() - t_start) * 1000
+                )
 
     load_duration_ms = (time.perf_counter() - t_start) * 1000
     return _whisper_model, _is_faster_whisper, load_duration_ms, was_cached
