@@ -11,13 +11,15 @@ export function WebSocketProvider({ children, plantId }) {
 
   const connect = useCallback(() => {
     if (!plantId) return;
-    const token = localStorage.getItem('access_token');
-    const url   = `${WS_BASE_URL}/ws/dashboard/${plantId}/?token=${token}`;
+    const url   = `${WS_BASE_URL}/ws/dashboard/${plantId}/`;
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      const token = localStorage.getItem('access_token');
+      ws.send(JSON.stringify({ type: 'auth', token }));
+
       setConnected(true);
       // Clear any reconnect timer
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);

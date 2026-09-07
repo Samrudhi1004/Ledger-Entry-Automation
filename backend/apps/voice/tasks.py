@@ -17,6 +17,7 @@ Limitation vs Celery:
     in the Flutter app will catch this and show an error gracefully.
 """
 
+import os
 import logging
 import time
 import threading
@@ -118,7 +119,9 @@ def _run_transcription(job_id: str, file_path: str, user_id: int, created_at_per
             backend, parse_ms, mongo_ms, total_backend_ms
         )
 
-        # Store SUCCESS result in Redis with embedded timing breakdown
+        # Store SUCCESS result in Redis with embedded timing breakdown.
+        # S5 FIX: 'audio_path' (absolute server path) removed — it was being
+        # returned verbatim to clients via VoiceStatusView, leaking server internals.
         t_cache_start = time.perf_counter()
         cache.set(f"voice_job_{job_id}", {
             'status':       'done',
@@ -127,7 +130,6 @@ def _run_transcription(job_id: str, file_path: str, user_id: int, created_at_per
             'is_parseable': is_parseable,
             'language':     language,
             'backend':      backend,
-            'audio_path':   file_path,
             'timing':       timing_data,
             'message':      '' if is_parseable else 'Could not parse a number. Please try again or enter manually.',
         }, timeout=JOB_CACHE_TIMEOUT)
@@ -139,6 +141,18 @@ def _run_transcription(job_id: str, file_path: str, user_id: int, created_at_per
             'status': 'failed',
             'error':  'Transcription failed. Please try again.',
         }, timeout=JOB_CACHE_TIMEOUT)
+
+    finally:
+        # H6 FIX: Always delete the audio file after processing — success or failure.
+        # Without this, every voice recording piles up in voice_uploads/ forever and
+        # will eventually fill the server disk, crashing the entire application.
+        # The transcribed text is already in Redis + MongoDB — the audio is useless now.
+        try:
+            os.unlink(file_path)
+            logger.debug("[CLEANUP] Deleted audio file: %s", file_path)
+        except OSError:
+            # File may have already been deleted or path was invalid — safe to ignore
+            pass
 
 
 # ─── Public API (same interface as the old Celery task) ──────────────────────

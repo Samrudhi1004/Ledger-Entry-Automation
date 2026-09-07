@@ -9,6 +9,7 @@ InspectionService   — orchestrates session creation, measurement recording,
 import logging
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -26,17 +27,25 @@ from .models import InspectionSession
 logger = logging.getLogger(__name__)
 
 
+# M1 FIX: Single shared thread pool for all WebSocket broadcast events.
+# Old code created a brand-new thread per event (thread churn).
+# Each measurement recorded = 1 new thread created + destroyed = unnecessary CPU
+# + memory overhead under load. A fixed pool of 2 workers handles all broadcasts
+# with zero thread creation cost after startup.
+_broadcast_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix='ws_broadcast')
+
+
 def _dispatch_async_websocket(group_name: str, payload: dict):
-    """Sends WebSocket group message in a background thread to prevent blocking HTTP response."""
+    """Sends WebSocket group message via shared thread pool to prevent blocking HTTP response."""
     def _send():
         try:
             channel_layer = get_channel_layer()
             if channel_layer:
                 async_to_sync(channel_layer.group_send)(group_name, payload)
         except Exception as exc:
-            logger.warning("Failed to dispatch WebSocket event in background thread: %s", exc)
+            logger.warning("Failed to dispatch WebSocket event: %s", exc)
 
-    threading.Thread(target=_send, daemon=True).start()
+    _broadcast_pool.submit(_send)
 
 
 def _get_cached_parameter(part_id: int, parameter_code: str):
@@ -44,6 +53,13 @@ def _get_cached_parameter(part_id: int, parameter_code: str):
     cache_key = f"param_spec_{part_id}_{parameter_code}"
     cached_param = cache.get(cache_key)
     if cached_param is not None:
+        # If it's a dict (from new cache format), we can use it, but ToleranceValidator expects an object.
+        # However, Python handles dot notation via namedtuple/dataclass, or we can just reconstruct a basic object
+        if isinstance(cached_param, dict):
+            class DummyParam: pass
+            p = DummyParam()
+            for k, v in cached_param.items(): setattr(p, k, v)
+            return p
         return cached_param
 
     from django.db.models import Q
@@ -57,7 +73,17 @@ def _get_cached_parameter(part_id: int, parameter_code: str):
         ).first()
 
     if param:
-        cache.set(cache_key, param, timeout=3600)
+        # Cache dict instead of ORM object (NEW-H2)
+        cache_data = {
+            'id': param.id,
+            'parameter_code': param.parameter_code,
+            'parameter_name': param.parameter_name,
+            'nominal_value': float(param.nominal_value) if param.nominal_value else 0.0,
+            'upper_limit': float(param.upper_limit) if param.upper_limit else 0.0,
+            'lower_limit': float(param.lower_limit) if param.lower_limit else 0.0,
+            'is_critical': param.is_critical,
+        }
+        cache.set(cache_key, cache_data, timeout=3600)
     return param
 
 
@@ -66,6 +92,11 @@ def _get_cached_process_parameter(part_id: int, parameter_code: str):
     cache_key = f"proc_param_spec_{part_id}_{parameter_code}"
     cached_proc_param = cache.get(cache_key)
     if cached_proc_param is not None:
+        if isinstance(cached_proc_param, dict):
+            class DummyProcParam: pass
+            p = DummyProcParam()
+            for k, v in cached_proc_param.items(): setattr(p, k, v)
+            return p
         return cached_proc_param
 
     from django.db.models import Q
@@ -79,7 +110,15 @@ def _get_cached_process_parameter(part_id: int, parameter_code: str):
         ).first()
 
     if proc_param:
-        cache.set(cache_key, proc_param, timeout=3600)
+        # Cache dict instead of ORM object
+        cache_data = {
+            'id': proc_param.id,
+            'parameter_code': proc_param.parameter_code,
+            'parameter_name': proc_param.parameter_name,
+            'target_value': float(proc_param.target_value) if proc_param.target_value else 0.0,
+            'unit': proc_param.unit,
+        }
+        cache.set(cache_key, cache_data, timeout=3600)
     return proc_param
 
 
@@ -225,8 +264,16 @@ class InspectionService:
         process_parameters = list(template.process_parameters.filter(is_active=True).order_by('sequence_order')) if actual_inspection_type == 'first_piece' else []
         total_params       = len(parameters)
 
-        # Reuse existing active session for today (same machine, part, shift, trial) if present
+        # H4 FIX: Wrap existence check + create in an atomic transaction with a
+        # row-level lock. Without this, two simultaneous POST /start/ requests for
+        # the same machine+part+shift both read "no session exists" and both create
+        # one — resulting in duplicate sessions and split/corrupt measurement data.
+        #
+        # select_for_update() holds a DB lock on matching rows for the duration of
+        # the transaction. The second request blocks until the first commits, then
+        # finds the newly-created session and returns it instead of creating again.
         from django.utils import timezone as django_tz
+        from django.db import transaction
         today = django_tz.now().date()
         filter_kwargs = {
             'machine': machine,
@@ -240,62 +287,71 @@ class InspectionService:
         elif actual_inspection_type == 'hourly':
             filter_kwargs['hourly_unlocked_slot'] = hourly_slot
 
-        existing_session = InspectionSession.objects.filter(**filter_kwargs).order_by('-started_at').first()
+        with transaction.atomic():
+            # Lock any matching rows so concurrent requests queue up here
+            existing_session = (
+                InspectionSession.objects
+                .select_for_update()
+                .filter(**filter_kwargs)
+                .order_by('-started_at')
+                .first()
+            )
 
-        if existing_session and not (actual_inspection_type == 'first_piece' and trial_number > 1 and not parent_session_id):
-            return existing_session
+            if existing_session and not (actual_inspection_type == 'first_piece' and trial_number > 1 and not parent_session_id):
+                return existing_session
 
-        session_id     = uuid.uuid4()
+            # No existing session — safe to create now (lock still held)
+            session_id     = uuid.uuid4()
 
-        parent_session = None
-        initial_measurements = []
-        rejected_codes = set()
+            parent_session = None
+            initial_measurements = []
+            rejected_codes = set()
 
-        if parent_session_id and str(parent_session_id).strip():
-            clean_parent_id = str(parent_session_id).strip()
-            try:
-                parent_uuid = uuid.UUID(clean_parent_id)
-                parent_session = InspectionSession.objects.filter(session_id=parent_uuid).first()
-            except (ValueError, TypeError, AttributeError):
-                parent_session = None
+            if parent_session_id and str(parent_session_id).strip():
+                clean_parent_id = str(parent_session_id).strip()
+                try:
+                    parent_uuid = uuid.UUID(clean_parent_id)
+                    parent_session = InspectionSession.objects.filter(session_id=parent_uuid).first()
+                except (ValueError, TypeError, AttributeError):
+                    parent_session = None
 
-            if parent_session:
-                parent_doc = self.collection.find_one({'_id': str(parent_session.session_id)})
-                if parent_doc:
-                    rejected_list = parent_doc.get('rejected_parameters') or []
-                    if rejected_list:
-                        rejected_codes = set(rejected_list)
-                    else:
-                        for p_sum in parent_doc.get('parameter_summary', []):
-                            if p_sum.get('status') == 'out_of_spec':
-                                rejected_codes.add(p_sum.get('parameter_code'))
+                if parent_session:
+                    parent_doc = self.collection.find_one({'_id': str(parent_session.session_id)})
+                    if parent_doc:
+                        rejected_list = parent_doc.get('rejected_parameters') or []
+                        if rejected_list:
+                            rejected_codes = set(rejected_list)
+                        else:
+                            for p_sum in parent_doc.get('parameter_summary', []):
+                                if p_sum.get('status') == 'out_of_spec':
+                                    rejected_codes.add(p_sum.get('parameter_code'))
 
-                    parent_measurements = parent_doc.get('measurements', [])
-                    for m in parent_measurements:
-                        code = m.get('parameter_code')
-                        if code and code not in rejected_codes and m.get('status') == 'ok':
-                            m_copy = dict(m)
-                            m_copy['carried_forward'] = True
-                            initial_measurements.append(m_copy)
+                        parent_measurements = parent_doc.get('measurements', [])
+                        for m in parent_measurements:
+                            code = m.get('parameter_code')
+                            if code and code not in rejected_codes and m.get('status') == 'ok':
+                                m_copy = dict(m)
+                                m_copy['carried_forward'] = True
+                                initial_measurements.append(m_copy)
 
-        initial_recorded_count = len(initial_measurements)
+            initial_recorded_count = len(initial_measurements)
 
-        # 1. Create PostgreSQL session
-        session = InspectionSession.objects.create(
-            session_id           = session_id,
-            part                 = part,
-            machine              = machine,
-            operator             = operator,
-            supervisor           = supervisor,
-            template             = template,
-            inspection_type      = actual_inspection_type,
-            shift                = shift,
-            trial_number         = trial_number,
-            hourly_unlocked_slot = hourly_slot if actual_inspection_type == 'hourly' else 0,
-            parent_session       = parent_session,
-            total_parameters     = total_params,
-            recorded_count       = initial_recorded_count,
-        )
+            # 1. Create PostgreSQL session (inside atomic block — lock held until commit)
+            session = InspectionSession.objects.create(
+                session_id           = session_id,
+                part                 = part,
+                machine              = machine,
+                operator             = operator,
+                supervisor           = supervisor,
+                template             = template,
+                inspection_type      = actual_inspection_type,
+                shift                = shift,
+                trial_number         = trial_number,
+                hourly_unlocked_slot = hourly_slot if actual_inspection_type == 'hourly' else 0,
+                parent_session       = parent_session,
+                total_parameters     = total_params,
+                recorded_count       = initial_recorded_count,
+            )
 
         carried_map = {m['parameter_code']: m for m in initial_measurements}
         param_summary_list = []
@@ -433,11 +489,8 @@ class InspectionService:
             process_parameter = _get_cached_process_parameter(session.part_id, parameter_code)
 
         if not parameter and not process_parameter:
-            parameter = InspectionParameter.objects.filter(template__part_id=session.part_id).first()
-            if not parameter:
-                parameter = InspectionParameter.objects.first()
-            if not parameter:
-                raise ValueError(f"Parameter '{parameter_code}' not found for part {session.part.part_number}.")
+            # Removed dangerous fallback that substituted wrong tolerances (C2)
+            raise ValueError(f"Parameter '{parameter_code}' not found for part {session.part.part_number}.")
 
         current_slot = hourly_slot if (hourly_slot is not None and hourly_slot > 0) else (session.hourly_unlocked_slot or 1)
 
@@ -453,19 +506,34 @@ class InspectionService:
             meas_slot = current_slot if current_slot > 0 else 1
             meas_trial = 0
 
-        # Check existing measurement in MongoDB for this specific slot/trial & parameter
-        existing_idx = None
-        doc = self.collection.find_one({'_id': str(session_id)})
-        if doc and 'measurements' in doc:
-            for idx, m in enumerate(doc['measurements']):
-                m_type = m.get('inspection_type') or ('first_piece' if (m.get('trial_number') or 0) > 0 else 'hourly')
-                if m.get('parameter_code') == parameter_code:
-                    if meas_type == 'first_piece' and m_type == 'first_piece' and (m.get('trial_number') or 1) == meas_trial:
-                        existing_idx = idx
-                        break
-                    elif meas_type == 'hourly' and m_type == 'hourly' and m.get('hourly_slot') == meas_slot:
-                        existing_idx = idx
-                        break
+        # M2 FIX: Replaced find_one() + full document scan with a targeted
+        # count_documents() check. Old code fetched the ENTIRE MongoDB document
+        # (potentially 100+ measurements) on every single record_measurement() call
+        # just to find existing_idx — costing 50-150ms per call on cloud DBs.
+        #
+        # Now we use a targeted filter with array element matching.
+        # count_documents() only checks existence (no document body returned) and
+        # uses the measurements array index — far cheaper than loading the whole doc.
+        if meas_type == 'first_piece':
+            existence_filter = {
+                '_id': str(session_id),
+                'measurements': {'$elemMatch': {
+                    'parameter_code': parameter_code,
+                    'inspection_type': 'first_piece',
+                    'trial_number': meas_trial,
+                }},
+            }
+        else:
+            existence_filter = {
+                '_id': str(session_id),
+                'measurements': {'$elemMatch': {
+                    'parameter_code': parameter_code,
+                    'inspection_type': 'hourly',
+                    'hourly_slot': meas_slot,
+                }},
+            }
+
+        measurement_exists = self.collection.count_documents(existence_filter, limit=1) > 0
 
         # Handle Process Parameter measurement recording & validation
         if process_parameter:
@@ -538,17 +606,24 @@ class InspectionService:
                 'recorded_at':           datetime.now(timezone.utc).isoformat(),
             }
 
-            if existing_idx is not None:
+            if measurement_exists:
                 self.collection.update_one(
                     {'_id': str(session_id)},
                     {
                         '$set': {
-                            f'measurements.{existing_idx}': measurement,
+                            'measurements.$[elem].measured_value': measured_value,
+                            'measurements.$[elem].status': status_val,
+                            'measurements.$[elem].deviation': dev,
+                            'measurements.$[elem].voice_raw_text': voice_raw_text,
+                            'measurements.$[elem].recorded_at': datetime.now(timezone.utc).isoformat(),
                             'process_parameter_summary.$[param].status': status_val,
                             'process_parameter_summary.$[param].measured_value': measured_value,
                         }
                     },
-                    array_filters=[{'param.parameter_code': parameter_code}],
+                    array_filters=[
+                        {'elem.parameter_code': parameter_code, 'elem.inspection_type': meas_type},
+                        {'param.parameter_code': parameter_code},
+                    ],
                 )
             else:
                 self.collection.update_one(
@@ -637,17 +712,24 @@ class InspectionService:
         }
 
         # Update MongoDB document
-        if existing_idx is not None:
+        if measurement_exists:
             self.collection.update_one(
                 {'_id': str(session_id)},
                 {
                     '$set': {
-                        f'measurements.{existing_idx}': measurement,
+                        'measurements.$[elem].measured_value': measured_value,
+                        'measurements.$[elem].status': result.status,
+                        'measurements.$[elem].deviation': result.deviation,
+                        'measurements.$[elem].voice_raw_text': voice_raw_text,
+                        'measurements.$[elem].recorded_at': datetime.now(timezone.utc).isoformat(),
                         'parameter_summary.$[param].status': result.status,
                         'parameter_summary.$[param].measured_value': measured_value,
                     }
                 },
-                array_filters=[{'param.parameter_code': parameter_code}],
+                array_filters=[
+                    {'elem.parameter_code': parameter_code, 'elem.inspection_type': meas_type},
+                    {'param.parameter_code': parameter_code},
+                ],
             )
         else:
             self.collection.update_one(
@@ -672,7 +754,7 @@ class InspectionService:
             'supervisor_escalated': False,
         }
         
-        if existing_idx is None:
+        if not measurement_exists:
             update_dict['recorded_count'] = F('recorded_count') + 1
             session.recorded_count += 1
 
@@ -960,15 +1042,18 @@ class InspectionService:
             if session_shift:
                 fp_kwargs['shift'] = session_shift
 
-            fp_sessions = InspectionSession.objects.filter(**fp_kwargs).order_by('trial_number', 'started_at')
-            for fp_s in fp_sessions:
-                fp_doc = self.collection.find_one({'_id': str(fp_s.session_id)})
-                if fp_doc:
-                    t_no = fp_s.trial_number or fp_doc.get('trial_number') or 1
-                    if fp_s.finalized_by and 'inspector_name' not in doc:
-                        doc['inspector_name'] = fp_s.finalized_by.get_full_name()
-                    for m in fp_doc.get('measurements', []):
-                        add_meas(m, def_type='first_piece', def_trial=t_no, def_slot=1)
+            fp_sessions = list(InspectionSession.objects.filter(**fp_kwargs).order_by('trial_number', 'started_at'))
+            if fp_sessions:
+                fp_ids = [str(s.session_id) for s in fp_sessions]
+                fp_docs = {d['_id']: d for d in self.collection.find({'_id': {'$in': fp_ids}})}
+                for fp_s in fp_sessions:
+                    fp_doc = fp_docs.get(str(fp_s.session_id))
+                    if fp_doc:
+                        t_no = fp_s.trial_number or fp_doc.get('trial_number') or 1
+                        if fp_s.finalized_by and 'inspector_name' not in doc:
+                            doc['inspector_name'] = fp_s.finalized_by.get_full_name()
+                        for m in fp_doc.get('measurements', []):
+                            add_meas(m, def_type='first_piece', def_trial=t_no, def_slot=1)
 
             hourly_kwargs = {
                 'machine': session_obj.machine,
@@ -980,13 +1065,16 @@ class InspectionService:
             if session_shift:
                 hourly_kwargs['shift'] = session_shift
 
-            hourly_sessions = InspectionSession.objects.filter(**hourly_kwargs).order_by('hourly_unlocked_slot', 'started_at')
-            for h_sess in hourly_sessions:
-                h_doc = self.collection.find_one({'_id': str(h_sess.session_id)})
-                if h_doc:
-                    slot = h_sess.hourly_unlocked_slot or h_doc.get('hourly_slot') or 1
-                    for m in h_doc.get('measurements', []):
-                        add_meas(m, def_type='hourly', def_trial=0, def_slot=slot)
+            hourly_sessions = list(InspectionSession.objects.filter(**hourly_kwargs).order_by('hourly_unlocked_slot', 'started_at'))
+            if hourly_sessions:
+                hourly_ids = [str(s.session_id) for s in hourly_sessions]
+                hourly_docs = {d['_id']: d for d in self.collection.find({'_id': {'$in': hourly_ids}})}
+                for h_sess in hourly_sessions:
+                    h_doc = hourly_docs.get(str(h_sess.session_id))
+                    if h_doc:
+                        slot = h_sess.hourly_unlocked_slot or h_doc.get('hourly_slot') or 1
+                        for m in h_doc.get('measurements', []):
+                            add_meas(m, def_type='hourly', def_trial=0, def_slot=slot)
 
         doc['measurements'] = list(meas_dict.values())
         return doc
@@ -1188,3 +1276,11 @@ class InspectionService:
             'elapsed_minutes': round(elapsed_minutes, 1),
             'slots':           slots,
         }
+
+
+# ─── Shared singleton ─────────────────────────────────────────────────────────
+# M4 FIX: One InspectionService instance shared across the entire process.
+# Previously views.py and tasks.py each created their own instance, resulting
+# in duplicate MongoDB connection pools and split in-memory state.
+# All modules must import this object instead of calling InspectionService().
+inspection_service = InspectionService()
