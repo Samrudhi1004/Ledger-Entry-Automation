@@ -5,6 +5,7 @@ Monitors active inspection sessions:
 - 75 Minutes (60m + 15m grace) without new reading -> Escalates live alert to Quality Supervisor Web Dashboard!
 """
 
+import os
 import time
 import logging
 import threading
@@ -44,6 +45,7 @@ def check_overdue_sessions():
 
                 _broadcast_event({
                     'type': 'OPERATOR_REMINDER_DUE',
+                    'plant_id': session.machine.plant_id if session.machine else 1,
                     'session_id': str(session.session_id),
                     'operator_id': session.operator.id,
                     'operator_name': session.operator.get_full_name() or session.operator.username,
@@ -66,6 +68,7 @@ def check_overdue_sessions():
 
                 _broadcast_event({
                     'type': 'SUPERVISOR_ESCALATION_ALERT',
+                    'plant_id': session.machine.plant_id if session.machine else 1,
                     'session_id': str(session.session_id),
                     'operator_id': session.operator.id,
                     'operator_name': session.operator.get_full_name() or session.operator.username,
@@ -86,10 +89,12 @@ def _broadcast_event(payload):
     try:
         channel_layer = get_channel_layer()
         if channel_layer:
+            # Safely extract Plant ID from payload (defaults to 1 if missing)
+            plant_id = payload.get('plant_id', 1)
             async_to_sync(channel_layer.group_send)(
-                'dashboard_plant_1',
+                f'plant_{plant_id}',
                 {
-                    'type': 'dashboard_event',
+                    'type': 'inspection.event',
                     'event': payload['type'],
                     'data': payload,
                 }
@@ -114,11 +119,22 @@ class ReminderWorkerThread(threading.Thread):
             time.sleep(self.interval_seconds)
 
 
+# H1+H2 FIX (step 3/3): Use a threading.Lock to protect _worker_started.
+#
+# Old code used a plain bool — two threads starting simultaneously could both
+# read False and both call thread.start(), spawning two worker threads.
+# The Lock makes the check-and-set atomic, so only one thread ever wins.
+_worker_lock    = threading.Lock()
 _worker_started = False
+
 
 def start_reminder_worker():
     global _worker_started
-    if not _worker_started:
-        thread = ReminderWorkerThread(interval_seconds=30)
-        thread.start()
-        _worker_started = True
+    with _worker_lock:
+        if not _worker_started:
+            thread = ReminderWorkerThread(interval_seconds=30)
+            thread.start()
+            _worker_started = True
+            logger.info("Reminder worker started (PID=%s).", os.getpid())
+        else:
+            logger.debug("Reminder worker already running — skipped duplicate start.")

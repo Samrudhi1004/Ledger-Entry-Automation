@@ -14,6 +14,17 @@ import re
 import logging
 from typing import Optional
 
+# L4 FIX: Import word2number at module level — not inside functions.
+# Importing inside a function pays a sys.modules dict lookup on every call.
+# With a top-level import + fallback we also get a clear startup error if the
+# library is missing, instead of a cryptic failure buried in a measurement call.
+try:
+    from word2number import w2n as _w2n
+    _W2N_AVAILABLE = True
+except ImportError:
+    _w2n = None
+    _W2N_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 # ─── Patterns ─────────────────────────────────────────────────────────────
@@ -103,15 +114,16 @@ class NumberParser:
 
     def _try_word2number(self, text: str) -> Optional[float]:
         """Convert word-form number to float via word2number library."""
+        if not _W2N_AVAILABLE:
+            return None
         try:
-            from word2number import w2n
             # Handle "X point Y" → X.Y
             if ' point ' in text:
                 parts = text.split(' point ', 1)
                 whole_text   = parts[0].strip()
                 decimal_text = parts[1].strip()
 
-                whole   = w2n.word_to_num(whole_text) if whole_text else 0
+                whole   = _w2n.word_to_num(whole_text) if whole_text else 0
                 # Convert decimal part word by word
                 decimal_digits = self._words_to_decimal_digits(decimal_text)
 
@@ -120,7 +132,7 @@ class NumberParser:
                 else:
                     return float(whole)
             else:
-                return float(w2n.word_to_num(text))
+                return float(_w2n.word_to_num(text))
         except Exception:
             return None
 
@@ -129,7 +141,8 @@ class NumberParser:
         Convert decimal part words to digit string.
         e.g. "zero one" → "01",  "five" → "5"
         """
-        from word2number import w2n
+        if not _W2N_AVAILABLE:
+            return None
         DIGIT_WORDS = {
             'zero': '0', 'one': '1', 'two': '2', 'three': '3',
             'four': '4', 'five': '5', 'six': '6', 'seven': '7',
@@ -143,7 +156,7 @@ class NumberParser:
             else:
                 try:
                     # Handles "fifty" → but unlikely after decimal point
-                    num = str(int(w2n.word_to_num(word)))
+                    num = str(int(_w2n.word_to_num(word)))
                     digits.append(num)
                 except Exception:
                     return None

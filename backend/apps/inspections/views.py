@@ -21,8 +21,7 @@ import csv
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-from apps.parts.models import Part
-from apps.machines.models import Machine
+# L1 FIX: Removed duplicate imports — Part and Machine already imported on lines 11-12.
 from apps.users.permissions import IsSupervisorOrAbove, IsOperatorOrSupervisor
 from .models import InspectionSession, DailyProductionReport, DowntimeReport
 from .serializers import (
@@ -35,9 +34,9 @@ from .serializers import (
     DowntimeReportSerializer,
 )
 from .pdf_generator import generate_daily_production_pdf, generate_downtime_pdf
-from .services import InspectionService
-
-_service = InspectionService()
+# M4 FIX: Import shared singleton — do NOT instantiate InspectionService() here.
+# One instance is shared across views.py, tasks.py, and any future modules.
+from .services import inspection_service as _service
 
 
 # ─── Start Inspection ─────────────────────────────────────────────────────
@@ -70,14 +69,19 @@ class StartInspectionView(APIView):
                 part    = part_future.result()    # re-raises Part.DoesNotExist if not found
                 machine = machine_future.result()  # re-raises Machine.DoesNotExist if not found
         except Part.DoesNotExist:
-            part = Part.objects.filter(is_active=True).first()
-            if not part:
-                return Response({'error': 'Part not found.'}, status=status.HTTP_404_NOT_FOUND)
-            machine = Machine.objects.filter(is_active=True).first()
+            # H3 FIX: Never substitute a random part — return 404 immediately.
+            # Old code silently picked any available part, causing measurements
+            # to be validated against completely wrong tolerances.
+            return Response(
+                {'error': f"Part '{d['part_number']}' not found or is inactive. Please check the part number."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         except Machine.DoesNotExist:
-            machine = Machine.objects.filter(is_active=True).first()
-            if not machine:
-                return Response({'error': 'Machine not found.'}, status=status.HTTP_404_NOT_FOUND)
+            # H3 FIX: Same — never substitute a random machine.
+            return Response(
+                {'error': f"Machine ID {d['machine_id']} not found or is inactive."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         try:
             session = _service.create_session(
@@ -564,7 +568,7 @@ class SetupStatusView(APIView):
 
         completed_slots = []
         try:
-            doc = _service.get_session_detail(str(session.session_id))
+            doc = _service.get_session_document(str(session.session_id))
             if doc and 'measurements' in doc:
                 slot_set = set()
                 for m in doc['measurements']:
@@ -712,17 +716,17 @@ class ClearHistoryView(APIView):
         session_id   = request.query_params.get('session_id')
 
         if session_id:
-            session = InspectionSession.objects.filter(session_id=session_id).first()
+            session = InspectionSession.objects.filter(session_id=session_id).exclude(status='completed').first()
             if session:
                 session.delete()
                 _service.collection.delete_one({'_id': str(session_id)})
             return Response({'message': f'Session {session_id} deleted.'})
 
         if machine_code:
-            # Clear ALL sessions for this machine unconditionally to provide a completely clean slate
+            # Safely clear only non-completed sessions to keep historical finalized data intact
             active_sessions = InspectionSession.objects.filter(
                 machine__machine_code=machine_code
-            )
+            ).exclude(status='completed')
             session_ids = [str(s.session_id) for s in active_sessions]
             active_sessions.delete()
             if session_ids:
@@ -901,7 +905,7 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['export_excel', 'export_pdf']:
-            return []
+            return [IsAuthenticated()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
@@ -1188,15 +1192,23 @@ def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
     for col in range(1, 23):
         ws.cell(row=note_row, column=col).border = thin_border
 
-    # Set Column Widths
-    col_widths = {
-        'A': 7, 'B': 12, 'C': 16, 'D': 9, 'E': 9, 'F': 11,
-        'G': 6, 'H': 6, 'I': 6,
-        'J': 9, 'K': 12, 'L': 7, 'M': 9, 'N': 8, 'O': 9, 'P': 6, 'Q': 6, 'R': 8,
-        'S': 15, 'T': 10, 'U': 10, 'V': 10
-    }
-    for col_letter, width in col_widths.items():
-        ws.column_dimensions[col_letter].width = width
+    # L8 FIX: Auto-adjust column widths dynamically based on actual cell content.
+    # Replaces the previous hardcoded col_widths dictionary that caused long 
+    # text (like remarks or part numbers) to get cut off.
+    from openpyxl.utils import get_column_letter
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter # Get the column name
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        
+        # Add a little padding and cap the maximum width at 50 to avoid crazy wide columns
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column].width = adjusted_width
 
     ws.row_dimensions[1].height = 20
     ws.row_dimensions[2].height = 20
@@ -1206,6 +1218,10 @@ def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
 
     buffer = io.BytesIO()
     wb.save(buffer)
+    # L6 FIX: Always close openpyxl workbooks after saving to free memory immediately.
+    # Otherwise, unclosed workbooks linger until garbage collection, causing a slow
+    # memory leak that can eventually OOM a small server during heavy report generation.
+    wb.close()
     buffer.seek(0)
     return buffer
 
@@ -1224,7 +1240,7 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['export_excel', 'export_pdf']:
-            return []
+            return [IsAuthenticated()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
@@ -1330,11 +1346,29 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
     def history(self, request):
         """
         Returns date-wise and shift-wise summary of submitted downtime reports for history tracking.
+
+        M3 FIX: Added date-range cap — defaults to last 90 days.
+        Use ?days=N (max 365) to customise the lookback window.
+        Without a cap, this fetched ALL records ever created, causing server-side
+        memory spikes and slow responses after months of factory operation.
         """
+        from django.utils import timezone as django_tz
+        import datetime as dt
+
+        # Parse ?days= query param — default 90, hard cap at 365
+        try:
+            days = min(int(request.query_params.get('days', 90)), 365)
+        except (ValueError, TypeError):
+            days = 90
+
+        since_date = (django_tz.now() - dt.timedelta(days=days)).date()
+
         reports = DowntimeReport.objects.select_related(
             'production_report',
             'production_report__machine',
             'created_by'
+        ).filter(
+            production_report__date__gte=since_date   # ← limit to recent records
         ).order_by('-production_report__date')
 
         date_groups = {}
@@ -1359,7 +1393,7 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
                     'submitted_by': (r.created_by.get_full_name() or r.created_by.username) if r.created_by else 'Supervisor',
                     'machines': []
                 }
-            
+
             date_groups[key]['count'] += 1
             if r.status == 'COMPLETED':
                 date_groups[key]['completed_count'] += 1
@@ -1368,7 +1402,12 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
                 date_groups[key]['machines'].append(prod.machine.machine_code)
 
         history_list = list(date_groups.values())
-        return Response(history_list, status=status.HTTP_200_OK)
+        return Response({
+            'count':   len(history_list),
+            'days':    days,
+            'since':   str(since_date),
+            'results': history_list,
+        }, status=status.HTTP_200_OK)
 
 
 
