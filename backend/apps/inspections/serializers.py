@@ -144,8 +144,8 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
 
     def get_rejected_parameters(self, obj):
         try:
-            from .services import InspectionService
-            doc = InspectionService().get_session_document(str(obj.session_id))
+            from .services import inspection_service
+            doc = inspection_service.get_session_document(str(obj.session_id))
             if doc:
                 rej = doc.get('rejected_parameters', [])
                 if rej and len(rej) > 0:
