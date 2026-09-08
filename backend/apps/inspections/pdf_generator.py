@@ -6,6 +6,14 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
+from apps.machines.models import Factory
+
+def get_factory_info():
+    factory = Factory.objects.filter(is_active=True).first()
+    if factory:
+        return factory.name, factory.code
+    return "MANTRI METALLICS PVT. LTD.", "MMPL"
+
 def generate_first_piece_pdf(session, doc_data: dict) -> str:
     media_pdf_dir = os.path.join(settings.MEDIA_ROOT, 'pdf_reports')
     os.makedirs(media_pdf_dir, exist_ok=True)
@@ -62,13 +70,15 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
             meas_map[p_code]['all_measurements'].append(m)
 
     elements = []
+    
+    fac_name, fac_code = get_factory_info()
 
     # 1. TOP HEADER (MMPL | Title | Doc Ref)
     header_data = [
         [
-            Paragraph("MMPL", mmpl_style),
-            [Paragraph("MANTRI METALLICS PVT. LTD.", title_style), Paragraph("1ST PIECE CUM IN-PROCESS INSPECTION REPORT — PROCESS NO. 10", subtitle_style)],
-            Paragraph("DOC REF: MMPL/PRD/F02<br/>REV: 02 (15.8.2013)<br/>PAGE 1 OF 1", doc_ref_style)
+            Paragraph(fac_code, mmpl_style),
+            [Paragraph(fac_name.upper(), title_style), Paragraph("1ST PIECE CUM IN-PROCESS INSPECTION REPORT — PROCESS NO. 10", subtitle_style)],
+            Paragraph(f"DOC REF: {fac_code}/PRD/F02<br/>REV: 02 (15.8.2013)<br/>PAGE 1 OF 1", doc_ref_style)
         ]
     ]
     header_table = Table(header_data, colWidths=[90, 580, 150])
@@ -269,13 +279,15 @@ def generate_daily_production_pdf(report) -> str:
     left_style = ParagraphStyle('LeftStyle', fontName='Helvetica', fontSize=9, alignment=0)
 
     elements = []
+    
+    fac_name, fac_code = get_factory_info()
 
     # 1. Header
     header_data = [
         [
-            Paragraph("MMPL", mmpl_style),
-            [Paragraph("MANTRI METALLICS PVT. LTD.", title_style), Paragraph("DAILY PRODUCTION REPORT — END OF DAY SUMMARY", subtitle_style)],
-            Paragraph("DOC REF: MMPL/PRD/F08<br/>REV: 01 (12.8.2026)<br/>PAGE 1 OF 1", doc_ref_style)
+            Paragraph(fac_code, mmpl_style),
+            [Paragraph(fac_name.upper(), title_style), Paragraph("DAILY PRODUCTION REPORT — END OF DAY SUMMARY", subtitle_style)],
+            Paragraph(f"DOC REF: {fac_code}/PRD/F08<br/>REV: 01 (12.8.2026)<br/>PAGE 1 OF 1", doc_ref_style)
         ]
     ]
     header_table = Table(header_data, colWidths=[100, 550, 150])
@@ -394,13 +406,15 @@ def generate_downtime_pdf(qs, date_str: str, shift_str: str) -> str:
     bold_cell = ParagraphStyle('BoldCell', fontName='Helvetica-Bold', fontSize=7, alignment=1)
 
     elements = []
+    
+    fac_name, fac_code = get_factory_info()
 
     # 1. Header Table (Hanuman Engineering Works / DOWN TIME REPORT / Doc Ref)
     header_data = [
         [
-            Paragraph("<b>HANUMAN ENGINEERING<br/>WORKS</b>", title_style),
+            Paragraph(f"<b>{fac_name.upper()}</b>", title_style),
             Paragraph("<b>DOWN TIME REPORT</b>", cyan_header_style),
-            Paragraph("<b>FORMAT NO. :- QF/MF-06</b><br/>REV. No./ Date :- 00 / 30.09.2026<br/><b>Shift:</b> " + str(shift_str), doc_ref_style)
+            Paragraph(f"<b>FORMAT NO. :- {fac_code}/QF/MF-06</b><br/>REV. No./ Date :- 00 / 30.09.2026<br/><b>Shift:</b> " + str(shift_str), doc_ref_style)
         ]
     ]
     header_table = Table(header_data, colWidths=[200, 420, 190])

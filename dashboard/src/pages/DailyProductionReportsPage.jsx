@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/layout/Header';
 import api, { BASE_URL } from '../api/axios';
+import { useCompany } from '../context/CompanyContext';
 import {
   BarChart3,
   Calendar,
@@ -23,6 +24,7 @@ import {
 } from 'lucide-react';
 
 export default function DailyProductionReportsPage() {
+  const { companyName, companyCode } = useCompany();
   const [reports, setReports] = useState([]);
   const [machines, setMachines] = useState([]);
   const [parts, setParts] = useState([]);
@@ -347,14 +349,14 @@ export default function DailyProductionReportsPage() {
               {/* 1. OFFICIAL COMPANY BRANDING HEADER */}
               <div style={{ border: '2px solid #000000', display: 'grid', gridTemplateColumns: '110px 1fr 180px', marginBottom: '-2px' }}>
                 <div style={{ backgroundColor: '#000000', color: '#ffffff', fontWeight: '900', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', letterSpacing: '1px' }}>
-                  MMPL
+                  {companyCode}
                 </div>
                 <div style={{ borderLeft: '2px solid #000000', borderRight: '2px solid #000000', padding: '8px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '900', color: '#000000', letterSpacing: '0.5px' }}>MANTRI METALLICS PVT. LTD.</div>
+                  <div style={{ fontSize: '13px', fontWeight: '900', color: '#000000', letterSpacing: '0.5px' }}>{companyName.toUpperCase()}</div>
                   <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#000000', marginTop: '2px' }}>DAILY PRODUCTION REPORT — END OF DAY SUMMARY</div>
                 </div>
                 <div style={{ padding: '6px', fontSize: '9px', fontWeight: 'bold', color: '#000000', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <div>DOC REF: MMPL/PRD/F08</div>
+                  <div>DOC REF: {companyCode}/PRD/F08</div>
                   <div>REV: 01 (12.8.2026)</div>
                   <div>PAGE 1 OF 1</div>
                 </div>

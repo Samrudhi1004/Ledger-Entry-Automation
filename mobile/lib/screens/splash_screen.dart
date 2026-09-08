@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
+import '../providers/company_provider.dart';
 import '../services/persistence_service.dart';
 import 'login_screen.dart';
 import 'app_home_screen.dart';
@@ -244,14 +245,18 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
             const SizedBox(height: 28),
-            const Text(
-              'MMPL',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 6,
-              ),
+            Consumer<CompanyProvider>(
+              builder: (context, company, child) {
+                return Text(
+                  company.companyCode,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 6,
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 6),
             const Text(
