@@ -57,7 +57,7 @@ class Command(BaseCommand):
         current_year = today.year
         previous_year = current_year - 1
         calibrator = get_user_model().objects.filter(role='calibrator').order_by('id').first()
-        passed_this_year = 0
+        accepted_this_year = 0
 
         for index, spec in enumerate(EQUIPMENT, start=1):
             name, equipment_type, manufacturer, model, range_size, least_count, error, department, location = spec
@@ -91,6 +91,7 @@ class Command(BaseCommand):
                     'next_calibration_date': next_calibration,
                     'remarks': 'Demo master instrument - available for use',
                     'is_failed': False,
+                    'state': CalibrationEquipment.State.ACTIVE,
                     'failed_date': None,
                     'failure_remark': '',
                 },
@@ -106,15 +107,15 @@ class Command(BaseCommand):
                 planned_date=current_plan,
                 defaults={'remarks': f'Annual calibration plan {current_year}'},
             )
-            self._save_passed_record(
+            self._save_accepted_record(
                 equipment, index, previous_plan, previous_actual, current_plan,
                 previous_year, calibrator,
             )
 
             if current_is_complete:
-                passed_this_year += 1
+                accepted_this_year += 1
                 next_due = current_actual + timedelta(days=365)
-                self._save_passed_record(
+                self._save_accepted_record(
                     equipment, index, current_plan, current_actual, next_due,
                     current_year, calibrator,
                 )
@@ -126,29 +127,27 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             f'Calibration demo data is ready: {len(EQUIPMENT)} equipment, '
-            f'{len(EQUIPMENT)} passed histories for {previous_year}, '
-            f'{passed_this_year} passed histories through {today:%d %b %Y}, and no failures.'
+            f'{len(EQUIPMENT)} accepted histories for {previous_year}, '
+            f'{accepted_this_year} accepted histories through {today:%d %b %Y}, and no rejections.'
         ))
 
     @staticmethod
-    def _save_passed_record(equipment, index, planned_date, actual_date, next_due_date, year, calibrator):
+    def _save_accepted_record(equipment, index, planned_date, actual_date, next_due_date, year, calibrator):
         CalibrationRecord.objects.update_or_create(
             equipment=equipment,
-            report_number=f'DEMO-RPT-{year}-{index:03d}',
+            planned_date=planned_date,
             defaults={
-                'planned_date': planned_date,
                 'calibration_date': actual_date,
-                'result': CalibrationRecord.Result.PASSED,
+                'result': CalibrationRecord.Result.ACCEPTED,
                 'calibration_agency': 'Precision Calibration Services',
                 'certificate_number': f'CERT-{year}-{index:03d}',
                 'traceability_certificate_number': f'TRACE-{year}-{index:03d}',
-                'specified_size': equipment.range_size,
                 'calibration_details': (
                     f'{equipment.equipment_name} checked across its operating range; '
-                    f'all readings were within {equipment.acceptable_error}.'
+                    f'all readings met {equipment.acceptance_criteria}.'
                 ),
                 'next_due_date': next_due_date,
-                'remarks': 'Passed and released for use.',
+                'remarks': 'Accepted and released for use.',
                 'recorded_by': calibrator,
             },
         )
