@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { supervisorOverride } from '../../api/inspections';
+import { useCompany } from '../../context/CompanyContext';
 
 export default function InspectionGridSheet({ session, onUpdate }) {
+  const { companyCode } = useCompany();
   const [editingParam, setEditingParam] = useState(null);
   const [overrideVal, setOverrideVal]   = useState('');
   const [overrideRemark, setOverrideRemark] = useState('');
@@ -51,7 +53,7 @@ export default function InspectionGridSheet({ session, onUpdate }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--accent-blue)' }}>
-              MMPL — 1ST PIECE CUM IN-PROCESS INSPECTION REPORT
+              {companyCode} — 1ST PIECE CUM IN-PROCESS INSPECTION REPORT
             </h3>
             <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '20px', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
               ⚡ {maxSlots}-Hour Shift ({maxSlots} Slots)

@@ -67,14 +67,18 @@ api.interceptors.response.use(
         } catch (refreshErr) {
           processQueue(refreshErr, null);
           localStorage.clear();
-          window.location.href = '/login';
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
           return Promise.reject(refreshErr);
         } finally {
           isRefreshing = false;
         }
       } else {
         localStorage.clear();
-        window.location.href = '/login';
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);

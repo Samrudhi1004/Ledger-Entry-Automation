@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
+import '../providers/company_provider.dart';
 import '../services/api_service.dart';
 import 'app_home_screen.dart';
 
@@ -347,9 +349,13 @@ class _ReportSheetScreenState extends State<ReportSheetScreen> {
                                               height: 54,
                                               color: Colors.black,
                                               alignment: Alignment.center,
-                                              child: const Text(
-                                                'MMPL',
-                                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1.5),
+                                              child: Consumer<CompanyProvider>(
+                                                builder: (context, company, _) {
+                                                  return Text(
+                                                    company.companyCode,
+                                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1.5),
+                                                  );
+                                                },
                                               ),
                                             ),
                                             Container(width: 1.5, height: 54, color: const Color(0xFF475569)),
@@ -359,14 +365,18 @@ class _ReportSheetScreenState extends State<ReportSheetScreen> {
                                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                                 child: Column(
                                                   mainAxisAlignment: MainAxisAlignment.center,
-                                                  children: const [
-                                                    Text(
-                                                      'MANTRI METALLICS PVT. LTD.',
-                                                      style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5),
-                                                      textAlign: TextAlign.center,
+                                                  children: [
+                                                    Consumer<CompanyProvider>(
+                                                      builder: (context, company, _) {
+                                                        return Text(
+                                                          company.companyName.toUpperCase(),
+                                                          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5),
+                                                          textAlign: TextAlign.center,
+                                                        );
+                                                      },
                                                     ),
-                                                    SizedBox(height: 2),
-                                                    Text(
+                                                    const SizedBox(height: 2),
+                                                    const Text(
                                                       '1ST PIECE CUM IN-PROCESS INSPECTION REPORT',
                                                       style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold, fontSize: 10),
                                                       textAlign: TextAlign.center,
@@ -382,11 +392,15 @@ class _ReportSheetScreenState extends State<ReportSheetScreen> {
                                               child: Column(
                                                 mainAxisAlignment: MainAxisAlignment.center,
                                                 crossAxisAlignment: CrossAxisAlignment.end,
-                                                children: const [
-                                                  Text('DOC REF: MMPL/PRD/F02', style: TextStyle(color: Colors.black, fontSize: 8, fontWeight: FontWeight.bold)),
-                                                  Text('REV: 02 (15.8.2013)', style: TextStyle(color: Color(0xFF64748B), fontSize: 8)),
-                                                  SizedBox(height: 2),
-                                                  Text('LIVE VIEW', style: TextStyle(color: Color(0xFF7C3AED), fontWeight: FontWeight.w900, fontSize: 9)),
+                                                children: [
+                                                  Consumer<CompanyProvider>(
+                                                    builder: (context, company, _) {
+                                                      return Text('DOC REF: ${company.companyCode}/PRD/F02', style: const TextStyle(color: Colors.black, fontSize: 8, fontWeight: FontWeight.bold));
+                                                    },
+                                                  ),
+                                                  const Text('REV: 02 (15.8.2013)', style: TextStyle(color: Color(0xFF64748B), fontSize: 8)),
+                                                  const SizedBox(height: 2),
+                                                  const Text('LIVE VIEW', style: TextStyle(color: Color(0xFF7C3AED), fontWeight: FontWeight.w900, fontSize: 9)),
                                                 ],
                                               ),
                                             ),

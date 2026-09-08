@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/company_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../services/api_service.dart';
 
@@ -292,9 +293,13 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
               color: Colors.black,
               alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(vertical: 10),
-              child: const Text(
-                'MMPL',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1.2),
+              child: Consumer<CompanyProvider>(
+                builder: (context, company, _) {
+                  return Text(
+                    company.companyCode,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1.2),
+                  );
+                },
               ),
             ),
             Container(width: 1, color: Colors.black),
@@ -306,9 +311,13 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text(
-                      'MANTRI METALLICS PVT. LTD.',
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: Colors.black, letterSpacing: 0.5),
+                    Consumer<CompanyProvider>(
+                      builder: (context, company, _) {
+                        return Text(
+                          company.companyName.toUpperCase(),
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: Colors.black, letterSpacing: 0.5),
+                        );
+                      },
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -326,13 +335,17 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
               width: 100,
               padding: const EdgeInsets.all(4),
               alignment: Alignment.center,
-              child: const Column(
+              child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('DOC REF: MMPL/PRD/F02', style: TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold, color: Colors.black)),
-                  Text('REV: 02 (15.0.2013)', style: TextStyle(fontSize: 7.5, color: Color(0xFF64748B))),
-                  Text('PAGE 1 OF 1', style: TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold, color: Colors.black)),
+                  Consumer<CompanyProvider>(
+                    builder: (context, company, _) {
+                      return Text('DOC REF: ${company.companyCode}/PRD/F02', style: const TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold, color: Colors.black));
+                    },
+                  ),
+                  const Text('REV: 02 (15.0.2013)', style: TextStyle(fontSize: 7.5, color: Color(0xFF64748B))),
+                  const Text('PAGE 1 OF 1', style: TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold, color: Colors.black)),
                 ],
               ),
             ),
