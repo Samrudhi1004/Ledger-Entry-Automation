@@ -274,3 +274,149 @@ class ProcessParameter(models.Model):
                 self.upper_limit = nom + upper_tol
                 self.lower_limit = nom + lower_tol
         super().save(*args, **kwargs)
+
+
+class DrawingDocument(models.Model):
+    """
+    An Engineering Drawing record.
+    Can optionally be linked to a Part, or kept as a general drawing.
+    Holds metadata and tracks its revision history via DrawingVersion.
+    """
+    part = models.ForeignKey(
+        Part,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='drawings',
+        help_text='Optional link to a Part'
+    )
+    drawing_number = models.CharField(max_length=100, unique=True, help_text='Unique Drawing Number e.g. DWG-101')
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default='')
+    current_revision = models.CharField(max_length=20, default='Rev A')
+    created_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_drawings',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'drawing_documents'
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.drawing_number} - {self.title} ({self.current_revision})"
+
+
+class DrawingVersion(models.Model):
+    """
+    Historical upload version for a Drawing.
+    Every upload creates a new version entry storing file, revision code, notes, and timestamp.
+    """
+    drawing = models.ForeignKey(
+        DrawingDocument,
+        on_delete=models.CASCADE,
+        related_name='versions',
+    )
+    revision_code = models.CharField(max_length=20)  # e.g. Rev A, Rev B, v1.0
+    file = models.FileField(upload_to='drawings/')
+    file_name = models.CharField(max_length=255, blank=True)
+    file_size = models.PositiveIntegerField(default=0)  # in bytes
+    change_notes = models.TextField(blank=True, default='')
+    uploaded_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='uploaded_drawing_versions',
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'drawing_versions'
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f"{self.drawing.drawing_number} [{self.revision_code}]"
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.file_name:
+            self.file_name = self.file.name.split('/')[-1]
+        if self.file and hasattr(self.file, 'size'):
+            self.file_size = getattr(self.file, 'size', 0)
+        super().save(*args, **kwargs)
+
+
+class ControlPlanDocument(models.Model):
+    """
+    A Process Control Plan record.
+    Can optionally be linked to a Part, or kept as a general control plan.
+    Holds metadata and tracks version history via ControlPlanVersion.
+    """
+    part = models.ForeignKey(
+        Part,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='control_plans',
+        help_text='Optional link to a Part'
+    )
+    control_plan_number = models.CharField(max_length=100, unique=True, help_text='Unique Control Plan Number e.g. CP-101')
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default='')
+    current_revision = models.CharField(max_length=20, default='v1.0')
+    created_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_control_plans',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'control_plan_documents'
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.control_plan_number} - {self.title} ({self.current_revision})"
+
+
+class ControlPlanVersion(models.Model):
+    """
+    Historical upload version for a Control Plan.
+    """
+    control_plan = models.ForeignKey(
+        ControlPlanDocument,
+        on_delete=models.CASCADE,
+        related_name='versions',
+    )
+    revision_code = models.CharField(max_length=20)  # e.g. v1.0, v1.1
+    file = models.FileField(upload_to='control_plans/')
+    file_name = models.CharField(max_length=255, blank=True)
+    file_size = models.PositiveIntegerField(default=0)
+    change_notes = models.TextField(blank=True, default='')
+    uploaded_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='uploaded_control_plan_versions',
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'control_plan_versions'
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f"{self.control_plan.control_plan_number} [{self.revision_code}]"
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.file_name:
+            self.file_name = self.file.name.split('/')[-1]
+        if self.file and hasattr(self.file, 'size'):
+            self.file_size = getattr(self.file, 'size', 0)
+        super().save(*args, **kwargs)
+

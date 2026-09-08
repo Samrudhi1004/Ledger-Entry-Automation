@@ -1,12 +1,15 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
-import { Cpu, FileText, ArrowRight, ShieldCheck, Clock } from 'lucide-react';
+import { Cpu, FileText, ArrowRight, ShieldCheck, Clock, Gauge } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function QualityAnalyzerPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canAccessCalibration = user?.role === 'admin' || user?.role === 'calibrator';
 
-  const reportCards = [
+  const allReportCards = [
     {
       id: 'live-reports',
       title: 'Live Reports',
@@ -53,7 +56,27 @@ export default function QualityAnalyzerPage() {
       link: '/reports/setup-approval',
       disabled: false,
     },
+    {
+      id: 'calibration-hub',
+      title: 'Calibration Equipment & Record Hub',
+      badge: '● Equipment Calibration & Standards',
+      badgeBg: '#FEF3C7',
+      badgeColor: '#92400E',
+      icon: Gauge,
+      iconBg: '#FEF3C7',
+      iconColor: '#D97706',
+      description:
+        'Manage master calibration equipment, equipment master register, preventive calibration schedules, calibration history, and compliance certificates.',
+      details: ['Equipment Master Register', 'Calibration Schedule & Plan', 'Audit Trail & Calibration History'],
+      actionText: 'Open Calibration Hub',
+      link: '/calibration',
+      disabled: false,
+    },
   ];
+
+  const reportCards = allReportCards.filter(
+    (card) => card.id !== 'calibration-hub' || canAccessCalibration
+  );
 
   return (
     <>

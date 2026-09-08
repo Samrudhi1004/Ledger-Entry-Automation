@@ -1,12 +1,21 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import (
     PartListCreateView, PartDetailView,
     TemplateListCreateView, TemplateDetailView, TemplatePublishView, ActiveTemplateView,
     ParameterListCreateView, ParameterDetailView, AllParameterListView,
     ProcessParameterListCreateView, ProcessParameterDetailView, AllProcessParameterListView,
+    DrawingViewSet, ControlPlanViewSet
 )
 
+router = DefaultRouter()
+router.register(r'drawings', DrawingViewSet, basename='drawing')
+router.register(r'control-plans', ControlPlanViewSet, basename='control-plan')
+
 urlpatterns = [
+    # Router endpoints
+    path('', include(router.urls)),
+
     # 1. Base Parts List
     path('',                                         PartListCreateView.as_view(),    name='part-list'),
 
@@ -27,3 +36,4 @@ urlpatterns = [
     path('<path:part_number>/template/<str:inspection_type>/', ActiveTemplateView.as_view(), name='active-template'),
     path('<path:part_number>/',                       PartDetailView.as_view(),        name='part-detail'),
 ]
+

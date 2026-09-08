@@ -67,3 +67,44 @@ export const getAllParameters = (config = {}) =>
 
 export const getAllProcessParameters = (config = {}) =>
   axios.get('/api/parts/process-parameters/all/', config);
+
+// Engineering Drawings API (Admin Only)
+export const getDrawings = () =>
+  axios.get('/api/parts/drawings/');
+
+export const createDrawing = (formData) =>
+  axios.post('/api/parts/drawings/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+
+export const uploadDrawingVersion = (drawingId, formData) =>
+  axios.post(`/api/parts/drawings/${drawingId}/upload_version/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+
+export const getDrawingHistory = (drawingId) =>
+  axios.get(`/api/parts/drawings/${drawingId}/history/`);
+
+export const deleteDrawing = (drawingId) =>
+  axios.delete(`/api/parts/drawings/${drawingId}/`);
+
+// Control Plans API (Admin Only)
+export const getControlPlans = () =>
+  axios.get('/api/parts/control-plans/');
+
+export const createControlPlan = (formData) =>
+  axios.post('/api/parts/control-plans/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+
+export const uploadControlPlanVersion = (controlPlanId, formData) =>
+  axios.post(`/api/parts/control-plans/${controlPlanId}/upload_version/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+
+export const getControlPlanHistory = (controlPlanId) =>
+  axios.get(`/api/parts/control-plans/${controlPlanId}/history/`);
+
+export const deleteControlPlan = (controlPlanId) =>
+  axios.delete(`/api/parts/control-plans/${controlPlanId}/`);
+

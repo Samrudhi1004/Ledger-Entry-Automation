@@ -27,6 +27,8 @@ import HRModulePage from './pages/HRModulePage';
 import PurchaseModulePage from './pages/PurchaseModulePage';
 import MaintenanceModulePage from './pages/MaintenanceModulePage';
 import DevelopmentModulePage from './pages/DevelopmentModulePage';
+import DrawingsPage from './pages/DrawingsPage';
+import ControlPlansPage from './pages/ControlPlansPage';
 import MarketingModulePage from './pages/MarketingModulePage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
@@ -35,6 +37,7 @@ const PLANT_ID = 1;
 const CALIBRATOR_ROLE = 'calibrator';
 const ALL_ROLES = ['admin', 'supervisor', 'calibrator', 'operator', 'quality_engineer'];
 const CALIBRATOR_ONLY = [CALIBRATOR_ROLE];
+const CALIBRATION_ROLES = ['admin', 'calibrator'];
 const CalibrationPage = lazy(() => import('./pages/CalibrationPage'));
 
 function ProtectedLayout({ children, pendingCount, allowedRoles }) {
@@ -195,6 +198,22 @@ export default function App() {
         }
       />
       <Route
+        path="/development/drawings"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
+            <DrawingsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/development/control-plans"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
+            <ControlPlansPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
         path="/marketing"
         element={
           <ProtectedLayout pendingCount={pendingCount}>
@@ -282,7 +301,7 @@ export default function App() {
       <Route
         path="/calibration"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATION_ROLES}>
             <CalibrationPage view="dashboard" />
           </ProtectedLayout>
         }
@@ -291,7 +310,7 @@ export default function App() {
       <Route
         path="/calibration/equipment"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATION_ROLES}>
             <CalibrationPage view="equipment" />
           </ProtectedLayout>
         }
@@ -300,7 +319,7 @@ export default function App() {
       <Route
         path="/calibration/equipment/new"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATION_ROLES}>
             <CalibrationPage view="register" />
           </ProtectedLayout>
         }
@@ -309,7 +328,7 @@ export default function App() {
       <Route
         path="/calibration/plan"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATION_ROLES}>
             <CalibrationPage view="plan" />
           </ProtectedLayout>
         }
@@ -318,7 +337,7 @@ export default function App() {
       <Route
         path="/calibration/equipment/:equipmentId/history"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATOR_ONLY}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATION_ROLES}>
             <CalibrationPage view="history" />
           </ProtectedLayout>
         }
