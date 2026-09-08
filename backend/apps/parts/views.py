@@ -1,4 +1,6 @@
 from django.utils import timezone
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -353,6 +355,17 @@ class DrawingViewSet(viewsets.ModelViewSet):
         serializer = DrawingVersionSerializer(versions, many=True, context={'request': request})
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'], url_path=r'versions/(?P<version_id>\d+)/download')
+    def download_file(self, request, pk=None, version_id=None):
+        """GET /api/parts/drawings/{id}/versions/{version_id}/download/"""
+        drawing = self.get_object()
+        version = get_object_or_404(DrawingVersion, pk=version_id, drawing=drawing)
+        if not version.file:
+            return Response({'error': 'Drawing file not found.'}, status=status.HTTP_404_NOT_FOUND)
+        response = FileResponse(version.file.open('rb'), content_type='application/octet-stream')
+        response['Content-Disposition'] = f'attachment; filename="{version.file_name or "drawing.pdf"}"'
+        return response
+
 
 class ControlPlanViewSet(viewsets.ModelViewSet):
     """
@@ -419,4 +432,15 @@ class ControlPlanViewSet(viewsets.ModelViewSet):
         versions = control_plan.versions.select_related('uploaded_by').all()
         serializer = ControlPlanVersionSerializer(versions, many=True, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path=r'versions/(?P<version_id>\d+)/download')
+    def download_file(self, request, pk=None, version_id=None):
+        """GET /api/parts/control-plans/{id}/versions/{version_id}/download/"""
+        control_plan = self.get_object()
+        version = get_object_or_404(ControlPlanVersion, pk=version_id, control_plan=control_plan)
+        if not version.file:
+            return Response({'error': 'Control plan file not found.'}, status=status.HTTP_404_NOT_FOUND)
+        response = FileResponse(version.file.open('rb'), content_type='application/octet-stream')
+        response['Content-Disposition'] = f'attachment; filename="{version.file_name or "control_plan.pdf"}"'
+        return response
 

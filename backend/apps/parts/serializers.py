@@ -142,9 +142,10 @@ class DrawingVersionSerializer(serializers.ModelSerializer):
     def get_file_url(self, obj):
         request = self.context.get('request')
         if obj.file and hasattr(obj.file, 'url'):
+            download_path = f"/api/parts/drawings/{obj.drawing_id}/versions/{obj.pk}/download/"
             if request is not None:
-                return request.build_absolute_uri(obj.file.url)
-            return obj.file.url
+                return request.build_absolute_uri(download_path)
+            return download_path
         return None
 
 
@@ -188,9 +189,10 @@ class ControlPlanVersionSerializer(serializers.ModelSerializer):
     def get_file_url(self, obj):
         request = self.context.get('request')
         if obj.file and hasattr(obj.file, 'url'):
+            download_path = f"/api/parts/control-plans/{obj.control_plan_id}/versions/{obj.pk}/download/"
             if request is not None:
-                return request.build_absolute_uri(obj.file.url)
-            return obj.file.url
+                return request.build_absolute_uri(download_path)
+            return download_path
         return None
 
 
