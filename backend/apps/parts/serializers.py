@@ -138,13 +138,15 @@ class DrawingVersionSerializer(serializers.ModelSerializer):
             'uploaded_by', 'uploaded_by_name', 'uploaded_at',
         ]
         read_only_fields = ['id', 'drawing', 'file_name', 'file_size', 'uploaded_by', 'uploaded_at']
+        extra_kwargs = {'file': {'write_only': True, 'required': False}}
 
     def get_file_url(self, obj):
         request = self.context.get('request')
         if obj.file and hasattr(obj.file, 'url'):
+            download_path = f"/api/parts/drawings/{obj.drawing_id}/versions/{obj.pk}/download/"
             if request is not None:
-                return request.build_absolute_uri(obj.file.url)
-            return obj.file.url
+                return request.build_absolute_uri(download_path)
+            return download_path
         return None
 
 
@@ -163,7 +165,7 @@ class DrawingDocumentSerializer(serializers.ModelSerializer):
             'current_revision', 'created_by', 'created_by_name',
             'created_at', 'updated_at', 'versions', 'latest_version',
         ]
-        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'current_revision', 'created_by', 'created_at', 'updated_at']
 
     def get_latest_version(self, obj):
         latest = obj.versions.first()
@@ -184,13 +186,15 @@ class ControlPlanVersionSerializer(serializers.ModelSerializer):
             'uploaded_by', 'uploaded_by_name', 'uploaded_at',
         ]
         read_only_fields = ['id', 'control_plan', 'file_name', 'file_size', 'uploaded_by', 'uploaded_at']
+        extra_kwargs = {'file': {'write_only': True, 'required': False}}
 
     def get_file_url(self, obj):
         request = self.context.get('request')
         if obj.file and hasattr(obj.file, 'url'):
+            download_path = f"/api/parts/control-plans/{obj.control_plan_id}/versions/{obj.pk}/download/"
             if request is not None:
-                return request.build_absolute_uri(obj.file.url)
-            return obj.file.url
+                return request.build_absolute_uri(download_path)
+            return download_path
         return None
 
 
@@ -209,7 +213,7 @@ class ControlPlanDocumentSerializer(serializers.ModelSerializer):
             'current_revision', 'created_by', 'created_by_name',
             'created_at', 'updated_at', 'versions', 'latest_version',
         ]
-        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'current_revision', 'created_by', 'created_at', 'updated_at']
 
     def get_latest_version(self, obj):
         latest = obj.versions.first()

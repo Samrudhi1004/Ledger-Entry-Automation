@@ -1,5 +1,5 @@
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 from .views import (
     PartListCreateView, PartDetailView,
     TemplateListCreateView, TemplateDetailView, TemplatePublishView, ActiveTemplateView,
@@ -8,16 +8,16 @@ from .views import (
     DrawingViewSet, ControlPlanViewSet
 )
 
-router = DefaultRouter()
+router = SimpleRouter()
 router.register(r'drawings', DrawingViewSet, basename='drawing')
 router.register(r'control-plans', ControlPlanViewSet, basename='control-plan')
 
 urlpatterns = [
-    # Router endpoints
-    path('', include(router.urls)),
-
     # 1. Base Parts List
     path('',                                         PartListCreateView.as_view(),    name='part-list'),
+
+    # Router endpoints
+    path('', include(router.urls)),
 
     # 2. Fixed routes for Templates & Parameters (MUST COME BEFORE <path:part_number> catch-alls)
     path('templates/<int:pk>/publish/',              TemplatePublishView.as_view(),    name='template-publish'),

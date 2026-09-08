@@ -1,4 +1,6 @@
 from django.utils import timezone
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -277,6 +279,7 @@ class AllProcessParameterListView(generics.ListAPIView):
 # ─────────────────────────────────────────────────────────────
 # Drawings & Control Plans Management (Admin Only)
 # ─────────────────────────────────────────────────────────────
+from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -296,6 +299,7 @@ class DrawingViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+    @transaction.atomic
     def perform_create(self, serializer):
         drawing = serializer.save(created_by=self.request.user)
         file_obj = self.request.FILES.get('file')
@@ -311,6 +315,9 @@ class DrawingViewSet(viewsets.ModelViewSet):
                 change_notes=change_notes,
                 uploaded_by=self.request.user,
             )
+            if drawing.current_revision != revision_code:
+                drawing.current_revision = revision_code
+                drawing.save(update_fields=['current_revision'])
 
     @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def upload_version(self, request, pk=None):
@@ -325,17 +332,18 @@ class DrawingViewSet(viewsets.ModelViewSet):
         if not revision_code:
             return Response({'error': 'A revision code is required (e.g. Rev B).'}, status=status.HTTP_400_BAD_REQUEST)
 
-        version = DrawingVersion.objects.create(
-            drawing=drawing,
-            revision_code=revision_code,
-            file=file_obj,
-            file_name=file_obj.name,
-            file_size=file_obj.size,
-            change_notes=change_notes,
-            uploaded_by=request.user,
-        )
-        drawing.current_revision = revision_code
-        drawing.save()
+        with transaction.atomic():
+            version = DrawingVersion.objects.create(
+                drawing=drawing,
+                revision_code=revision_code,
+                file=file_obj,
+                file_name=file_obj.name,
+                file_size=file_obj.size,
+                change_notes=change_notes,
+                uploaded_by=request.user,
+            )
+            drawing.current_revision = revision_code
+            drawing.save(update_fields=['current_revision'])
 
         return Response(DrawingDocumentSerializer(drawing, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
@@ -346,6 +354,17 @@ class DrawingViewSet(viewsets.ModelViewSet):
         versions = drawing.versions.select_related('uploaded_by').all()
         serializer = DrawingVersionSerializer(versions, many=True, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path=r'versions/(?P<version_id>\d+)/download')
+    def download_file(self, request, pk=None, version_id=None):
+        """GET /api/parts/drawings/{id}/versions/{version_id}/download/"""
+        drawing = self.get_object()
+        version = get_object_or_404(DrawingVersion, pk=version_id, drawing=drawing)
+        if not version.file:
+            return Response({'error': 'Drawing file not found.'}, status=status.HTTP_404_NOT_FOUND)
+        response = FileResponse(version.file.open('rb'), content_type='application/octet-stream')
+        response['Content-Disposition'] = f'attachment; filename="{version.file_name or "drawing.pdf"}"'
+        return response
 
 
 class ControlPlanViewSet(viewsets.ModelViewSet):
@@ -358,6 +377,7 @@ class ControlPlanViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+    @transaction.atomic
     def perform_create(self, serializer):
         control_plan = serializer.save(created_by=self.request.user)
         file_obj = self.request.FILES.get('file')
@@ -373,6 +393,9 @@ class ControlPlanViewSet(viewsets.ModelViewSet):
                 change_notes=change_notes,
                 uploaded_by=self.request.user,
             )
+            if control_plan.current_revision != revision_code:
+                control_plan.current_revision = revision_code
+                control_plan.save(update_fields=['current_revision'])
 
     @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def upload_version(self, request, pk=None):
@@ -387,17 +410,18 @@ class ControlPlanViewSet(viewsets.ModelViewSet):
         if not revision_code:
             return Response({'error': 'A version/revision code is required (e.g. v1.1).'}, status=status.HTTP_400_BAD_REQUEST)
 
-        version = ControlPlanVersion.objects.create(
-            control_plan=control_plan,
-            revision_code=revision_code,
-            file=file_obj,
-            file_name=file_obj.name,
-            file_size=file_obj.size,
-            change_notes=change_notes,
-            uploaded_by=request.user,
-        )
-        control_plan.current_revision = revision_code
-        control_plan.save()
+        with transaction.atomic():
+            version = ControlPlanVersion.objects.create(
+                control_plan=control_plan,
+                revision_code=revision_code,
+                file=file_obj,
+                file_name=file_obj.name,
+                file_size=file_obj.size,
+                change_notes=change_notes,
+                uploaded_by=request.user,
+            )
+            control_plan.current_revision = revision_code
+            control_plan.save(update_fields=['current_revision'])
 
         return Response(ControlPlanDocumentSerializer(control_plan, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
@@ -408,4 +432,15 @@ class ControlPlanViewSet(viewsets.ModelViewSet):
         versions = control_plan.versions.select_related('uploaded_by').all()
         serializer = ControlPlanVersionSerializer(versions, many=True, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path=r'versions/(?P<version_id>\d+)/download')
+    def download_file(self, request, pk=None, version_id=None):
+        """GET /api/parts/control-plans/{id}/versions/{version_id}/download/"""
+        control_plan = self.get_object()
+        version = get_object_or_404(ControlPlanVersion, pk=version_id, control_plan=control_plan)
+        if not version.file:
+            return Response({'error': 'Control plan file not found.'}, status=status.HTTP_404_NOT_FOUND)
+        response = FileResponse(version.file.open('rb'), content_type='application/octet-stream')
+        response['Content-Disposition'] = f'attachment; filename="{version.file_name or "control_plan.pdf"}"'
+        return response
 
