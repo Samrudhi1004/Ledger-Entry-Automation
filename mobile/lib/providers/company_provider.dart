@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import 'package:http/http.dart' as http;
 
 class CompanyProvider extends ChangeNotifier {
   String _companyName = 'MANTRI METALLICS PVT. LTD.';
@@ -29,7 +30,9 @@ class CompanyProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final res = await ApiService.get('/machines/factories/');
+      final res = await ApiService.authenticatedRequest(
+        (headers) => http.get(Uri.parse('${ApiService.baseUrl}/machines/factories/'), headers: headers),
+      );
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
         final results = data['results'] ?? data;
