@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
+import '../providers/company_provider.dart';
 import '../services/persistence_service.dart';
 import 'app_home_screen.dart';
 import 'inspector_home_screen.dart';
@@ -296,9 +297,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  'v1.0.0 — MMPL Real-Time Quality Systems',
-                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                Consumer<CompanyProvider>(
+                  builder: (context, company, child) {
+                    return Text(
+                      'v1.0.0 — ${company.companyCode} Real-Time Quality Systems',
+                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                    );
+                  },
                 ),
               ],
             ),

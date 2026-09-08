@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import { useAuth } from '../context/AuthContext';
+import { useCompany } from '../context/CompanyContext';
 import { getCompanyDetails, updateCompanyDetails, getCompanyPlants } from '../api/company';
 import {
   Building2, CheckCircle2, AlertCircle, Save, RefreshCw, User, Clock, Zap
@@ -9,6 +10,7 @@ import {
 
 export default function CompanyDetailsPage() {
   const { user } = useAuth();
+  const { refreshCompany } = useCompany();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
@@ -16,14 +18,14 @@ export default function CompanyDetailsPage() {
 
   const [companyId, setCompanyId] = useState(null);
   const [company, setCompany] = useState({
-    name: 'Mantri Metallics',
-    code: 'FAC-01',
-    location: 'Main Factory',
-    contact_email: 'info@mantrimetallics.com',
-    phone: '+91 98765 43210',
-    address: 'Plot No. 42, Industrial Area, Phase II',
-    gstin: '27AAAAA0000A1Z5',
-    industry_type: 'Precision Component Manufacturing',
+    name: '',
+    code: '',
+    location: '',
+    contact_email: '',
+    phone: '',
+    address: '',
+    gstin: '',
+    industry_type: '',
     shift_hours: 8,
     total_shifts_per_day: 3,
     lunch_break_minutes: 30,
@@ -60,14 +62,14 @@ export default function CompanyDetailsPage() {
         const availMins = Math.max(0, grossMins - (lunchMins + teaMins));
 
         setCompany({
-          name: primary.name || 'Mantri Metallics',
-          code: primary.code || 'FAC-01',
-          location: primary.location || 'Main Factory',
+          name: primary.name || '',
+          code: primary.code || '',
+          location: primary.location || '',
           contact_email: primary.contact_email || '',
           phone: primary.phone || '',
           address: primary.address || '',
           gstin: primary.gstin || '',
-          industry_type: primary.industry_type || 'Precision Component Manufacturing',
+          industry_type: primary.industry_type || '',
           shift_hours: shiftHrs,
           total_shifts_per_day: shiftsPerDay,
           lunch_break_minutes: lunchMins,
@@ -121,6 +123,7 @@ export default function CompanyDetailsPage() {
     try {
       if (companyId) {
         await updateCompanyDetails(companyId, company);
+        refreshCompany();
       } else {
         await new Promise((resolve) => setTimeout(resolve, 600));
       }
@@ -238,7 +241,7 @@ export default function CompanyDetailsPage() {
                     name="name"
                     value={company.name}
                     onChange={handleChange}
-                    placeholder="e.g. Mantri Metallics"
+                    placeholder="e.g. Acme Corp"
                     required
                   />
                 </div>

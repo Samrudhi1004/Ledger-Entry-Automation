@@ -6,6 +6,7 @@ import Badge from '../components/common/Badge';
 import LiveSheetViewer from '../components/inspection/LiveSheetViewer';
 import api from '../api/axios';
 import { getSessionDetail, getSessions } from '../api/inspections';
+import { useCompany } from '../context/CompanyContext';
 import { getMachinePerformance } from '../api/analytics';
 import { useWebSocket } from '../context/WebSocketContext';
 import { fmt, formatDateTime, formatDate } from '../utils/formatters';
@@ -25,6 +26,8 @@ export default function MachineDetailPage() {
 
   const ws = useWebSocket();
   const wsEvents = ws?.events ?? [];
+
+  const { companyName, companyCode } = useCompany();
 
   // Fetch machine details, performance summary, and session history
   const fetchData = useCallback(async () => {
@@ -308,7 +311,7 @@ export default function MachineDetailPage() {
           <div className="section-header" style={{ marginBottom: 16 }}>
             <div className="section-title" style={{ fontSize: '1.05rem' }}>
               <span className="dot" style={{ background: activeSessionDoc ? 'var(--accent-purple)' : 'var(--accent-blue)' }} />
-              Live Operator Inspection Sheet (MMPL Form F02)
+              Live Operator Inspection Sheet ({companyCode} Form F02)
               {activeSessionDoc && (
                 <span className="badge badge-voice" style={{ marginLeft: 8, animation: 'pulse-badge 1s infinite' }}>
                   REAL-TIME LIVE UPDATES
@@ -384,14 +387,14 @@ export default function MachineDetailPage() {
                   <tbody>
                     <tr style={{ borderBottom: '1.5px solid #000000' }}>
                       <td style={{ width: '12%', padding: '6px 4px', borderRight: '1.5px solid #000000', textAlign: 'center', background: '#000000', color: '#ffffff' }}>
-                        <div style={{ fontSize: 16, fontWeight: 'bold', letterSpacing: 1 }}>MMPL</div>
+                        <div style={{ fontSize: 16, fontWeight: 'bold', letterSpacing: 1 }}>{companyCode}</div>
                       </td>
                       <td style={{ width: '73%', padding: '4px 10px', borderRight: '1.5px solid #000000', textAlign: 'center' }}>
-                        <div style={{ fontSize: 14, fontWeight: 'bold', letterSpacing: '0.5px', color: '#000000' }}>MANTRI METALLICS PVT. LTD.</div>
+                        <div style={{ fontSize: 14, fontWeight: 'bold', letterSpacing: '0.5px', color: '#000000' }}>{companyName.toUpperCase()}</div>
                         <div style={{ fontSize: 11, fontWeight: 'bold', marginTop: 1, color: '#000000' }}>1ST PIECE CUM IN-PROCESS INSPECTION REPORT</div>
                       </td>
                       <td style={{ width: '15%', padding: '4px 6px', textAlign: 'right', fontSize: 8.5, color: '#000000' }}>
-                        <div><strong>DOC REF:</strong> MMPL/PRD/F02</div>
+                        <div><strong>DOC REF:</strong> {companyCode}/PRD/F02</div>
                         <div><strong>REV:</strong> 02 (15.8.2013)</div>
                         <div style={{ marginTop: 1, fontWeight: 'bold', color: '#7c3aed' }}>LIVE VIEW</div>
                       </td>
