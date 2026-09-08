@@ -272,3 +272,140 @@ class AllProcessParameterListView(generics.ListAPIView):
     permission_classes = [IsAdminUser]
     pagination_class = None
     queryset = ProcessParameter.objects.select_related('template__part__machine', 'template__created_by').all().order_by('-id')
+
+
+# ─────────────────────────────────────────────────────────────
+# Drawings & Control Plans Management (Admin Only)
+# ─────────────────────────────────────────────────────────────
+from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from .models import DrawingDocument, DrawingVersion, ControlPlanDocument, ControlPlanVersion
+from .serializers import (
+    DrawingDocumentSerializer, DrawingVersionSerializer,
+    ControlPlanDocumentSerializer, ControlPlanVersionSerializer
+)
+
+class DrawingViewSet(viewsets.ModelViewSet):
+    """
+    API for managing Engineering Drawings and their Revision Histories.
+    Strictly restricted to Admin users.
+    """
+    queryset = DrawingDocument.objects.select_related('part', 'created_by').prefetch_related('versions__uploaded_by').all()
+    serializer_class = DrawingDocumentSerializer
+    permission_classes = [IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def perform_create(self, serializer):
+        drawing = serializer.save(created_by=self.request.user)
+        file_obj = self.request.FILES.get('file')
+        revision_code = self.request.data.get('revision_code', drawing.current_revision or 'Rev A')
+        change_notes = self.request.data.get('change_notes', 'Initial drawing upload')
+        if file_obj:
+            DrawingVersion.objects.create(
+                drawing=drawing,
+                revision_code=revision_code,
+                file=file_obj,
+                file_name=file_obj.name,
+                file_size=file_obj.size,
+                change_notes=change_notes,
+                uploaded_by=self.request.user,
+            )
+
+    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def upload_version(self, request, pk=None):
+        """POST /api/parts/drawings/{id}/upload_version/"""
+        drawing = self.get_object()
+        file_obj = request.FILES.get('file')
+        revision_code = request.data.get('revision_code')
+        change_notes = request.data.get('change_notes', '')
+
+        if not file_obj:
+            return Response({'error': 'A drawing file is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not revision_code:
+            return Response({'error': 'A revision code is required (e.g. Rev B).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        version = DrawingVersion.objects.create(
+            drawing=drawing,
+            revision_code=revision_code,
+            file=file_obj,
+            file_name=file_obj.name,
+            file_size=file_obj.size,
+            change_notes=change_notes,
+            uploaded_by=request.user,
+        )
+        drawing.current_revision = revision_code
+        drawing.save()
+
+        return Response(DrawingDocumentSerializer(drawing, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def history(self, request, pk=None):
+        """GET /api/parts/drawings/{id}/history/"""
+        drawing = self.get_object()
+        versions = drawing.versions.select_related('uploaded_by').all()
+        serializer = DrawingVersionSerializer(versions, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class ControlPlanViewSet(viewsets.ModelViewSet):
+    """
+    API for managing Process Control Plans and their Version Histories.
+    Strictly restricted to Admin users.
+    """
+    queryset = ControlPlanDocument.objects.select_related('part', 'created_by').prefetch_related('versions__uploaded_by').all()
+    serializer_class = ControlPlanDocumentSerializer
+    permission_classes = [IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def perform_create(self, serializer):
+        control_plan = serializer.save(created_by=self.request.user)
+        file_obj = self.request.FILES.get('file')
+        revision_code = self.request.data.get('revision_code', control_plan.current_revision or 'v1.0')
+        change_notes = self.request.data.get('change_notes', 'Initial control plan upload')
+        if file_obj:
+            ControlPlanVersion.objects.create(
+                control_plan=control_plan,
+                revision_code=revision_code,
+                file=file_obj,
+                file_name=file_obj.name,
+                file_size=file_obj.size,
+                change_notes=change_notes,
+                uploaded_by=self.request.user,
+            )
+
+    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def upload_version(self, request, pk=None):
+        """POST /api/parts/control-plans/{id}/upload_version/"""
+        control_plan = self.get_object()
+        file_obj = request.FILES.get('file')
+        revision_code = request.data.get('revision_code')
+        change_notes = request.data.get('change_notes', '')
+
+        if not file_obj:
+            return Response({'error': 'A control plan file is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not revision_code:
+            return Response({'error': 'A version/revision code is required (e.g. v1.1).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        version = ControlPlanVersion.objects.create(
+            control_plan=control_plan,
+            revision_code=revision_code,
+            file=file_obj,
+            file_name=file_obj.name,
+            file_size=file_obj.size,
+            change_notes=change_notes,
+            uploaded_by=request.user,
+        )
+        control_plan.current_revision = revision_code
+        control_plan.save()
+
+        return Response(ControlPlanDocumentSerializer(control_plan, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def history(self, request, pk=None):
+        """GET /api/parts/control-plans/{id}/history/"""
+        control_plan = self.get_object()
+        versions = control_plan.versions.select_related('uploaded_by').all()
+        serializer = ControlPlanVersionSerializer(versions, many=True, context={'request': request})
+        return Response(serializer.data)
+
