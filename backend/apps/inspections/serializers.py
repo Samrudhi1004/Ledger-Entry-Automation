@@ -143,19 +143,22 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
         return 'Inspector'
 
     def get_rejected_parameters(self, obj):
-        from .services import InspectionService
-        doc = InspectionService().get_session_document(str(obj.session_id))
-        if doc:
-            rej = doc.get('rejected_parameters', [])
-            if rej and len(rej) > 0:
-                return rej
-            measurements = doc.get('measurements', [])
-            if measurements:
-                latest_trial = max(m.get('trial_number', 1) for m in measurements)
-                return list(set([
-                    m['parameter_code'] for m in measurements
-                    if m.get('trial_number', 1) == latest_trial and m.get('status') == 'out_of_spec'
-                ]))
+        try:
+            from .services import InspectionService
+            doc = InspectionService().get_session_document(str(obj.session_id))
+            if doc:
+                rej = doc.get('rejected_parameters', [])
+                if rej and len(rej) > 0:
+                    return rej
+                measurements = doc.get('measurements', [])
+                if measurements:
+                    latest_trial = max(m.get('trial_number', 1) for m in measurements)
+                    return list(set([
+                        m['parameter_code'] for m in measurements
+                        if m.get('trial_number', 1) == latest_trial and m.get('status') == 'out_of_spec'
+                    ]))
+        except Exception:
+            pass
         return []
 
 

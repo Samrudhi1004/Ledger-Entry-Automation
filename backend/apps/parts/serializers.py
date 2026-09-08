@@ -138,6 +138,7 @@ class DrawingVersionSerializer(serializers.ModelSerializer):
             'uploaded_by', 'uploaded_by_name', 'uploaded_at',
         ]
         read_only_fields = ['id', 'drawing', 'file_name', 'file_size', 'uploaded_by', 'uploaded_at']
+        extra_kwargs = {'file': {'write_only': True, 'required': False}}
 
     def get_file_url(self, obj):
         request = self.context.get('request')
@@ -185,6 +186,7 @@ class ControlPlanVersionSerializer(serializers.ModelSerializer):
             'uploaded_by', 'uploaded_by_name', 'uploaded_at',
         ]
         read_only_fields = ['id', 'control_plan', 'file_name', 'file_size', 'uploaded_by', 'uploaded_at']
+        extra_kwargs = {'file': {'write_only': True, 'required': False}}
 
     def get_file_url(self, obj):
         request = self.context.get('request')
