@@ -12,7 +12,7 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.users.permissions import IsCalibrator
+from apps.users.permissions import IsCalibratorOrAdmin
 from apps.machines.models import Factory
 
 from .models import CalibrationEquipment, CalibrationPlanEntry, CalibrationRecord
@@ -133,7 +133,7 @@ def _calibration_plan_rows(year, search='', result='', month='', due=''):
 
 class EquipmentListCreateView(generics.ListCreateAPIView):
     serializer_class = CalibrationEquipmentSerializer
-    permission_classes = [IsCalibrator]
+    permission_classes = [IsCalibratorOrAdmin]
     pagination_class = None
 
     def get_queryset(self):
@@ -151,11 +151,11 @@ class EquipmentListCreateView(generics.ListCreateAPIView):
 class EquipmentDetailView(generics.RetrieveUpdateAPIView):
     queryset = _equipment_queryset()
     serializer_class = CalibrationEquipmentSerializer
-    permission_classes = [IsCalibrator]
+    permission_classes = [IsCalibratorOrAdmin]
 
 
 class RecordCalibrationResultView(APIView):
-    permission_classes = [IsCalibrator]
+    permission_classes = [IsCalibratorOrAdmin]
 
     def post(self, request, pk):
         equipment = get_object_or_404(CalibrationEquipment, pk=pk)
@@ -219,7 +219,7 @@ class RecordCalibrationResultView(APIView):
 
 
 class SetCalibrationDispositionView(APIView):
-    permission_classes = [IsCalibrator]
+    permission_classes = [IsCalibratorOrAdmin]
 
     def post(self, request, pk):
         equipment = get_object_or_404(CalibrationEquipment, pk=pk)
@@ -247,7 +247,7 @@ class SetCalibrationDispositionView(APIView):
 
 
 class EquipmentHistoryView(APIView):
-    permission_classes = [IsCalibrator]
+    permission_classes = [IsCalibratorOrAdmin]
 
     def get(self, request, pk):
         equipment = get_object_or_404(CalibrationEquipment, pk=pk)
@@ -261,7 +261,7 @@ class EquipmentHistoryView(APIView):
 
 
 class CalibrationHistoryPdfView(APIView):
-    permission_classes = [IsCalibrator]
+    permission_classes = [IsCalibratorOrAdmin]
 
     def get(self, request, pk):
         equipment = get_object_or_404(CalibrationEquipment, pk=pk)
@@ -282,7 +282,7 @@ class CalibrationHistoryPdfView(APIView):
 
 
 class CalibrationReportDownloadView(APIView):
-    permission_classes = [IsCalibrator]
+    permission_classes = [IsCalibratorOrAdmin]
 
     def get(self, request, pk):
         record = get_object_or_404(CalibrationRecord, pk=pk)
@@ -297,7 +297,7 @@ class CalibrationReportDownloadView(APIView):
 
 
 class CalibrationPlanView(APIView):
-    permission_classes = [IsCalibrator]
+    permission_classes = [IsCalibratorOrAdmin]
 
     def get(self, request):
         year, error = _plan_year(request)
@@ -325,7 +325,7 @@ class CalibrationPlanView(APIView):
 
 
 class CalibrationPlanPdfView(APIView):
-    permission_classes = [IsCalibrator]
+    permission_classes = [IsCalibratorOrAdmin]
 
     def get(self, request):
         year, error = _plan_year(request)
@@ -354,11 +354,11 @@ class CalibrationPlanPdfView(APIView):
 class CalibrationPlanEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = CalibrationPlanEntry.objects.select_related('equipment')
     serializer_class = CalibrationPlanEntrySerializer
-    permission_classes = [IsCalibrator]
+    permission_classes = [IsCalibratorOrAdmin]
 
 
 class CalibrationSummaryView(APIView):
-    permission_classes = [IsCalibrator]
+    permission_classes = [IsCalibratorOrAdmin]
 
     def get(self, request):
         today = timezone.localdate()

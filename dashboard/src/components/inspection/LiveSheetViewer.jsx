@@ -5,6 +5,7 @@ import LoadingSpinner from '../common/LoadingSpinner';
 import { getSessionDetail, reviewSession } from '../../api/inspections';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { formatDateTime, formatDate, fmt } from '../../utils/formatters';
+import { useCompany } from '../../context/CompanyContext';
 
 const PROCESS_10_SPECS = {
   'TL-01':   { no: '01', name: 'TOTAL LENGTH',           spec: '105.1 ±0.2',    method: 'DEPTH VERNIER',      sample: '5NOS/SHIFT',        critical: false },
@@ -38,6 +39,7 @@ const isValOOC = (val, lower, upper, status) => {
 };
 
 export default function LiveSheetViewer({ sessionId, onClose }) {
+  const { companyName, companyCode } = useCompany();
   const [session, setSession]                 = useState(null);
   const [loading, setLoading]                 = useState(true);
   const [error, setError]                     = useState('');
@@ -364,14 +366,14 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
           <tbody>
             <tr style={{ borderBottom: '1.5px solid #000000' }}>
               <td style={{ width: '12%', padding: '6px 4px', borderRight: '1.5px solid #000000', textAlign: 'center', background: '#000000', color: '#ffffff' }}>
-                <div style={{ fontSize: 16, fontWeight: 'bold', letterSpacing: 1 }}>MMPL</div>
+                <div style={{ fontSize: 16, fontWeight: 'bold', letterSpacing: 1 }}>{companyCode}</div>
               </td>
               <td style={{ width: '73%', padding: '4px 10px', borderRight: '1.5px solid #000000', textAlign: 'center' }}>
-                <div style={{ fontSize: 14, fontWeight: 'bold', letterSpacing: '0.5px', color: '#000000' }}>MANTRI METALLICS PVT. LTD.</div>
+                <div style={{ fontSize: 14, fontWeight: 'bold', letterSpacing: '0.5px', color: '#000000' }}>{companyName.toUpperCase()}</div>
                 <div style={{ fontSize: 11, fontWeight: 'bold', marginTop: 1, color: '#000000' }}>1ST PIECE CUM IN-PROCESS INSPECTION REPORT — PROCESS NO. 10</div>
               </td>
               <td style={{ width: '15%', padding: '4px 6px', textAlign: 'right', fontSize: 8.5, color: '#000000' }}>
-                <div><strong>DOC REF:</strong> MMPL/PRD/F02</div>
+                <div><strong>DOC REF:</strong> {companyCode}/PRD/F02</div>
                 <div><strong>REV:</strong> 02 (15.8.2013)</div>
                 <div style={{ marginTop: 1, fontWeight: 'bold', color: isApproved ? '#16a34a' : isRejected ? '#dc2626' : '#d97706' }}>
                   {isApproved ? 'FINALIZED & PASSED' : isRejected ? 'FINALIZED & FAILED' : 'IN PROGRESS'}

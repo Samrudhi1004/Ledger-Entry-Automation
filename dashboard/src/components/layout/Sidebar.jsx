@@ -69,7 +69,7 @@ const MODULES = [
     key: 'development',
     label: 'Development',
     icon: Cpu,
-    to: '/parameters',
+    to: '/development',
     items: [],
   },
   {
@@ -138,7 +138,7 @@ export default function Sidebar({ pendingCount = 0 }) {
         return true;
       }).map((m) => {
         if (user?.role === 'supervisor' && m.key === 'development') {
-          return { ...m, label: 'Master Parameters' };
+          return { ...m, label: 'Master Parameters', to: '/parameters' };
         }
         return m;
       });

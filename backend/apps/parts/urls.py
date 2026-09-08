@@ -1,14 +1,23 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import SimpleRouter
 from .views import (
     PartListCreateView, PartDetailView,
     TemplateListCreateView, TemplateDetailView, TemplatePublishView, ActiveTemplateView,
     ParameterListCreateView, ParameterDetailView, AllParameterListView,
     ProcessParameterListCreateView, ProcessParameterDetailView, AllProcessParameterListView,
+    DrawingViewSet, ControlPlanViewSet
 )
+
+router = SimpleRouter()
+router.register(r'drawings', DrawingViewSet, basename='drawing')
+router.register(r'control-plans', ControlPlanViewSet, basename='control-plan')
 
 urlpatterns = [
     # 1. Base Parts List
     path('',                                         PartListCreateView.as_view(),    name='part-list'),
+
+    # Router endpoints
+    path('', include(router.urls)),
 
     # 2. Fixed routes for Templates & Parameters (MUST COME BEFORE <path:part_number> catch-alls)
     path('templates/<int:pk>/publish/',              TemplatePublishView.as_view(),    name='template-publish'),
@@ -27,3 +36,4 @@ urlpatterns = [
     path('<path:part_number>/template/<str:inspection_type>/', ActiveTemplateView.as_view(), name='active-template'),
     path('<path:part_number>/',                       PartDetailView.as_view(),        name='part-detail'),
 ]
+
