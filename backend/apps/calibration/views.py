@@ -200,10 +200,9 @@ class CalibrationPlanView(APIView):
                 'actual_date': record.calibration_date if record else None,
                 'result': record.get_result_display() if record else 'Planned',
                 'certificate_number': record.certificate_number if record else '',
-                'remarks': ' · '.join(filter(None, [
-                    entry.remarks,
-                    record.remarks if record else '',
-                ])),
+                'remarks': entry.remarks or '',
+                'plan_remarks': entry.remarks or '',
+                'record_remarks': record.remarks if record else '',
             })
         return Response({'year': year, 'rows': rows})
 

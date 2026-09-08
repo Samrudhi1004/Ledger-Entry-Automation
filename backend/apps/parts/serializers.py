@@ -163,7 +163,7 @@ class DrawingDocumentSerializer(serializers.ModelSerializer):
             'current_revision', 'created_by', 'created_by_name',
             'created_at', 'updated_at', 'versions', 'latest_version',
         ]
-        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'current_revision', 'created_by', 'created_at', 'updated_at']
 
     def get_latest_version(self, obj):
         latest = obj.versions.first()
@@ -209,7 +209,7 @@ class ControlPlanDocumentSerializer(serializers.ModelSerializer):
             'current_revision', 'created_by', 'created_by_name',
             'created_at', 'updated_at', 'versions', 'latest_version',
         ]
-        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'current_revision', 'created_by', 'created_at', 'updated_at']
 
     def get_latest_version(self, obj):
         latest = obj.versions.first()

@@ -68,7 +68,7 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
     total_break_mins = serializers.IntegerField(source='machine.plant.total_break_mins', read_only=True)
     shift_hours = serializers.SerializerMethodField()
     total_hourly_slots = serializers.SerializerMethodField()
-    rejected_parameters = serializers.JSONField(read_only=True, required=False, default=list)
+    rejected_parameters = serializers.SerializerMethodField()
 
     class Meta:
         model  = InspectionSession
