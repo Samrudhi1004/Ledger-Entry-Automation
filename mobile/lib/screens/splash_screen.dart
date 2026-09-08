@@ -77,6 +77,9 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (auth.isAuthenticated) {
+      // Fetch company details now that we have valid tokens.
+      Provider.of<CompanyProvider>(context, listen: false).fetchCompanyDetails();
+
       Widget home = const AppHomeScreen();
 
       // Restore saved inspection state for both operators AND inspectors.

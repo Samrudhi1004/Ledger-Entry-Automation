@@ -15,7 +15,8 @@ class CompanyProvider extends ChangeNotifier {
 
   CompanyProvider() {
     _loadFromCache();
-    fetchCompanyDetails();
+    // fetchCompanyDetails() is called explicitly after authentication succeeds
+    // (see SplashScreen) to avoid 401 errors on fresh install.
   }
 
   Future<void> _loadFromCache() async {

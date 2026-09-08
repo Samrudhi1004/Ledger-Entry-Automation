@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getCompanyDetails } from '../api/company';
+import { useAuth } from './AuthContext';
 
 const CompanyContext = createContext();
 
@@ -8,10 +9,11 @@ export const useCompany = () => {
 };
 
 export const CompanyProvider = ({ children }) => {
+  const { user } = useAuth();
   const [companyName, setCompanyName] = useState('MANTRI METALLICS PVT. LTD.');
   const [companyCode, setCompanyCode] = useState('MMPL');
 
-  useEffect(() => {
+  const fetchCompany = useCallback(() => {
     let mounted = true;
     getCompanyDetails()
       .then((res) => {
@@ -26,14 +28,18 @@ export const CompanyProvider = ({ children }) => {
       .catch((err) => {
         console.error("Failed to load company details:", err);
       });
-
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
+  // Only fetch after the user is authenticated
+  useEffect(() => {
+    if (!user) return;
+    const cleanup = fetchCompany();
+    return cleanup;
+  }, [user, fetchCompany]);
+
   return (
-    <CompanyContext.Provider value={{ companyName, companyCode }}>
+    <CompanyContext.Provider value={{ companyName, companyCode, refreshCompany: fetchCompany }}>
       {children}
     </CompanyContext.Provider>
   );

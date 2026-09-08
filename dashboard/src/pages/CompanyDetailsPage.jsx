@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import { useAuth } from '../context/AuthContext';
+import { useCompany } from '../context/CompanyContext';
 import { getCompanyDetails, updateCompanyDetails, getCompanyPlants } from '../api/company';
 import {
   Building2, CheckCircle2, AlertCircle, Save, RefreshCw, User, Clock, Zap
@@ -9,6 +10,7 @@ import {
 
 export default function CompanyDetailsPage() {
   const { user } = useAuth();
+  const { refreshCompany } = useCompany();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
@@ -121,6 +123,7 @@ export default function CompanyDetailsPage() {
     try {
       if (companyId) {
         await updateCompanyDetails(companyId, company);
+        refreshCompany();
       } else {
         await new Promise((resolve) => setTimeout(resolve, 600));
       }

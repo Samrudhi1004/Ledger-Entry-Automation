@@ -8,7 +8,21 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from apps.machines.models import Factory
 
-def get_factory_info():
+def _xml_escape(text: str) -> str:
+    """Escape special XML characters for safe use inside ReportLab Paragraph markup."""
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def get_factory_info(session=None):
+    """
+    Return (factory_name, factory_code) for the given session.
+    Resolves through session → machine → plant → factory first;
+    falls back to the first active factory globally.
+    """
+    if session and hasattr(session, 'machine') and session.machine \
+            and session.machine.plant and session.machine.plant.factory:
+        factory = session.machine.plant.factory
+        return factory.name, factory.code
     factory = Factory.objects.filter(is_active=True).first()
     if factory:
         return factory.name, factory.code
@@ -71,14 +85,16 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
 
     elements = []
     
-    fac_name, fac_code = get_factory_info()
+    fac_name, fac_code = get_factory_info(session)
+    safe_fac_name = _xml_escape(fac_name)
+    safe_fac_code = _xml_escape(fac_code)
 
     # 1. TOP HEADER (MMPL | Title | Doc Ref)
     header_data = [
         [
-            Paragraph(fac_code, mmpl_style),
-            [Paragraph(fac_name.upper(), title_style), Paragraph("1ST PIECE CUM IN-PROCESS INSPECTION REPORT — PROCESS NO. 10", subtitle_style)],
-            Paragraph(f"DOC REF: {fac_code}/PRD/F02<br/>REV: 02 (15.8.2013)<br/>PAGE 1 OF 1", doc_ref_style)
+            Paragraph(safe_fac_code, mmpl_style),
+            [Paragraph(safe_fac_name.upper(), title_style), Paragraph("1ST PIECE CUM IN-PROCESS INSPECTION REPORT — PROCESS NO. 10", subtitle_style)],
+            Paragraph(f"DOC REF: {safe_fac_code}/PRD/F02<br/>REV: 02 (15.8.2013)<br/>PAGE 1 OF 1", doc_ref_style)
         ]
     ]
     header_table = Table(header_data, colWidths=[90, 580, 150])
