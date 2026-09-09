@@ -33,6 +33,14 @@ class FactoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     def perform_update(self, serializer):
         instance = serializer.save()
         shift_hrs = instance.shift_hours or 8
+        total_break = (instance.lunch_break_minutes or 0) + (instance.tea_break_minutes or 0)
+
+        # Cascade shift duration and break minutes to all plants under this factory
+        instance.plants.all().update(
+            shift_duration_hours=shift_hrs,
+            total_break_mins=total_break
+        )
+
         # Update all inspection sessions' document_payload with new shift_hours
         try:
             from apps.inspections.models import InspectionSession

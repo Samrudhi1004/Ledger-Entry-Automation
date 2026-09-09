@@ -16,11 +16,23 @@ class User(AbstractUser):
         CALIBRATOR        = 'calibrator',         'Calibrator'
         ADMIN             = 'admin',              'Admin'
 
+    class Shift(models.TextChoices):
+        SHIFT_I   = 'I',   'Shift I'
+        SHIFT_II  = 'II',  'Shift II'
+        SHIFT_III = 'III', 'Shift III'
+        ALL       = 'ALL', 'All Shifts (Flexible)'
+
     # Core fields
     role        = models.CharField(
         max_length=20,
         choices=Role.choices,
         default=Role.OPERATOR,
+    )
+    assigned_shift = models.CharField(
+        max_length=10,
+        choices=Shift.choices,
+        default=Shift.ALL,
+        help_text="Assigned working shift for the operator/inspector.",
     )
     employee_id = models.CharField(max_length=50, unique=True, null=True, blank=True)
     phone       = models.CharField(max_length=15, blank=True)

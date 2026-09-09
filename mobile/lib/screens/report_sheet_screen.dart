@@ -173,7 +173,7 @@ class _ReportSheetScreenState extends State<ReportSheetScreen> {
     final partNumber = _sessionDoc?['part_number'] ?? provider.selectedPart?['part_number'] ?? '1';
     final partName = _sessionDoc?['part_name'] ?? provider.selectedPart?['part_name'] ?? 'poly v pulley';
     final operatorName = _sessionDoc?['operator_name'] ?? auth.fullName ?? auth.username ?? 'Operator';
-    final shift = _sessionDoc?['shift'] ?? 'A';
+    final shift = _sessionDoc?['shift'] ?? (auth.isShiftLocked ? auth.assignedShift : (provider.shift.isNotEmpty ? provider.shift : 'I'));
     final status = _sessionDoc?['status'] ?? 'IN_PROGRESS';
 
     // Parameters summary list

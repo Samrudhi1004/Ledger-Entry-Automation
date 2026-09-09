@@ -27,9 +27,12 @@ class InspectionSession(models.Model):
         COMPLETED        = 'completed',        'Completed'
 
     class Shift(models.TextChoices):
-        A = 'A', 'Shift A'
-        B = 'B', 'Shift B'
-        C = 'C', 'Shift C'
+        I   = 'I',   'Shift I'
+        II  = 'II',  'Shift II'
+        III = 'III', 'Shift III'
+        A   = 'A',   'Shift A'
+        B   = 'B',   'Shift B'
+        C   = 'C',   'Shift C'
 
     # Unique identifier — same ID used as MongoDB document _id reference (unique implies db_index)
     session_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
@@ -55,7 +58,7 @@ class InspectionSession(models.Model):
 
     # Session metadata
     inspection_type            = models.CharField(max_length=20, db_index=True)  # first_piece / hourly / final
-    shift                      = models.CharField(max_length=1, choices=Shift.choices, default=Shift.A, db_index=True)
+    shift                      = models.CharField(max_length=5, choices=Shift.choices, default=Shift.I, db_index=True)
     status                     = models.CharField(max_length=25, choices=Status.choices, default=Status.IN_PROGRESS, db_index=True)
     trial_number               = models.IntegerField(default=1)   # 1 for 1st PC #1, 2 for 1st PC #2, 3 for 1st PC #3
     parent_session             = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='child_trials')
@@ -134,7 +137,7 @@ class DailyProductionReport(models.Model):
     machine = models.ForeignKey('machines.Machine', on_delete=models.PROTECT, related_name='production_reports')
     part = models.ForeignKey('parts.Part', on_delete=models.PROTECT, related_name='production_reports')
     operation = models.CharField(max_length=100, blank=True, default='')
-    shift = models.CharField(max_length=20, default='A', db_index=True)
+    shift = models.CharField(max_length=20, default='I', db_index=True)
     operator = models.ForeignKey('users.User', on_delete=models.PROTECT, related_name='production_reports')
 
     production_target = models.PositiveIntegerField(default=0)
@@ -305,3 +308,99 @@ class SetupApproval(models.Model):
             f"SetupApproval | template={self.template_id} "
             f"machine={self.machine_id} | {self.submitted_at:%Y-%m-%d}"
         )
+
+
+class JHChecklistItem(models.Model):
+    """
+    Master Autonomous Maintenance (Jishu Hozen) checklist items.
+    Pre-seeded with standardized assembly checkpoints.
+    """
+    class ToolType(models.TextChoices):
+        VISUAL = 'VISUAL', 'Visual (Eye)'
+        TOUCH = 'TOUCH', 'Touch (Hand)'
+        TOOL = 'TOOL', 'Tool / Wrench (Spanner)'
+
+    sub_no = models.CharField(max_length=20, db_index=True)  # e.g. "1.1", "2.1"
+    assembly = models.CharField(max_length=100, db_index=True)  # e.g. "1. Machine Front Side", "2. FIXTURE"
+    sub_assembly = models.CharField(max_length=100, blank=True, default='')  # e.g. "एफ एम एफ बोर्ड", "फिक्सचर"
+    check_point = models.TextField()  # e.g. "एफ एम एफ बोर्ड साफ करो"
+    standard = models.TextField()  # e.g. "धुल और तेल से मुक्त"
+    tool_type = models.CharField(max_length=20, choices=ToolType.choices, default=ToolType.VISUAL)
+    rank = models.CharField(max_length=10, blank=True, default='D')  # e.g. 'A', 'B', 'D'
+    frequency = models.CharField(max_length=10, default='D')  # Daily
+    action_clean = models.BooleanField(default=False)
+    action_lubricate = models.BooleanField(default=False)
+    action_inspect = models.BooleanField(default=True)
+    action_retighten = models.BooleanField(default=False)
+    timing_sec = models.CharField(max_length=50, default='5 DPT')  # e.g. "5 DPT", "60 DPT"
+    sort_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'jh_checklist_items'
+        ordering = ['sort_order', 'sub_no']
+
+    def __str__(self):
+        return f"{self.sub_no} - {self.assembly} - {self.check_point[:30]}"
+
+
+class JHInspectionRecord(models.Model):
+    """
+    Per-shift Autonomous Maintenance inspection submission by an operator.
+    Stored in PostgreSQL.
+    """
+    class Shift(models.TextChoices):
+        I = 'I', 'Shift I'
+        II = 'II', 'Shift II'
+        III = 'III', 'Shift III'
+
+    class Status(models.TextChoices):
+        ALL_OK = 'ALL_OK', 'All OK'
+        HAS_ISSUES = 'HAS_ISSUES', 'Has Issues'
+        CORRECTED = 'CORRECTED', 'Issues Corrected'
+
+    record_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    machine = models.ForeignKey('machines.Machine', on_delete=models.PROTECT, related_name='jh_inspections')
+    operator = models.ForeignKey('users.User', on_delete=models.PROTECT, related_name='jh_inspections')
+    date = models.DateField(db_index=True)
+    shift = models.CharField(max_length=10, choices=Shift.choices, default=Shift.I, db_index=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ALL_OK, db_index=True)
+    total_items = models.IntegerField(default=0)
+    ok_items = models.IntegerField(default=0)
+    not_ok_items = models.IntegerField(default=0)
+    corrected_items = models.IntegerField(default=0)
+    overall_remarks = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'jh_inspection_records'
+        ordering = ['-date', '-created_at']
+        unique_together = ('machine', 'date', 'shift')
+
+    def __str__(self):
+        return f"JH Audit {self.date} Shift {self.shift} | {self.machine.machine_code} | {self.status}"
+
+
+class JHInspectionItemResult(models.Model):
+    """
+    Individual evaluation result for a checklist item in a shift inspection.
+    """
+    class ItemStatus(models.TextChoices):
+        OK = 'OK', 'OK'
+        NOT_OK = 'NOT_OK', 'Not OK'
+        CORRECTED = 'CORRECTED', 'Not OK Correction Done'
+
+    inspection = models.ForeignKey(JHInspectionRecord, on_delete=models.CASCADE, related_name='item_results')
+    item = models.ForeignKey(JHChecklistItem, on_delete=models.PROTECT, related_name='inspection_results')
+    status = models.CharField(max_length=20, choices=ItemStatus.choices, default=ItemStatus.OK)
+    remark = models.CharField(max_length=255, blank=True, default='')
+    action_taken = models.CharField(max_length=255, blank=True, default='')
+
+    class Meta:
+        db_table = 'jh_inspection_item_results'
+        unique_together = ('inspection', 'item')
+
+    def __str__(self):
+        return f"{self.inspection.date} Shift {self.inspection.shift} - Item {self.item.sub_no}: {self.status}"
+

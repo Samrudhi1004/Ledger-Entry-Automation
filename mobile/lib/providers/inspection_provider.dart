@@ -11,8 +11,8 @@ class InspectionProvider with ChangeNotifier {
 
   String? sessionId;
   int trialNumber = 1;
-  String shift = 'A';
-  String inspectionType = 'first_piece';
+  String shift = 'I';
+  String inspectionType = ''; // set by startSession(); empty until a session is active
   String? parentSessionId;
   List<dynamic> activeRejections = [];
   Map<String, dynamic>? activeRejectionNotice;
@@ -57,7 +57,7 @@ class InspectionProvider with ChangeNotifier {
     parentSessionId = null;
     trialNumber = 1;
     hourlySlot = 1;
-    inspectionType = 'first_piece';
+    inspectionType = ''; // reset to empty; will be set by next startSession()
     parameters = [];
     currentParamIndex = 0;
     recordedResults.clear();
@@ -68,10 +68,37 @@ class InspectionProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Map<int, String> trialStatuses = {1: 'pending', 2: 'locked', 3: 'locked'};
+  Map<int, List<String>> trialFailedCodes = {};
+  Map<int, String> trialSessionIds = {};
+
+  void recordTrialResult(int trial, bool isPassed, List<String> failedCodes) {
+    if (isPassed) {
+      trialStatuses[trial] = 'passed';
+      trialFailedCodes.remove(trial);
+      if (trial == 1) {
+        trialStatuses[2] = 'not_needed';
+        trialStatuses[3] = 'not_needed';
+      } else if (trial == 2) {
+        trialStatuses[3] = 'not_needed';
+      }
+    } else {
+      trialStatuses[trial] = 'failed';
+      trialFailedCodes[trial] = List<String>.from(failedCodes);
+      if (trial < 3) {
+        trialStatuses[trial + 1] = 'pending';
+      }
+    }
+    notifyListeners();
+  }
+
   void logout() {
     selectedMachine = null;
     currentUserId = null; // prevent future saves after logout
     resetForNextOperation();
+    trialStatuses = {1: 'pending', 2: 'locked', 3: 'locked'};
+    trialFailedCodes.clear();
+    trialSessionIds.clear();
     PersistenceService.clearState(); // wipe saved session from disk on explicit logout
   }
 
@@ -91,7 +118,7 @@ class InspectionProvider with ChangeNotifier {
     selectedMachine = state['machine'];
     selectedPart = state['part'];
     selectedTemplate = state['template'];
-    inspectionType = state['inspection_type'] ?? 'first_piece';
+    inspectionType = state['inspection_type'] ?? '';
     trialNumber = state['trial_number'] ?? 1;
     hourlySlot = state['hourly_slot'] ?? 1;
     completedHourlySlots = Set<int>.from(state['completed_slots'] ?? []);
@@ -192,7 +219,11 @@ class InspectionProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> loadParametersForRetrial(Map<String, dynamic> template, {required int trial}) async {
+  Future<void> loadParametersForRetrial(
+    Map<String, dynamic> template, {
+    required int trial,
+    List<String>? targetFailedCodes,
+  }) async {
     selectedTemplate = template;
     isLoading = true;
     notifyListeners();
@@ -203,28 +234,56 @@ class InspectionProvider with ChangeNotifier {
       pp['is_process_parameter'] = true;
     }
     final allParams = [...procParams, ...prodParams];
-    await fetchPendingRejections();
     List<dynamic> targetCodes = [];
 
-    if (activeRejections.isNotEmpty) {
-      targetCodes = activeRejections.first['rejected_parameters'] ?? [];
+    // 1. Direct failed codes passed from batch submit / rejection modal
+    if (targetFailedCodes != null && targetFailedCodes.isNotEmpty) {
+      targetCodes = List.from(targetFailedCodes);
+    }
+
+    // 2. Local recordedResults check for any out_of_spec parameters
+    if (targetCodes.isEmpty && recordedResults.isNotEmpty) {
+      for (var entry in recordedResults.entries) {
+        final res = entry.value;
+        if (res['status'] == 'out_of_spec' || res['status'] == 'error') {
+          targetCodes.add(entry.key);
+        }
+      }
+    }
+
+    // 3. Stored trialFailedCodes check
+    if (targetCodes.isEmpty && trialFailedCodes.containsKey(trial - 1)) {
+      targetCodes = List.from(trialFailedCodes[trial - 1]!);
+    }
+
+    // 4. Remote checks from activeRejections or previous session doc
+    if (targetCodes.isEmpty) {
+      await fetchPendingRejections();
+      if (activeRejections.isNotEmpty) {
+        targetCodes = activeRejections.first['rejected_parameters'] ?? [];
+      }
     }
 
     if (targetCodes.isEmpty && selectedMachine != null) {
       final setupInfo = await ApiService.checkSetupApproved(selectedMachine!['id']);
       if (setupInfo['session_id'] != null) {
         final sessionDoc = await ApiService.getSessionDetail(setupInfo['session_id']);
-        if (sessionDoc != null && sessionDoc['measurements'] != null) {
-          final measurements = sessionDoc['measurements'] as List;
-          final prevTrial = trial - 1;
-          final prevTrialMeasurements = measurements.where((m) => (m['trial_number'] ?? 1) == prevTrial).toList();
-          final oocCodes = prevTrialMeasurements
-              .where((m) => m['status'] == 'out_of_spec')
-              .map((m) => m['parameter_code'])
-              .toSet()
-              .toList();
-          if (oocCodes.isNotEmpty) {
-            targetCodes = oocCodes;
+        if (sessionDoc != null) {
+          final rejList = sessionDoc['rejected_parameters'] as List?;
+          if (rejList != null && rejList.isNotEmpty) {
+            targetCodes = rejList;
+          } else if (sessionDoc['measurements'] != null) {
+            final measurements = sessionDoc['measurements'] as List;
+            final prevTrial = trial - 1;
+            final prevTrialMeasurements = measurements.where((m) => (m['trial_number'] ?? 1) == prevTrial).toList();
+            final oocCodes = prevTrialMeasurements
+                .where((m) => m['status'] == 'out_of_spec')
+                .map((m) => m['parameter_code'])
+                .toSet()
+                .toList();
+            if (oocCodes.isNotEmpty) {
+              targetCodes = oocCodes;
+            }
           }
         }
       }
@@ -239,6 +298,7 @@ class InspectionProvider with ChangeNotifier {
 
     currentParamIndex = 0;
     recordedResults.clear();
+    pendingBatchValues.clear();
     isLoading = false;
     notifyListeners();
   }
@@ -339,7 +399,7 @@ class InspectionProvider with ChangeNotifier {
   }
 
   Future<bool> startSession({
-    String shift = 'A',
+    String shift = 'I',
     String inspectionType = 'first_piece',
     int trial = 1,
     int hourlySlot = 1,
@@ -375,6 +435,9 @@ class InspectionProvider with ChangeNotifier {
     isLoading = false;
     if (result != null && (result.containsKey('session_id') || result.containsKey('id'))) {
       sessionId = result['session_id'] ?? result['id'];
+      if (inspectionType == 'first_piece' && trial >= 1) {
+        trialSessionIds[trial] = sessionId!;
+      }
       saveCurrentState();
       notifyListeners();
       return true;
