@@ -30,6 +30,7 @@ import DevelopmentModulePage from './pages/DevelopmentModulePage';
 import DrawingsPage from './pages/DrawingsPage';
 import ControlPlansPage from './pages/ControlPlansPage';
 import MarketingModulePage from './pages/MarketingModulePage';
+import MessagesPage from './pages/MessagesPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
 
@@ -348,6 +349,15 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <TasksPage />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
+        path="/messages"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <MessagesPage />
           </ProtectedLayout>
         }
       />

@@ -9,6 +9,7 @@ import 'machine_select_screen.dart';
 import 'report_sheet_screen.dart';
 import 'daily_production_report_screen.dart';
 import 'login_screen.dart';
+import 'messaging/messages_screen.dart';
 
 class OperatorHomeScreen extends StatefulWidget {
   const OperatorHomeScreen({super.key});
@@ -468,6 +469,70 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                   ),
                 ),
               ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // Messages Card
+            GestureDetector(
+              onTap: () {
+                Navigator.pushNamed(context, '/messages');
+              },
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 28),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Messages',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Chat with your team',
+                            style: TextStyle(
+                              color: Color(0xFFBFDBFE),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 18),
+                  ],
+                ),
+              ),
             ),
 
             const SizedBox(height: 22),

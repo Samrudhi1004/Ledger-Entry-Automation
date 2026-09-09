@@ -35,23 +35,23 @@ logger = logging.getLogger(__name__)
 JOB_CACHE_TIMEOUT = 600
 
 
-# ─── MongoDB helper (shared with views) ──────────────────────────────────────
+# ─── PostgreSQL helper (shared with views) ──────────────────────────────────────
 
-def _log_to_mongodb(user_id, raw_text, parsed_value, file_path, language, backend):
-    """Persist voice log to MongoDB for audit trail."""
+def _log_to_database(user_id, raw_text, parsed_value, file_path, language, backend):
+    """Persist voice log to PostgreSQL for audit trail."""
     try:
-        from config.db import get_collection, Collections
-        get_collection(Collections.VOICE_LOGS).insert_one({
-            'user_id':      user_id,
-            'raw_text':     raw_text,
-            'parsed_value': parsed_value,
-            'file_path':    file_path,
-            'language':     language,
-            'backend':      backend,
-            'timestamp':    datetime.now(timezone.utc),
-        })
+        from .models import VoiceLog
+        VoiceLog.objects.create(
+            user_id=user_id,
+            raw_text=raw_text,
+            parsed_value=parsed_value,
+            file_path=file_path,
+            language=language,
+            backend=backend,
+            timestamp=datetime.now(timezone.utc),
+        )
     except Exception as exc:
-        logger.warning("Failed to log voice entry to MongoDB: %s", exc)
+        logger.warning("Failed to log voice entry to PostgreSQL: %s", exc)
 
 
 # ─── Background runner ────────────────────────────────────────────────────────
@@ -82,9 +82,9 @@ def _run_transcription(job_id: str, file_path: str, user_id: int, created_at_per
         parse_ms     = (time.perf_counter() - t_parse_start) * 1000
         is_parseable = parsed_value is not None
 
-        # 3. Log to MongoDB
-        t_mongo_start = time.perf_counter()
-        _log_to_mongodb(
+        # 3. Log to PostgreSQL
+        t_db_start = time.perf_counter()
+        _log_to_database(
             user_id      = user_id,
             raw_text     = raw_text,
             parsed_value = parsed_value,
@@ -92,7 +92,7 @@ def _run_transcription(job_id: str, file_path: str, user_id: int, created_at_per
             language     = language,
             backend      = backend,
         )
-        mongo_ms = (time.perf_counter() - t_mongo_start) * 1000
+        db_ms = (time.perf_counter() - t_db_start) * 1000
 
         total_backend_ms = (time.perf_counter() - t_start) * 1000
 
@@ -102,7 +102,7 @@ def _run_transcription(job_id: str, file_path: str, user_id: int, created_at_per
             'model_load_ms':     transcription.get('model_load_ms', 0.0),
             'model_was_cached':  transcription.get('model_was_cached', True),
             'number_parse_ms':   round(parse_ms, 2),
-            'mongo_log_ms':      round(mongo_ms, 2),
+            'db_log_ms':         round(db_ms, 2),
             'total_backend_ms':  round(total_backend_ms, 2),
         }
 
@@ -112,11 +112,11 @@ def _run_transcription(job_id: str, file_path: str, user_id: int, created_at_per
             "  ├─ Model Load Time    : %.2f ms (Cached: %s)\n"
             "  ├─ Whisper Inference  : %.2f ms (%s)\n"
             "  ├─ Number Parser      : %.2f ms\n"
-            "  ├─ MongoDB Audit Log  : %.2f ms\n"
+            "  ├─ PostgreSQL Log     : %.2f ms\n"
             "  └─ TOTAL BACKEND EXEC : %.2f ms",
             job_id, queue_wait_ms, timing_data['model_load_ms'],
             timing_data['model_was_cached'], timing_data['whisper_infer_ms'],
-            backend, parse_ms, mongo_ms, total_backend_ms
+            backend, parse_ms, db_ms, total_backend_ms
         )
 
         # Store SUCCESS result in Redis with embedded timing breakdown.
@@ -146,7 +146,7 @@ def _run_transcription(job_id: str, file_path: str, user_id: int, created_at_per
         # H6 FIX: Always delete the audio file after processing — success or failure.
         # Without this, every voice recording piles up in voice_uploads/ forever and
         # will eventually fill the server disk, crashing the entire application.
-        # The transcribed text is already in Redis + MongoDB — the audio is useless now.
+        # The transcribed text is already in Redis + PostgreSQL — the audio is useless now.
         try:
             os.unlink(file_path)
             logger.debug("[CLEANUP] Deleted audio file: %s", file_path)
