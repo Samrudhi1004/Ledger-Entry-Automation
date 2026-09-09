@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'apps.analytics',
     'apps.calibration',
     'apps.tasks',
+    'apps.messaging',
 ]
 
 # ─── Middleware ────────────────────────────────────────────────
@@ -109,10 +110,10 @@ else:
         }
     }
 
-# MongoDB — Document data (Inspection Records, Voice Logs)
-# Connection managed via config/db.py using PyMongo
-MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
-MONGODB_NAME = os.getenv('MONGODB_NAME', 'voice_inspection_db')
+# MongoDB — DEPRECATED after migration to PostgreSQL-only architecture
+# All inspection data now stored in PostgreSQL JSONB fields
+# MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
+# MONGODB_NAME = os.getenv('MONGODB_NAME', 'voice_inspection_db')
 
 
 # ─── Custom User Model ────────────────────────────────────────
@@ -251,6 +252,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Max audio file upload: 25 MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 25 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 25 * 1024 * 1024
+
+
+# ─── Cloudinary Configuration ──────────────────────────────────
+# For messaging module image storage (documents stored in PostgreSQL)
+try:
+    import cloudinary
+    cloudinary.config(
+        cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME', ''),
+        api_key=os.getenv('CLOUDINARY_API_KEY', ''),
+        api_secret=os.getenv('CLOUDINARY_API_SECRET', ''),
+        secure=True
+    )
+except ImportError:
+    pass
 
 
 # ─── Essential Logging Configuration ───────────────────────────

@@ -1,0 +1,77 @@
+.messages-page {
+  height: 100%;
+  background: white;
+  overflow: hidden; /* Prevent any scroll propagation */
+}
+
+.messages-layout {
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  height: 100%;
+  overflow: hidden; /* Isolate scroll containers */
+}
+
+.conversations-panel {
+  position: relative;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Keep sidebar scroll isolated */
+  height: 100%;
+}
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Keep chat scroll isolated */
+  height: 100%;
+}
+
+.new-chat-button {
+  position: absolute;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 2rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3), 0 4px 6px -2px rgba(59, 130, 246, 0.2);
+  transition: all 0.2s;
+  z-index: 10;
+}
+
+.new-chat-button:hover {
+  background-color: #2563eb;
+  box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.3), 0 10px 10px -5px rgba(59, 130, 246, 0.2);
+  transform: translateY(-2px);
+}
+
+.new-chat-button:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 768px) {
+  .messages-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-panel {
+    display: none;
+  }
+
+  .messages-layout.chat-open .conversations-panel {
+    display: none;
+  }
+
+  .messages-layout.chat-open .chat-panel {
+    display: flex;
+  }
+}
+/* Force reload Wed Sep  9 12:17:27 IST 2026 */

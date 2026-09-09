@@ -16,8 +16,8 @@ PyJWT==2.13.0
 psycopg2-binary==2.9.12
 dj-database-url==2.3.0
 
-# ─── MongoDB ───────────────────────────────────────────────────
-pymongo==4.10.1
+# ─── MongoDB (DEPRECATED - migrated to PostgreSQL) ────────────
+# pymongo==4.10.1
 
 # ─── Environment Variables ─────────────────────────────────────
 python-dotenv==1.2.2
@@ -44,6 +44,12 @@ redis==5.2.1
 
 # ─── Utilities ─────────────────────────────────────────────────
 Pillow==11.1.0
+
+# ─── Messaging Module ──────────────────────────────────────────
+cloudinary==1.41.0
+python-magic==0.4.27
+python-magic-bin==0.4.14  # Windows binary for python-magic
+filetype==1.2.0
 
 # ─── Production Server ────────────────────────────────────────
 gunicorn
