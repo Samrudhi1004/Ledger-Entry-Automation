@@ -20,9 +20,9 @@ from django.db.models import F
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
-from config.db import get_collection, Collections
 from apps.parts.models import InspectionParameter, InspectionTemplate, ProcessParameter
 from .models import InspectionSession
+from . import document_utils as doc_utils
 
 logger = logging.getLogger(__name__)
 
@@ -217,8 +217,8 @@ class ToleranceValidator:
 class InspectionService:
     """
     Orchestrates the full inspection workflow:
-    1. Create session (PostgreSQL + MongoDB)
-    2. Record measurements (MongoDB + PostgreSQL counters)
+    1. Create session (PostgreSQL with JSONB document_payload)
+    2. Record measurements (JSONB document + PostgreSQL counters)
     3. Validate against tolerances
     4. Push WebSocket events
     5. Complete / review session
@@ -226,7 +226,6 @@ class InspectionService:
 
     def __init__(self):
         self.validator  = ToleranceValidator()
-        self.collection = get_collection(Collections.INSPECTION_RECORDS)
 
     # ── Create Session ────────────────────────────────────────────────────
     def create_session(
@@ -329,7 +328,7 @@ class InspectionService:
                     parent_session = None
 
                 if parent_session:
-                    parent_doc = self.collection.find_one({'_id': str(parent_session.session_id)})
+                    parent_doc = doc_utils.get_document(parent_session)
                     if parent_doc:
                         rejected_list = parent_doc.get('rejected_parameters') or []
                         if rejected_list:
@@ -438,35 +437,29 @@ class InspectionService:
             else insp_type_labels.get(actual_inspection_type, actual_inspection_type.replace('_', ' ').title())
         )
 
-        # 2. Initialise MongoDB document
-        mongo_doc = {
-            '_id':                       str(session_id),
-            'session_id':                str(session_id),
-            'part_number':               part.part_number,
-            'part_name':                 part.part_name,
-            'machine_code':              machine.machine_code,
-            'plant_id':                  machine.plant_id,
-            'operator_id':               operator.id,
-            'operator_name':             operator.get_full_name(),
-            'supervisor_id':             supervisor.id if supervisor else None,
-            'inspection_type':           actual_inspection_type,
-            'template_id':               template.pk if template else None,
-            'operation_name':            operation_name,
-            'hourly_slot':               hourly_slot if actual_inspection_type == 'hourly' else 0,
-            'shift':                     shift,
-            'status':                    'in_progress',
-            'trial_number':              trial_number,
-            'parent_session_id':         parent_session_id,
-            'rejected_parameters':       list(rejected_codes),
-            'started_at':                datetime.now(timezone.utc),
-            'completed_at':              None,
-            'measurements':              initial_measurements,
-            'supervisor_remark':         '',
-            'approved_at':               None,
-            'parameter_summary':         param_summary_list,
-            'process_parameter_summary': proc_param_summary_list,
-        }
-        self.collection.insert_one(mongo_doc)
+        # 2. Initialize document_payload JSONB field
+        doc_utils.initialize_document(
+            session=session,
+            part_number=part.part_number,
+            part_name=part.part_name,
+            machine_code=machine.machine_code,
+            plant_id=machine.plant_id,
+            operator_id=operator.id,
+            operator_name=operator.get_full_name(),
+            supervisor_id=supervisor.id if supervisor else None,
+            inspection_type=actual_inspection_type,
+            template_id=template.pk if template else None,
+            operation_name=operation_name,
+            hourly_slot=hourly_slot if actual_inspection_type == 'hourly' else 0,
+            shift=shift,
+            trial_number=trial_number,
+            parent_session_id=parent_session_id,
+            started_at=datetime.now(timezone.utc),
+            parameter_summary=param_summary_list,
+            process_parameter_summary=proc_param_summary_list,
+            initial_measurements=initial_measurements,
+            save=True
+        )
 
         self._push_session_event(session, 'session_started')
         return session
@@ -520,34 +513,14 @@ class InspectionService:
             meas_slot = current_slot if current_slot > 0 else 1
             meas_trial = 0
 
-        # M2 FIX: Replaced find_one() + full document scan with a targeted
-        # count_documents() check. Old code fetched the ENTIRE MongoDB document
-        # (potentially 100+ measurements) on every single record_measurement() call
-        # just to find existing_idx — costing 50-150ms per call on cloud DBs.
-        #
-        # Now we use a targeted filter with array element matching.
-        # count_documents() only checks existence (no document body returned) and
-        # uses the measurements array index — far cheaper than loading the whole doc.
-        if meas_type == 'first_piece':
-            existence_filter = {
-                '_id': str(session_id),
-                'measurements': {'$elemMatch': {
-                    'parameter_code': parameter_code,
-                    'inspection_type': 'first_piece',
-                    'trial_number': meas_trial,
-                }},
-            }
-        else:
-            existence_filter = {
-                '_id': str(session_id),
-                'measurements': {'$elemMatch': {
-                    'parameter_code': parameter_code,
-                    'inspection_type': 'hourly',
-                    'hourly_slot': meas_slot,
-                }},
-            }
-
-        measurement_exists = self.collection.count_documents(existence_filter, limit=1) > 0
+        # Check if measurement already exists in document_payload
+        measurement_exists = doc_utils.measurement_exists(
+            session=session,
+            parameter_code=parameter_code,
+            inspection_type=meas_type,
+            trial_number=meas_trial,
+            hourly_slot=meas_slot
+        )
 
         # Handle Process Parameter measurement recording & validation
         if process_parameter:
@@ -621,56 +594,62 @@ class InspectionService:
             }
 
             if measurement_exists:
-                self.collection.update_one(
-                    {'_id': str(session_id)},
-                    {
-                        '$set': {
-                            'measurements.$[elem].measured_value': measured_value,
-                            'measurements.$[elem].status': status_val,
-                            'measurements.$[elem].deviation': dev,
-                            'measurements.$[elem].voice_raw_text': voice_raw_text,
-                            'measurements.$[elem].recorded_at': datetime.now(timezone.utc).isoformat(),
-                            'process_parameter_summary.$[param].status': status_val,
-                            'process_parameter_summary.$[param].measured_value': measured_value,
-                        }
+                # Update existing measurement in JSONB
+                doc_utils.update_measurement(
+                    session=session,
+                    parameter_code=parameter_code,
+                    inspection_type=meas_type,
+                    trial_number=meas_trial,
+                    hourly_slot=meas_slot,
+                    updates={
+                        'measured_value': measured_value,
+                        'status': status_val,
+                        'deviation': dev,
+                        'voice_raw_text': voice_raw_text,
+                        'recorded_at': datetime.now(timezone.utc).isoformat(),
                     },
-                    array_filters=[
-                        {'elem.parameter_code': parameter_code, 'elem.inspection_type': meas_type},
-                        {'param.parameter_code': parameter_code},
-                    ],
-                )
-            else:
-                self.collection.update_one(
-                    {'_id': str(session_id)},
-                    {
-                        '$push': {'measurements': measurement},
-                        '$set': {
-                            'process_parameter_summary.$[param].status': status_val,
-                            'process_parameter_summary.$[param].measured_value': measured_value,
-                        }
-                    },
-                    array_filters=[{'param.parameter_code': parameter_code}],
+                    save=False
                 )
 
-            # Auto-sync reading into process_param_entries for Setup Approval Report atomically
+                # Update parameter summary
+                doc_utils.update_process_parameter_summary(
+                    session=session,
+                    parameter_code=parameter_code,
+                    updates={
+                        'status': status_val,
+                        'measured_value': measured_value,
+                    },
+                    save=True
+                )
+            else:
+                # Add new measurement to JSONB
+                doc_utils.add_measurement(session=session, measurement=measurement, save=False)
+
+                # Update parameter summary
+                doc_utils.update_process_parameter_summary(
+                    session=session,
+                    parameter_code=parameter_code,
+                    updates={
+                        'status': status_val,
+                        'measured_value': measured_value,
+                    },
+                    save=True
+                )
+
+            # Auto-sync reading into process_param_entries for Setup Approval Report
             t_num = meas_trial if (meas_trial >= 1 and meas_trial <= 3) else 1
             t_key = f"trial_{t_num}"
             entry_val = str(voice_raw_text or measured_value or '').strip()
 
-            update_res = self.collection.update_one(
-                {'_id': str(session_id), 'process_param_entries.parameter_code': parameter_code},
-                {'$set': {f'process_param_entries.$.{t_key}': entry_val}}
+            doc_utils.add_or_update_process_param_entry(
+                session=session,
+                parameter_code=parameter_code,
+                parameter_name=process_parameter.parameter_name,
+                specification=process_parameter.specification or '',
+                trial_key=t_key,
+                value=entry_val,
+                save=True
             )
-            if update_res.matched_count == 0:
-                self.collection.update_one(
-                    {'_id': str(session_id)},
-                    {'$push': {'process_param_entries': {
-                        'parameter_code': parameter_code,
-                        'parameter_name': process_parameter.parameter_name,
-                        'specification': process_parameter.specification or '',
-                        t_key: entry_val,
-                    }}}
-                )
 
             # Push WebSocket event for Process Parameter
             self._push_process_param_event(
@@ -725,37 +704,48 @@ class InspectionService:
             'recorded_at':      datetime.now(timezone.utc).isoformat(),
         }
 
-        # Update MongoDB document
+        # Update document_payload in PostgreSQL
         if measurement_exists:
-            self.collection.update_one(
-                {'_id': str(session_id)},
-                {
-                    '$set': {
-                        'measurements.$[elem].measured_value': measured_value,
-                        'measurements.$[elem].status': result.status,
-                        'measurements.$[elem].deviation': result.deviation,
-                        'measurements.$[elem].voice_raw_text': voice_raw_text,
-                        'measurements.$[elem].recorded_at': datetime.now(timezone.utc).isoformat(),
-                        'parameter_summary.$[param].status': result.status,
-                        'parameter_summary.$[param].measured_value': measured_value,
-                    }
+            # Update existing measurement
+            doc_utils.update_measurement(
+                session=session,
+                parameter_code=parameter_code,
+                inspection_type=meas_type,
+                trial_number=meas_trial,
+                hourly_slot=meas_slot,
+                updates={
+                    'measured_value': measured_value,
+                    'status': result.status,
+                    'deviation': result.deviation,
+                    'voice_raw_text': voice_raw_text,
+                    'recorded_at': datetime.now(timezone.utc).isoformat(),
                 },
-                array_filters=[
-                    {'elem.parameter_code': parameter_code, 'elem.inspection_type': meas_type},
-                    {'param.parameter_code': parameter_code},
-                ],
+                save=False
+            )
+
+            # Update parameter summary
+            doc_utils.update_parameter_summary(
+                session=session,
+                parameter_code=parameter_code,
+                updates={
+                    'status': result.status,
+                    'measured_value': measured_value,
+                },
+                save=True
             )
         else:
-            self.collection.update_one(
-                {'_id': str(session_id)},
-                {
-                    '$push': {'measurements': measurement},
-                    '$set': {
-                        'parameter_summary.$[param].status': result.status,
-                        'parameter_summary.$[param].measured_value': measured_value,
-                    }
+            # Add new measurement
+            doc_utils.add_measurement(session=session, measurement=measurement, save=False)
+
+            # Update parameter summary
+            doc_utils.update_parameter_summary(
+                session=session,
+                parameter_code=parameter_code,
+                updates={
+                    'status': result.status,
+                    'measured_value': measured_value,
                 },
-                array_filters=[{'param.parameter_code': parameter_code}],
+                save=True
             )
 
         # Update PostgreSQL counters and reminder timestamps atomically
@@ -809,9 +799,14 @@ class InspectionService:
         session.completed_at = now
         session.save(update_fields=['status', 'completed_at'])
 
-        self.collection.update_one(
-            {'_id': str(session_id)},
-            {'$set': {'status': 'pending_review', 'completed_at': now}},
+        # Update document_payload status
+        doc_utils.update_document(
+            session=session,
+            updates={
+                'status': 'pending_review',
+                'completed_at': now.isoformat(),
+            },
+            save=True
         )
 
         self._push_session_event(session, 'session_completed')
@@ -867,19 +862,21 @@ class InspectionService:
 
         session.save(update_fields=['status', 'is_first_piece_finalized', 'finalized_at', 'finalized_by', 'completed_at', 'is_setup_approved', 'hourly_unlocked_slot', 'pdf_report_path'])
 
-        self.collection.update_one(
-            {'_id': str(session_id)},
-            {'$set': {
+        # Update document_payload
+        doc_utils.update_document(
+            session=session,
+            updates={
                 'status': session.status,
                 'is_first_piece_finalized': True,
                 'is_setup_approved': session.is_setup_approved,
-                'finalized_at': now,
+                'finalized_at': now.isoformat(),
                 'finalized_by_id': inspector.id,
                 'finalized_by_name': inspector.get_full_name(),
-                'completed_at': now,
+                'completed_at': now.isoformat(),
                 'hourly_unlocked_slot': session.hourly_unlocked_slot,
                 'pdf_report_path': session.pdf_report_path,
-            }}
+            },
+            save=True
         )
 
         self._push_session_event(session, 'first_piece_finalized')
@@ -905,7 +902,7 @@ class InspectionService:
             else InspectionSession.Status.REJECTED
         )
 
-        doc = self.collection.find_one({'_id': str(session_id)})
+        doc = doc_utils.get_document(session)
         if action == 'reject':
             if not rejected_parameters and doc:
                 latest_measurements = doc.get('measurements', [])
@@ -935,18 +932,20 @@ class InspectionService:
         session.reviewed_at       = now
         session.save(update_fields=['status', 'supervisor', 'supervisor_remark', 'rejection_reason', 'reviewed_at', 'is_setup_approved', 'hourly_unlocked_slot'])
 
-        self.collection.update_one(
-            {'_id': str(session_id)},
-            {'$set': {
-                'status':              new_status,
-                'supervisor_id':       supervisor.id,
-                'supervisor_remark':   remark,
-                'rejection_reason':    remark if action == 'reject' else '',
+        # Update document_payload
+        doc_utils.update_document(
+            session=session,
+            updates={
+                'status': new_status,
+                'supervisor_id': supervisor.id,
+                'supervisor_remark': remark,
+                'rejection_reason': remark if action == 'reject' else '',
                 'rejected_parameters': rejected_parameters,
-                'is_setup_approved':   session.is_setup_approved,
+                'is_setup_approved': session.is_setup_approved,
                 'hourly_unlocked_slot': session.hourly_unlocked_slot,
-                'approved_at':         now if action == 'approve' else None,
-            }},
+                'approved_at': now.isoformat() if action == 'approve' else None,
+            },
+            save=True
         )
 
         if action == 'reject':
@@ -958,56 +957,70 @@ class InspectionService:
 
     # ── Get Full Document ─────────────────────────────────────────────────
     def get_session_document(self, session_id: str) -> Optional[dict]:
-        """Retrieve full inspection document from MongoDB, merging multi-trial measurements and hourly slots."""
-        doc = self.collection.find_one({'_id': str(session_id)})
-        if not doc:
+        """Retrieve full inspection document from document_payload JSONB field."""
+        session_obj = InspectionSession.objects.filter(session_id=str(session_id)).select_related(
+            'operator', 'supervisor', 'finalized_by', 'machine__plant__factory', 'part'
+        ).first()
+
+        if not session_obj:
             return None
 
-        doc['_id'] = str(doc['_id'])
-        session_obj = InspectionSession.objects.filter(session_id=str(session_id)).select_related('operator', 'supervisor', 'finalized_by', 'machine__plant__factory', 'part').first()
-        if session_obj:
-            shift_hrs = 8
-            if session_obj.machine and session_obj.machine.plant and session_obj.machine.plant.factory:
-                shift_hrs = session_obj.machine.plant.factory.shift_hours or 8
-            doc['shift_hours'] = shift_hrs
-            doc['total_hourly_slots'] = shift_hrs
-            doc['inspection_type'] = session_obj.inspection_type
-            doc['hourly_slot'] = session_obj.hourly_unlocked_slot or 1
-            doc['hourly_unlocked_slot'] = session_obj.hourly_unlocked_slot
-            doc['is_setup_approved'] = session_obj.is_setup_approved
-            doc['status'] = session_obj.status
-            if session_obj.finalized_by:
-                doc['finalized_by_name'] = session_obj.finalized_by.get_full_name()
-                doc['inspector_name'] = session_obj.finalized_by.get_full_name()
-            elif session_obj.operator and (session_obj.operator.role in ['quality_engineer', 'inspector'] or session_obj.inspection_type == 'first_piece'):
-                doc['inspector_name'] = session_obj.operator.get_full_name()
-            if session_obj.operator:
-                doc['operator_name'] = session_obj.operator.get_full_name()
-            if session_obj.supervisor:
-                doc['supervisor_name'] = session_obj.supervisor.get_full_name()
+        # Get document from JSONB field
+        doc = doc_utils.get_document(session_obj)
+        if not doc:
+            doc = {}
 
-            if not doc.get('process_param_entries'):
-                setup_doc = self.collection.find_one(
-                    {
-                        'inspection_type': 'setup_approval',
-                        'machine_id': session_obj.machine_id,
-                    },
-                    sort=[('submitted_at', -1)]
-                )
-                if setup_doc and setup_doc.get('process_param_entries'):
-                    doc['process_param_entries'] = setup_doc.get('process_param_entries')
+        # Add session ID
+        doc['_id'] = str(session_obj.session_id)
+        doc['session_id'] = str(session_obj.session_id)
 
-        root_id = str(doc.get('parent_session_id') or doc['_id'])
+        # Add metadata from PostgreSQL fields
+        shift_hrs = 8
+        if session_obj.machine and session_obj.machine.plant and session_obj.machine.plant.factory:
+            shift_hrs = session_obj.machine.plant.factory.shift_hours or 8
 
-        related_docs = list(self.collection.find({
-            '$or': [
-                {'_id': root_id},
-                {'parent_session_id': root_id},
-                {'_id': str(session_id)}
-            ]
-        }))
+        doc['shift_hours'] = shift_hrs
+        doc['total_hourly_slots'] = shift_hrs
+        doc['inspection_type'] = session_obj.inspection_type
+        doc['hourly_slot'] = session_obj.hourly_unlocked_slot or 1
+        doc['hourly_unlocked_slot'] = session_obj.hourly_unlocked_slot
+        doc['is_setup_approved'] = session_obj.is_setup_approved
+        doc['status'] = session_obj.status
 
-        # Collect and deduplicate all measurements across First Piece (Trials 1..3) and Hourly (Hours 1..8)
+        # Add user names
+        if session_obj.finalized_by:
+            doc['finalized_by_name'] = session_obj.finalized_by.get_full_name()
+            doc['inspector_name'] = session_obj.finalized_by.get_full_name()
+        elif session_obj.operator and (session_obj.operator.role in ['quality_engineer', 'inspector'] or session_obj.inspection_type == 'first_piece'):
+            doc['inspector_name'] = session_obj.operator.get_full_name()
+
+        if session_obj.operator:
+            doc['operator_name'] = session_obj.operator.get_full_name()
+
+        if session_obj.supervisor:
+            doc['supervisor_name'] = session_obj.supervisor.get_full_name()
+
+        # Get setup approval entries if not present
+        if not doc.get('process_param_entries'):
+            from .models import SetupApproval
+            setup_approval = SetupApproval.objects.filter(
+                machine_id=session_obj.machine_id
+            ).order_by('-submitted_at').first()
+
+            if setup_approval and setup_approval.process_param_entries:
+                doc['process_param_entries'] = setup_approval.process_param_entries
+
+        # Merge measurements from related sessions (parent/child trials and hourly slots)
+        root_session_id = str(session_obj.parent_session_id) if session_obj.parent_session_id else str(session_obj.session_id)
+
+        # Find all related sessions
+        related_sessions = InspectionSession.objects.filter(
+            models.Q(session_id=root_session_id) |
+            models.Q(parent_session_id=root_session_id) |
+            models.Q(session_id=session_obj.session_id)
+        ).select_related('operator', 'finalized_by')
+
+        # Collect and deduplicate measurements
         meas_dict = {}
 
         def add_meas(m_item, def_type='first_piece', def_trial=1, def_slot=1):
@@ -1015,13 +1028,11 @@ class InspectionService:
             if not code:
                 return
             itype = m_item.get('inspection_type') or def_type
-            
-            # Safely extract trial_number for First Piece
+
             trial = m_item.get('trial_number')
             if trial is None or (trial == 0 and itype == 'first_piece'):
                 trial = def_trial if def_trial is not None and def_trial > 0 else 1
 
-            # Safely extract hourly_slot for Hourly Inspection
             slot = m_item.get('hourly_slot')
             if slot is None or (slot == 0 and itype == 'hourly'):
                 slot = def_slot if def_slot is not None and def_slot > 0 else 1
@@ -1033,19 +1044,22 @@ class InspectionService:
             m_copy['hourly_slot'] = slot if itype == 'hourly' else 0
             meas_dict[key] = m_copy
 
-        for d in sorted(related_docs, key=lambda x: x.get('trial_number', 1)):
-            trial_no = d.get('trial_number')
-            if trial_no is None:
-                trial_no = 1
-            d_type = d.get('inspection_type') or (session_obj.inspection_type if session_obj else 'first_piece')
-            d_slot = d.get('hourly_slot') or (d.get('hourly_unlocked_slot') or 1)
-            for m in d.get('measurements', []):
+        # Process related sessions
+        for rel_sess in sorted(related_sessions, key=lambda x: x.trial_number):
+            rel_doc = doc_utils.get_document(rel_sess)
+            trial_no = rel_sess.trial_number or rel_doc.get('trial_number') or 1
+            d_type = rel_sess.inspection_type
+            d_slot = rel_sess.hourly_unlocked_slot or rel_doc.get('hourly_slot') or 1
+
+            for m in rel_doc.get('measurements', []):
                 add_meas(m, def_type=d_type, def_trial=trial_no, def_slot=d_slot)
 
+        # Merge measurements from same-day first piece and hourly sessions
         if session_obj:
             session_date = session_obj.started_at.date() if session_obj.started_at else None
             session_shift = session_obj.shift
 
+            # Get all first piece sessions for same machine/part/date/shift
             fp_kwargs = {
                 'machine': session_obj.machine,
                 'part': session_obj.part,
@@ -1056,19 +1070,16 @@ class InspectionService:
             if session_shift:
                 fp_kwargs['shift'] = session_shift
 
-            fp_sessions = list(InspectionSession.objects.filter(**fp_kwargs).order_by('trial_number', 'started_at'))
-            if fp_sessions:
-                fp_ids = [str(s.session_id) for s in fp_sessions]
-                fp_docs = {d['_id']: d for d in self.collection.find({'_id': {'$in': fp_ids}})}
-                for fp_s in fp_sessions:
-                    fp_doc = fp_docs.get(str(fp_s.session_id))
-                    if fp_doc:
-                        t_no = fp_s.trial_number or fp_doc.get('trial_number') or 1
-                        if fp_s.finalized_by and 'inspector_name' not in doc:
-                            doc['inspector_name'] = fp_s.finalized_by.get_full_name()
-                        for m in fp_doc.get('measurements', []):
-                            add_meas(m, def_type='first_piece', def_trial=t_no, def_slot=1)
+            fp_sessions = InspectionSession.objects.filter(**fp_kwargs).order_by('trial_number', 'started_at')
+            for fp_s in fp_sessions:
+                fp_doc = doc_utils.get_document(fp_s)
+                t_no = fp_s.trial_number or fp_doc.get('trial_number') or 1
+                if fp_s.finalized_by and 'inspector_name' not in doc:
+                    doc['inspector_name'] = fp_s.finalized_by.get_full_name()
+                for m in fp_doc.get('measurements', []):
+                    add_meas(m, def_type='first_piece', def_trial=t_no, def_slot=1)
 
+            # Get all hourly sessions for same machine/part/date/shift
             hourly_kwargs = {
                 'machine': session_obj.machine,
                 'part': session_obj.part,
@@ -1079,16 +1090,12 @@ class InspectionService:
             if session_shift:
                 hourly_kwargs['shift'] = session_shift
 
-            hourly_sessions = list(InspectionSession.objects.filter(**hourly_kwargs).order_by('hourly_unlocked_slot', 'started_at'))
-            if hourly_sessions:
-                hourly_ids = [str(s.session_id) for s in hourly_sessions]
-                hourly_docs = {d['_id']: d for d in self.collection.find({'_id': {'$in': hourly_ids}})}
-                for h_sess in hourly_sessions:
-                    h_doc = hourly_docs.get(str(h_sess.session_id))
-                    if h_doc:
-                        slot = h_sess.hourly_unlocked_slot or h_doc.get('hourly_slot') or 1
-                        for m in h_doc.get('measurements', []):
-                            add_meas(m, def_type='hourly', def_trial=0, def_slot=slot)
+            hourly_sessions = InspectionSession.objects.filter(**hourly_kwargs).order_by('hourly_unlocked_slot', 'started_at')
+            for h_sess in hourly_sessions:
+                h_doc = doc_utils.get_document(h_sess)
+                slot = h_sess.hourly_unlocked_slot or h_doc.get('hourly_slot') or 1
+                for m in h_doc.get('measurements', []):
+                    add_meas(m, def_type='hourly', def_trial=0, def_slot=slot)
 
         doc['measurements'] = list(meas_dict.values())
         return doc
@@ -1231,23 +1238,25 @@ class InspectionService:
 
         result = self.validator.validate(override_value, parameter)
 
-        # Update MongoDB document parameter_summary & measurements
+        # Update parameter_summary in document_payload
         now = datetime.now(timezone.utc)
-        self.collection.update_one(
-            {'_id': str(session_id), 'parameter_summary.parameter_code': parameter_code},
-            {'$set': {
-                'parameter_summary.$.measured_value':       override_value,
-                'parameter_summary.$.status':               result.status,
-                'parameter_summary.$.override_by_supervisor': True,
-                'parameter_summary.$.supervisor_id':         supervisor.id,
-                'parameter_summary.$.supervisor_remark':     remark,
-                'parameter_summary.$.updated_at':            now,
-            }},
+        doc_utils.update_parameter_summary(
+            session,
+            parameter_code=parameter_code,
+            updates={
+                'measured_value': override_value,
+                'status': result.status,
+                'override_by_supervisor': True,
+                'supervisor_id': supervisor.id,
+                'supervisor_remark': remark,
+                'updated_at': now.isoformat(),
+            },
+            save=False
         )
 
         session.has_ooc = result.status == 'out_of_spec'
         session.supervisor_override_active = True
-        session.save(update_fields=['has_ooc', 'supervisor_override_active'])
+        session.save(update_fields=['document_payload', 'has_ooc', 'supervisor_override_active'])
 
         self._push_session_event(session, 'supervisor_override')
         return {

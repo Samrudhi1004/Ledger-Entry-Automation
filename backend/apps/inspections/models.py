@@ -1,16 +1,20 @@
 """
-InspectionSession — lightweight PostgreSQL index that links to the
-full inspection document stored in MongoDB.
+InspectionSession — PostgreSQL model that stores both the relational index
+fields AND the full inspection document payload (measurements, parameter
+summaries, etc.) in a JSONB column.  MongoDB is no longer required.
 """
 
 import uuid
+from django.conf import settings
 from django.db import models
 
 
 class InspectionSession(models.Model):
     """
-    PostgreSQL record: acts as an index/reference for the full MongoDB document.
-    All measurement details live in MongoDB (inspection_records collection).
+    PostgreSQL record: primary source of truth for all inspection data.
+    The `document_payload` JSONB column holds the full measurements array,
+    parameter summaries, and process parameter entries that formerly lived
+    in the MongoDB inspection_records collection.
     """
 
     class Status(models.TextChoices):
@@ -85,6 +89,19 @@ class InspectionSession(models.Model):
     operator_reminded_at    = models.DateTimeField(null=True, blank=True)
     supervisor_escalated    = models.BooleanField(default=False)
     supervisor_escalated_at = models.DateTimeField(null=True, blank=True)
+
+    # Full inspection document (replaces MongoDB inspection_records document).
+    # Stores: measurements[], parameter_summary[], process_parameter_summary[],
+    # process_param_entries[], and any other semi-structured per-session data.
+    # PostgreSQL persists this as JSONB — indexed, queryable, no external DB needed.
+    document_payload = models.JSONField(
+        default=dict,
+        help_text=(
+            "Full inspection document: measurements[], parameter_summary[], "
+            "process_parameter_summary[], process_param_entries[], etc. "
+            "Replaces the MongoDB inspection_records document."
+        ),
+    )
 
     def clean(self):
         from django.core.exceptions import ValidationError
@@ -241,6 +258,58 @@ class DowntimeReport(models.Model):
         return f"Downtime Report | ProdRef: {self.production_report_id} | Total: {self.total_downtime} min"
 
 
+class SetupApproval(models.Model):
+    """
+    Replaces MongoDB documents with inspection_type='setup_approval'.
+
+    Setup approval documents are architecturally separate from InspectionSession
+    (normal first-piece / hourly / final inspections).  They record the
+    inspector's process-parameter trial readings that must be approved before
+    a production run begins.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    template = models.ForeignKey(
+        'parts.InspectionTemplate',
+        on_delete=models.CASCADE,
+        related_name='setup_approvals',
+    )
+    machine = models.ForeignKey(
+        'machines.Machine',
+        on_delete=models.CASCADE,
+        related_name='setup_approvals',
+    )
+    part_number    = models.CharField(max_length=100, blank=True)
+    inspector      = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='setup_approvals',
+    )
+    inspector_name = models.CharField(max_length=255, blank=True)
+
+    # List of {parameter_code, parameter_name, trial_1, trial_2, trial_3, …}
+    process_param_entries = models.JSONField(default=list)
+
+    status       = models.CharField(max_length=50, default='submitted')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'inspection_setup_approvals'
+        ordering = ['-submitted_at']
+        indexes = [
+            models.Index(fields=['template', 'machine', 'submitted_at']),
+        ]
+
+    def __str__(self):
+        return (
+            f"SetupApproval | template={self.template_id} "
+            f"machine={self.machine_id} | {self.submitted_at:%Y-%m-%d}"
+        )
+
+
 class JHChecklistItem(models.Model):
     """
     Master Autonomous Maintenance (Jishu Hozen) checklist items.
@@ -334,6 +403,4 @@ class JHInspectionItemResult(models.Model):
 
     def __str__(self):
         return f"{self.inspection.date} Shift {self.inspection.shift} - Item {self.item.sub_no}: {self.status}"
-
-
 

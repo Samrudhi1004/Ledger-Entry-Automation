@@ -752,8 +752,7 @@ class ClearHistoryView(APIView):
         if session_id:
             session = InspectionSession.objects.filter(session_id=session_id).exclude(status='completed').first()
             if session:
-                session.delete()
-                _service.collection.delete_one({'_id': str(session_id)})
+                session.delete()  # Deletes PostgreSQL record including document_payload
             return Response({'message': f'Session {session_id} deleted.'})
 
         if machine_code:
@@ -761,10 +760,7 @@ class ClearHistoryView(APIView):
             active_sessions = InspectionSession.objects.filter(
                 machine__machine_code=machine_code
             ).exclude(status='completed')
-            session_ids = [str(s.session_id) for s in active_sessions]
-            active_sessions.delete()
-            if session_ids:
-                _service.collection.delete_many({'_id': {'$in': session_ids}})
+            active_sessions.delete()  # Deletes PostgreSQL records including document_payload
 
             return Response({
                 'message': f'All history completely cleared for machine {machine_code}.'
@@ -797,23 +793,30 @@ class SetupApprovalView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        doc = _service.collection.find_one(
-            {
-                'inspection_type': 'setup_approval',
-                'template_id': int(template_id),
-                'machine_id': int(machine_id),
-            },
-            sort=[('submitted_at', -1)],
-        )
+        from apps.inspections.models import SetupApproval
+        setup = SetupApproval.objects.filter(
+            template_id=int(template_id),
+            machine_id=int(machine_id),
+        ).order_by('-submitted_at').first()
 
-        if not doc:
+        if not setup:
             return Response(
                 {'detail': 'No setup approval data found for this template and machine.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        doc['_id'] = str(doc['_id'])
-        return Response(doc)
+        return Response({
+            '_id': str(setup.id),
+            'inspection_type': 'setup_approval',
+            'template_id': setup.template_id,
+            'machine_id': setup.machine_id,
+            'part_number': setup.part_number,
+            'inspector_id': setup.inspector_id,
+            'inspector_name': setup.inspector_name,
+            'process_param_entries': setup.process_param_entries,
+            'submitted_at': setup.submitted_at,
+            'status': setup.status,
+        })
 
     def post(self, request):
         """
@@ -856,59 +859,49 @@ class SetupApprovalView(APIView):
             )
 
         now = datetime.now(tz.utc)
-        doc_id = str(uuid.uuid4())
-
-        doc = {
-            '_id': doc_id,
-            'inspection_type': 'setup_approval',
-            'template_id': int(template_id),
-            'machine_id': int(machine_id),
-            'part_number': part_number,
-            'inspector_id': request.user.id,
-            'inspector_name': inspector_name,
-            'process_param_entries': entries,
-            'submitted_at': now,
-            'status': 'submitted',
-        }
 
         # Upsert — update today's existing document or insert new
+        from apps.inspections.models import SetupApproval, InspectionSession
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        existing = _service.collection.find_one({
-            'inspection_type': 'setup_approval',
-            'template_id': int(template_id),
-            'machine_id': int(machine_id),
-            'submitted_at': {'$gte': today_start},
-        })
+        existing = SetupApproval.objects.filter(
+            template_id=int(template_id),
+            machine_id=int(machine_id),
+            submitted_at__gte=today_start,
+        ).first()
 
         if existing:
-            _service.collection.update_one(
-                {'_id': existing['_id']},
-                {'$set': {
-                    'process_param_entries': entries,
-                    'inspector_id': request.user.id,
-                    'inspector_name': inspector_name,
-                    'submitted_at': now,
-                    'status': 'submitted',
-                }},
-            )
-            result_id = str(existing['_id'])
+            existing.process_param_entries = entries
+            existing.inspector = request.user
+            existing.inspector_name = inspector_name
+            existing.submitted_at = now
+            existing.status = 'submitted'
+            existing.save()
+            result_id = str(existing.id)
             updated = True
         else:
-            _service.collection.insert_one(doc)
-            result_id = doc_id
+            new_setup = SetupApproval.objects.create(
+                template_id=int(template_id),
+                machine_id=int(machine_id),
+                part_number=part_number,
+                inspector=request.user,
+                inspector_name=inspector_name,
+                process_param_entries=entries,
+                status='submitted',
+            )
+            result_id = str(new_setup.id)
             updated = False
 
-        # Sync process_param_entries to active sessions for this machine & template
-        from apps.inspections.models import InspectionSession
+        # Sync process_param_entries to active sessions' document_payload for this machine
+        from apps.inspections import document_utils as doc_utils
         active_sessions = InspectionSession.objects.filter(
             machine_id=int(machine_id),
             started_at__date=now.date(),
         )
-        session_ids = [str(s.session_id) for s in active_sessions]
-        if session_ids:
-            _service.collection.update_many(
-                {'_id': {'$in': session_ids}},
-                {'$set': {'process_param_entries': entries}}
+        for session in active_sessions:
+            doc_utils.update_document(
+                session,
+                updates={'process_param_entries': entries},
+                save=True
             )
 
         return Response(

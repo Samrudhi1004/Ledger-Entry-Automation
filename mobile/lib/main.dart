@@ -6,7 +6,9 @@ import 'providers/auth_provider.dart';
 import 'providers/inspection_provider.dart';
 import 'providers/task_provider.dart';
 import 'providers/company_provider.dart';
+import 'providers/messaging_provider.dart';
 import 'screens/splash_screen.dart';
+import 'screens/messaging/messages_screen.dart';
 
 void main() {
   runApp(const VoiceInspectionApp());
@@ -23,6 +25,7 @@ class VoiceInspectionApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => InspectionProvider()),
         ChangeNotifierProvider(create: (_) => TaskProvider()),
         ChangeNotifierProvider(create: (_) => CompanyProvider()),
+        ChangeNotifierProvider(create: (_) => MessagingProvider()),
       ],
       child: MaterialApp(
         title: 'Voice Inspection Operator Terminal',
@@ -38,6 +41,9 @@ class VoiceInspectionApp extends StatelessWidget {
           textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
           useMaterial3: true,
         ),
+        routes: {
+          '/messages': (context) => const MessagesScreen(),
+        },
         home: const SplashScreen(),
       ),
     );

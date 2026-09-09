@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 
 from apps.inspections.models import InspectionSession
 from apps.users.permissions import IsSupervisorOrAbove
-from config.db import get_collection, Collections
 
 
 class InspectionReportView(APIView):
@@ -175,32 +174,50 @@ class OperatorStatsView(APIView):
 class ParameterOOCRateView(APIView):
     """
     GET /api/analytics/parameters/ooc-rate/?part=PN-001
-    Which parameters fail most often? Fetched from MongoDB.
+    Which parameters fail most often? Fetched from PostgreSQL JSONB.
     """
     permission_classes = [IsSupervisorOrAbove]
 
     def get(self, request):
         part_number = request.query_params.get('part', '')
-        collection  = get_collection(Collections.INSPECTION_RECORDS)
 
-        pipeline = [
-            {'$match': {'part_number': part_number} if part_number else {}},
-            {'$unwind': '$measurements'},
-            {'$group': {
-                '_id':       '$measurements.parameter_code',
-                'name':      {'$first': '$measurements.parameter_name'},
-                'total':     {'$sum': 1},
-                'ooc_count': {'$sum': {'$cond': [{'$eq': ['$measurements.status', 'out_of_spec']}, 1, 0]}},
-            }},
-            {'$addFields': {'ooc_rate': {'$multiply': [{'$divide': ['$ooc_count', '$total']}, 100]}}},
-            {'$sort': {'ooc_rate': -1}},
-            {'$limit': 20},
-        ]
+        # Query sessions and extract measurements from document_payload
+        qs = InspectionSession.objects.all()
+        if part_number:
+            qs = qs.filter(part__part_number=part_number)
 
-        results = list(collection.aggregate(pipeline))
-        for r in results:
-            r['_id'] = str(r['_id'])
-            r['ooc_rate'] = round(r.get('ooc_rate', 0), 2)
+        # Aggregate OOC rates from JSONB measurements
+        param_stats = {}
+        for session in qs:
+            measurements = session.document_payload.get('measurements', [])
+            for m in measurements:
+                code = m.get('parameter_code')
+                if not code:
+                    continue
+
+                if code not in param_stats:
+                    param_stats[code] = {
+                        'parameter_code': code,
+                        'name': m.get('parameter_name', code),
+                        'total': 0,
+                        'ooc_count': 0,
+                    }
+
+                param_stats[code]['total'] += 1
+                if m.get('status') == 'out_of_spec':
+                    param_stats[code]['ooc_count'] += 1
+
+        # Calculate OOC rate and sort
+        results = []
+        for code, stats in param_stats.items():
+            if stats['total'] > 0:
+                stats['ooc_rate'] = round((stats['ooc_count'] / stats['total']) * 100, 2)
+            else:
+                stats['ooc_rate'] = 0.0
+            results.append(stats)
+
+        results.sort(key=lambda x: x['ooc_rate'], reverse=True)
+        results = results[:20]  # Top 20
 
         return Response({'parameters': results})
 
