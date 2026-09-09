@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/layout/Header';
-import { BarChart3, ArrowRight, Layers, CheckCircle2, Factory, Clock } from 'lucide-react';
+import { BarChart3, ArrowRight, Layers, CheckCircle2, Factory, Clock, ClipboardCheck } from 'lucide-react';
 
 export default function ProductionModulePage() {
   const navigate = useNavigate();
@@ -39,6 +39,21 @@ export default function ProductionModulePage() {
       details: ['Operator & Machine Downtime Log', '9-Category Downtime Minutes Breakdown', 'Form QF/MF-06 Hanuman Engineering Format'],
       actionText: 'Open Downtime Reports',
       link: isAdmin ? '/reports/downtime?view=history' : '/reports/downtime?view=full',
+    },
+    {
+      id: 'jh-inspections',
+      title: 'JH Inspection Reports',
+      badge: '● Autonomous Maintenance & 31-Day Shift Matrix',
+      badgeBg: '#F0FDF4',
+      badgeColor: '#15803D',
+      icon: ClipboardCheck,
+      iconBg: '#DCFCE7',
+      iconColor: '#16A34A',
+      description:
+        'Track daily Autonomous Maintenance (Jishu Hozen) checklists, 31-day shift compliance matrix (Shifts I, II, III), and abnormal item logs (Form QF/MF-08).',
+      details: ['Autonomous Maintenance Shift Audits', '31-Day Shift I, II, III Compliance Matrix', 'Not OK & Immediate Correction Log'],
+      actionText: 'Open JH Inspection Reports',
+      link: '/production/jh-inspections',
     },
   ];
 

@@ -133,17 +133,30 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
 
   Future<void> _startFpiTrial(Map<String, dynamic> template, int trialNumber) async {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
-    if (trialNumber == 1) {
-      await provider.loadParameters(template, isFirstPiece: true, categoryFilter: 'product');
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final isInspector = auth.isInspector;
+    final inspType = isInspector ? 'first_piece' : 'hourly';
+
+    final parentId = (isInspector && trialNumber > 1)
+        ? (provider.trialSessionIds[trialNumber - 1] ?? provider.sessionId)
+        : null;
+
+    if (trialNumber == 1 || !isInspector) {
+      await provider.loadParameters(template, isFirstPiece: isInspector, categoryFilter: 'product');
     } else {
-      await provider.loadParametersForRetrial(template, trial: trialNumber);
+      final failedCodes = provider.trialFailedCodes[trialNumber - 1];
+      await provider.loadParametersForRetrial(
+        template,
+        trial: trialNumber,
+        targetFailedCodes: failedCodes,
+      );
     }
 
     if (provider.parameters.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('⚠️ No product parameters found for this operation.'),
+            content: Text('⚠️ No parameters found to inspect for this trial.'),
             backgroundColor: Colors.orangeAccent,
             behavior: SnackBarBehavior.floating,
           ),
@@ -152,16 +165,21 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
       return;
     }
 
-    if (provider.sessionId != null && trialNumber == provider.trialNumber) {
+    if (provider.sessionId != null && trialNumber == provider.trialNumber && provider.inspectionType == inspType) {
       if (mounted) {
         Navigator.push(context, MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()));
       }
       return;
     }
 
-    final started = await provider.startSession(trial: trialNumber, inspectionType: 'first_piece');
+    final started = await provider.startSession(
+      trial: isInspector ? trialNumber : 0,
+      hourlySlot: isInspector ? 0 : provider.hourlySlot,
+      inspectionType: inspType,
+      parentId: parentId,
+    );
     if (started && mounted) {
-      if (trialNumber > 1) {
+      if (isInspector && trialNumber > 1) {
         final count = provider.parameters.length;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -175,7 +193,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to start 1st Piece trial #$trialNumber: ${provider.errorMessage ?? "Server error"}'),
+          content: Text('Failed to start session: ${provider.errorMessage ?? "Server error"}'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -405,7 +423,51 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 }),
               ],
 
-              if (!isInspector) ...[
+              if (isInspector) ...[
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'FIRST PIECE INSPECTION TRIALS',
+                      style: TextStyle(
+                        color: Color(0xFF475569),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFDBEAFE)),
+                      ),
+                      child: const Text(
+                        '1PC ONLY',
+                        style: TextStyle(color: Color(0xFF2563EB), fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildTrialLaunchCard(1, '1ST PC #1', 'Initial Setup', const Color(0xFF2563EB)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildTrialLaunchCard(2, '1ST PC #2', 'Corrective', const Color(0xFFD97706)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildTrialLaunchCard(3, '1ST PC #3', 'Final Check', const Color(0xFF059669)),
+                    ),
+                  ],
+                ),
+              ] else ...[
                 const SizedBox(height: 20),
                 Text(
                   'HOURLY IN-PROCESS INSPECTION SLOTS (1/HR - ${provider.shiftHours}/HR)',
@@ -710,24 +772,104 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
   }
 
   Widget _buildTrialLaunchCard(int trialNum, String title, String subtitle, Color color) {
+    final provider = Provider.of<InspectionProvider>(context);
+    final status = provider.trialStatuses[trialNum] ?? (trialNum == 1 ? 'pending' : 'locked');
+    final isPassed = status == 'passed';
+    final isFailed = status == 'failed';
+    final isNotNeeded = status == 'not_needed';
+    final isLocked = status == 'locked';
+
+    Color cardBorderColor = color.withValues(alpha: 0.4);
+    Color iconColor = color;
+    IconData icon = Icons.verified_rounded;
+    String btnText = 'START #$trialNum';
+    Color btnColor = color;
+    bool isActionable = true;
+
+    if (isPassed) {
+      cardBorderColor = const Color(0xFFA7F3D0);
+      iconColor = const Color(0xFF059669);
+      icon = Icons.check_circle_rounded;
+      btnText = 'PASSED';
+      btnColor = const Color(0xFF059669);
+      isActionable = false;
+    } else if (isNotNeeded) {
+      cardBorderColor = const Color(0xFFE2E8F0);
+      iconColor = const Color(0xFF94A3B8);
+      icon = Icons.remove_circle_outline_rounded;
+      btnText = 'NOT NEEDED';
+      btnColor = const Color(0xFF94A3B8);
+      isActionable = false;
+    } else if (isLocked) {
+      cardBorderColor = const Color(0xFFE2E8F0);
+      iconColor = const Color(0xFF94A3B8);
+      icon = Icons.lock_rounded;
+      btnText = 'LOCKED';
+      btnColor = const Color(0xFF94A3B8);
+      isActionable = false;
+    } else if (isFailed) {
+      cardBorderColor = const Color(0xFFFECACA);
+      iconColor = const Color(0xFFDC2626);
+      icon = Icons.error_outline_rounded;
+      btnText = 'FAILED';
+      btnColor = const Color(0xFFDC2626);
+      isActionable = false;
+    } else {
+      // Pending / Unlocked to start
+      final failedCount = provider.trialFailedCodes[trialNum - 1]?.length;
+      if (trialNum > 1 && failedCount != null && failedCount > 0) {
+        btnText = 'RE-CHECK ($failedCount)';
+      }
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        border: Border.all(color: cardBorderColor, width: isActionable ? 1.5 : 1),
       ),
       child: Column(
         children: [
-          Icon(Icons.verified_rounded, color: color, size: 20),
+          Icon(icon, color: iconColor, size: 20),
           const SizedBox(height: 4),
-          Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11)),
+          Text(title, style: TextStyle(color: isActionable ? color : const Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 11)),
           Text(subtitle, style: const TextStyle(color: Color(0xFF64748B), fontSize: 9)),
           const SizedBox(height: 6),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () {
+                if (isLocked) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('🔒 1ST PC #$trialNum is only unlocked if 1ST PC #${trialNum - 1} has out-of-spec readings.'),
+                      backgroundColor: const Color(0xFFD97706),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  return;
+                }
+                if (isPassed) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('✅ 1ST PC #$trialNum is already completed and passed.'),
+                      backgroundColor: const Color(0xFF059669),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  return;
+                }
+                if (isNotNeeded) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('ℹ️ Setup is already passed. Corrective trial is not needed.'),
+                      backgroundColor: Color(0xFF2563EB),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  return;
+                }
                 final t = _templates.isNotEmpty ? _templates.first : null;
                 if (t != null) {
                   _startFpiTrial(t, trialNum);
@@ -741,14 +883,14 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: color,
+                backgroundColor: btnColor,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 minimumSize: Size.zero,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                 elevation: 0,
               ),
-              child: Text('START #$trialNum', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+              child: Text(btnText, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
             ),
           ),
         ],
@@ -842,7 +984,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                             ),
                             SizedBox(height: 3),
                             Text(
-                              '1PC#1 · 1PC#2 · 1PC#3 Quality Dimensions',
+                              'First Piece Inspection — Quality Dimensions',
                               style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
                             ),
                           ],
@@ -900,7 +1042,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                             ),
                             SizedBox(height: 3),
                             Text(
-                              '1PC#1 · 1PC#2 · 1PC#3 Process Setup Checks',
+                              'First Piece Inspection — Process Setup Checks',
                               style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
                             ),
                           ],
@@ -923,9 +1065,14 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
   Widget _buildResumeInspectionCard(InspectionProvider provider) {
     final recordedCount = provider.recordedResults.length;
     final totalCount = provider.parameters.length;
-    final slotText = provider.inspectionType == 'first_piece'
-        ? '1ST PC #${provider.trialNumber}'
-        : 'SLOT ${provider.hourlySlot}/HR';
+    String slotText;
+    if (provider.inspectionType == 'first_piece') {
+      slotText = '1ST PC #${provider.trialNumber}';
+    } else if (provider.inspectionType == 'hourly') {
+      slotText = 'SLOT ${provider.hourlySlot}/HR';
+    } else {
+      slotText = 'IN PROGRESS';
+    }
 
     return Container(
       padding: const EdgeInsets.all(16),

@@ -175,7 +175,15 @@ export default function InspectionsPage() {
               <td style={{ ...tdStyle, textTransform: 'capitalize', color: '#7C3AED', fontWeight: 600 }}>{s.inspection_type?.replace('_', ' ')}</td>
               <td style={tdStyle}>{s.operator?.username ?? '—'}</td>
               <td style={tdStyle}>
-                <span style={{ background: '#F1F5F9', border: '1px solid #CBD5E1', color: '#475569', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                <span style={{
+                  background: s.shift === 'I' || s.shift === 'A' ? '#EFF6FF' : s.shift === 'II' || s.shift === 'B' ? '#F5F3FF' : s.shift === 'III' || s.shift === 'C' ? '#FFFBEB' : '#F1F5F9',
+                  border: s.shift === 'I' || s.shift === 'A' ? '1px solid #BFDBFE' : s.shift === 'II' || s.shift === 'B' ? '1px solid #DDD6FE' : s.shift === 'III' || s.shift === 'C' ? '1px solid #FDE68A' : '1px solid #CBD5E1',
+                  color: s.shift === 'I' || s.shift === 'A' ? '#1D4ED8' : s.shift === 'II' || s.shift === 'B' ? '#6D28D9' : s.shift === 'III' || s.shift === 'C' ? '#B45309' : '#475569',
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontWeight: 700
+                }}>
                   Shift {s.shift}
                 </span>
               </td>
@@ -268,9 +276,12 @@ export default function InspectionsPage() {
               <label style={labelStyle}>Shift</label>
               <select style={selectStyle} value={shiftFilter} onChange={(e) => setShiftFilter(e.target.value)}>
                 <option value="">All Shifts</option>
-                <option value="A">Shift A (Morning)</option>
-                <option value="B">Shift B (Evening)</option>
-                <option value="C">Shift C (Night)</option>
+                <option value="I">Shift I</option>
+                <option value="II">Shift II</option>
+                <option value="III">Shift III</option>
+                <option value="A">Shift A (Legacy)</option>
+                <option value="B">Shift B (Legacy)</option>
+                <option value="C">Shift C (Legacy)</option>
               </select>
             </div>
             <div>
