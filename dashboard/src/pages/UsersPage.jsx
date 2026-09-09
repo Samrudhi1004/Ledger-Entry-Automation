@@ -3,7 +3,8 @@ import Header from '../components/layout/Header';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Modal from '../components/common/Modal';
 import Badge from '../components/common/Badge';
-import { getUsers, registerUser, deleteUser, updateUserStatus, getPlants } from '../api/users';
+import { getUsers, registerUser, deleteUser, updateUserStatus, updateUserShift, getPlants } from '../api/users';
+import { useCompany } from '../context/CompanyContext';
 import { formatDateTime } from '../utils/formatters';
 
 export default function UsersPage() {
@@ -20,6 +21,22 @@ export default function UsersPage() {
   const [successBannerMsg, setSuccessBannerMsg] = useState('');
   const [pageErrorBannerMsg, setPageErrorBannerMsg] = useState('');
 
+  // Multi-shift configuration from Company Details (8h -> 3 shifts; 12h -> 2 shifts)
+  const { shiftHours, totalShiftsPerDay } = useCompany();
+  const is12HourSchedule = shiftHours === 12 || totalShiftsPerDay === 2;
+  const availableShifts = is12HourSchedule
+    ? [
+        { value: 'I', label: 'Shift I (Day Shift)' },
+        { value: 'II', label: 'Shift II (Night Shift)' },
+        { value: 'ALL', label: 'All Shifts (Flexible / Supervisor)' },
+      ]
+    : [
+        { value: 'I', label: 'Shift I (Morning Shift)' },
+        { value: 'II', label: 'Shift II (Evening Shift)' },
+        { value: 'III', label: 'Shift III (Night Shift)' },
+        { value: 'ALL', label: 'All Shifts (Flexible / Supervisor)' },
+      ];
+
   // Form state for creating user accounts
   const [formData, setFormData] = useState({
     username: '',
@@ -29,6 +46,7 @@ export default function UsersPage() {
     email: '',
     phone: '',
     role: 'operator',
+    assigned_shift: 'I',
     plant: '',
     password: '',
     password2: '',
@@ -115,6 +133,7 @@ export default function UsersPage() {
         email: '',
         phone: '',
         role: 'operator',
+        assigned_shift: 'I',
         plant: plants[0]?.id ?? '',
         password: '',
         password2: '',
@@ -131,6 +150,22 @@ export default function UsersPage() {
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleShiftChange = async (userObj, newShift) => {
+    try {
+      await updateUserShift(userObj.id, newShift);
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userObj.id ? { ...u, assigned_shift: newShift, assigned_shift_display: `Shift ${newShift}` } : u
+        )
+      );
+      setSuccessBannerMsg(`✓ ${userObj.username} (${userObj.full_name || userObj.employee_id}) reassigned to Shift ${newShift} successfully.`);
+      setTimeout(() => setSuccessBannerMsg(''), 4000);
+    } catch (err) {
+      setPageErrorBannerMsg(err?.response?.data?.message || 'Failed to reassign user shift.');
+      setTimeout(() => setPageErrorBannerMsg(''), 4000);
     }
   };
 
@@ -295,6 +330,7 @@ export default function UsersPage() {
                     <th>Email</th>
                     <th>Phone</th>
                     <th>Role</th>
+                    <th>Assigned Shift</th>
                     <th>Plant Location</th>
                     <th>Status</th>
                     <th>Created At</th>
@@ -313,6 +349,61 @@ export default function UsersPage() {
                         <span className={`badge ${getRoleBadgeClass(u.role)}`}>
                           {getRoleLabel(u.role)}
                         </span>
+                      </td>
+                      <td>
+                        {u.role === 'admin' ? (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              borderRadius: 4,
+                              background: '#f1f5f9',
+                              color: '#475569',
+                              letterSpacing: '0.04em',
+                            }}
+                          >
+                            ALL SHIFTS
+                          </span>
+                        ) : (
+                          <select
+                            value={u.assigned_shift || 'ALL'}
+                            onChange={(e) => handleShiftChange(u, e.target.value)}
+                            title="Click to reassign worker shift"
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: 12,
+                              fontWeight: 700,
+                              fontFamily: 'Inter, sans-serif',
+                              borderRadius: 6,
+                              border: '1px solid #cbd5e1',
+                              cursor: 'pointer',
+                              outline: 'none',
+                              background:
+                                u.assigned_shift === 'I'
+                                  ? '#eff6ff'
+                                  : u.assigned_shift === 'II'
+                                  ? '#f5f3ff'
+                                  : u.assigned_shift === 'III'
+                                  ? '#fffbeb'
+                                  : '#f0fdf4',
+                              color:
+                                u.assigned_shift === 'I'
+                                  ? '#1d4ed8'
+                                  : u.assigned_shift === 'II'
+                                  ? '#6d28d9'
+                                  : u.assigned_shift === 'III'
+                                  ? '#b45309'
+                                  : '#15803d',
+                            }}
+                          >
+                            <option value="I">Shift I</option>
+                            <option value="II">Shift II</option>
+                            {!is12HourSchedule && <option value="III">Shift III</option>}
+                            <option value="ALL">All Shifts</option>
+                          </select>
+                        )}
                       </td>
                       <td>{u.plant_name || 'Main Plant #1'}</td>
                       <td>
@@ -581,6 +672,34 @@ export default function UsersPage() {
                 </select>
               </div>
 
+              <div className="form-group">
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Assigned Shift *</span>
+                  <span style={{ fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
+                    {is12HourSchedule ? '12h (2 Shifts)' : '8h (3 Shifts)'}
+                  </span>
+                </label>
+                <select
+                  name="assigned_shift"
+                  className="form-select"
+                  value={formData.assigned_shift}
+                  onChange={handleChange}
+                  style={{
+                    borderColor: '#93c5fd',
+                    backgroundColor: '#eff6ff',
+                    fontWeight: 600,
+                  }}
+                >
+                  {availableShifts.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, marginBottom: 16 }}>
               <div className="form-group">
                 <label className="form-label">Plant Assignment *</label>
                 <select

@@ -18,6 +18,7 @@ import {
   Cpu,
   TrendingUp,
   BarChart3,
+  Store,
 } from 'lucide-react';
 
 const MODULES = [
@@ -56,6 +57,13 @@ const MODULES = [
     label: 'Purchase',
     icon: ShoppingCart,
     to: '/purchase',
+    items: [],
+  },
+  {
+    key: 'store',
+    label: 'Store',
+    icon: Store,
+    to: '/store',
     items: [],
   },
   {

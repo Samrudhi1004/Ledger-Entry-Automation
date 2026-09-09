@@ -819,4 +819,63 @@ class ApiService {
     );
     return response.statusCode == 200;
   }
+
+  // ── JH (Autonomous Maintenance) Inspections ─────────────────────────────────
+  static Future<List<dynamic>> getJhChecklistItems() async {
+    try {
+      final response = await authenticatedRequest(
+        (headers) => http.get(Uri.parse('$baseUrl/inspections/jh/items/'), headers: headers),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['results'] ?? [];
+      }
+    } catch (e) {
+      debugPrint('[API] getJhChecklistItems error: $e');
+    }
+    return [];
+  }
+
+  static Future<Map<String, dynamic>> submitJhInspection(Map<String, dynamic> payload) async {
+    try {
+      final response = await authenticatedRequest(
+        (headers) => http.post(
+          Uri.parse('$baseUrl/inspections/jh/submit/'),
+          headers: headers,
+          body: jsonEncode(payload),
+        ),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      } else {
+        final body = jsonDecode(response.body);
+        String msg = 'Failed to submit JH inspection (${response.statusCode})';
+        if (body is Map && body.containsKey('error')) {
+          msg = body['error'];
+        }
+        return {'success': false, 'message': msg};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+  static Future<List<dynamic>> getJhInspectionHistory({int? machineId, String? date}) async {
+    try {
+      final queryParams = <String, String>{};
+      if (machineId != null) queryParams['machine'] = machineId.toString();
+      if (date != null) queryParams['date'] = date;
+
+      final uri = Uri.parse('$baseUrl/inspections/jh/reports/').replace(queryParameters: queryParams);
+      final response = await authenticatedRequest((headers) => http.get(uri, headers: headers));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['results'] ?? [];
+      }
+    } catch (e) {
+      debugPrint('[API] getJhInspectionHistory error: $e');
+    }
+    return [];
+  }
 }
+

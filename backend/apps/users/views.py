@@ -216,6 +216,21 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
                 "user": serializer.data
             }, status=status.HTTP_200_OK)
 
+        # Direct assigned_shift update — fast shift rotation
+        if 'assigned_shift' in request.data:
+            shift_val = request.data['assigned_shift']
+            if shift_val in dict(User.Shift.choices):
+                user_obj.assigned_shift = shift_val
+                user_obj.save(update_fields=['assigned_shift'])
+                from .serializers import UserListSerializer
+                serializer = UserListSerializer(user_obj)
+                return Response({
+                    "success": True,
+                    "action": "shift_updated",
+                    "message": f"User account '{user_obj.username}' reassigned to {user_obj.get_assigned_shift_display()}.",
+                    "user": serializer.data
+                }, status=status.HTTP_200_OK)
+
         # Fallback: general partial update for other fields
         serializer = self.get_serializer(user_obj, data=request.data, partial=True)
         if serializer.is_valid():

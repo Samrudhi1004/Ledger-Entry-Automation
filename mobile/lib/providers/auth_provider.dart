@@ -9,6 +9,7 @@ class AuthProvider with ChangeNotifier {
   bool _isAuthenticated = false;
   String? _username;
   String? _userRole;
+  String? _assignedShift;
   String? _fullName;
   String? _firstName;
   String? _lastName;
@@ -23,6 +24,9 @@ class AuthProvider with ChangeNotifier {
   String? get username => _username;
   String? get userId => _username;
   String? get userRole => _userRole;
+  String get assignedShift => _assignedShift ?? 'ALL';
+  bool get isShiftLocked => _assignedShift != null && _assignedShift != 'ALL';
+  bool canAccessShift(String shift) => _assignedShift == null || _assignedShift == 'ALL' || _assignedShift == shift;
   String? get fullName => _fullName;
   String? get firstName => _firstName;
   String? get lastName => _lastName;
@@ -67,17 +71,20 @@ class AuthProvider with ChangeNotifier {
           try {
             final info = jsonDecode(userInfoStr);
             _userRole = info['role'] ?? 'operator';
+            _assignedShift = info['assigned_shift'] ?? 'ALL';
             _fullName = (info['full_name'] != null && info['full_name'].toString().isNotEmpty)
                 ? info['full_name']
                 : _username;
           } catch (_) {
             _userRole = 'operator';
+            _assignedShift = 'ALL';
           }
         } else {
           _userRole = 'operator';
+          _assignedShift = 'ALL';
         }
         _isAuthenticated = true;
-        debugPrint('[AuthProvider] Restored local session for $_username (role: $_userRole)');
+        debugPrint('[AuthProvider] Restored local session for $_username (role: $_userRole, shift: $_assignedShift)');
 
         // Silently attempt background refresh to get fresh access token & rotate refresh token
         final refreshStatus = await ApiService.refreshToken();
@@ -88,6 +95,7 @@ class AuthProvider with ChangeNotifier {
           _isAuthenticated = false;
           _username = null;
           _userRole = null;
+          _assignedShift = null;
           _fullName = null;
         } else if (refreshStatus == true) {
           // Refresh succeeded — re-decode the new JWT to re-persist user_info.
@@ -101,13 +109,16 @@ class AuthProvider with ChangeNotifier {
                 final payloadBytes = base64Url.decode(paddedPayload);
                 final payload = jsonDecode(utf8.decode(payloadBytes)) as Map<String, dynamic>;
                 final roleFromJwt = payload['role']?.toString() ?? _userRole ?? 'operator';
+                final shiftFromJwt = payload['assigned_shift']?.toString() ?? _assignedShift ?? 'ALL';
                 _userRole = roleFromJwt;
+                _assignedShift = shiftFromJwt;
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setString('user_info', jsonEncode({
                   'role': roleFromJwt,
+                  'assigned_shift': shiftFromJwt,
                   'full_name': _fullName ?? _username,
                 }));
-                debugPrint('[AuthProvider] Re-persisted user_info from JWT (role: $roleFromJwt).');
+                debugPrint('[AuthProvider] Re-persisted user_info from JWT (role: $roleFromJwt, shift: $shiftFromJwt).');
               }
             }
           } catch (e) {
@@ -121,6 +132,7 @@ class AuthProvider with ChangeNotifier {
         _isAuthenticated = false;
         _username = null;
         _userRole = null;
+        _assignedShift = null;
         _fullName = null;
       }
     } catch (e) {
@@ -145,11 +157,19 @@ class AuthProvider with ChangeNotifier {
         _plantName = profile['plant_name'] ?? '';
         _profilePhotoUrl = profile['profile_photo_url'];
         _userRole = profile['role'] ?? _userRole;
+        _assignedShift = profile['assigned_shift'] ?? _assignedShift ?? 'ALL';
 
         final first = _firstName ?? '';
         final last = _lastName ?? '';
         final full = '$first $last'.trim();
         _fullName = full.isNotEmpty ? full : _username;
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_info', jsonEncode({
+          'role': _userRole,
+          'assigned_shift': _assignedShift,
+          'full_name': _fullName,
+        }));
 
         notifyListeners();
       }
@@ -177,11 +197,18 @@ class AuthProvider with ChangeNotifier {
         final userData = result['data']?['user'];
         if (userData != null) {
           _userRole = userData['role'] ?? 'operator';
+          _assignedShift = userData['assigned_shift'] ?? 'ALL';
           _fullName = (userData['full_name'] != null && userData['full_name'].toString().isNotEmpty)
               ? userData['full_name']
               : username;
+          await prefs.setString('user_info', jsonEncode({
+            'role': _userRole,
+            'assigned_shift': _assignedShift,
+            'full_name': _fullName,
+          }));
         } else {
           _userRole = 'operator';
+          _assignedShift = 'ALL';
         }
         notifyListeners();
         return true;

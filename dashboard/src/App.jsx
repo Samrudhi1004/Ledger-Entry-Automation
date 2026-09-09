@@ -12,6 +12,7 @@ import SetupApprovalReportsPage from './pages/SetupApprovalReportsPage';
 import DailyProductionReportsPage from './pages/DailyProductionReportsPage';
 import DowntimeReportsPage from './pages/DowntimeReportsPage';
 import ProductionModulePage from './pages/ProductionModulePage';
+import JHInspectionReportsPage from './pages/JHInspectionReportsPage';
 import MachinesPage from './pages/MachinesPage';
 import MachineDetailPage from './pages/MachineDetailPage';
 import ParametersPage from './pages/ParametersPage';
@@ -25,6 +26,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import QualityAnalyzerPage from './pages/QualityAnalyzerPage';
 import HRModulePage from './pages/HRModulePage';
 import PurchaseModulePage from './pages/PurchaseModulePage';
+import StoreModulePage from './pages/StoreModulePage';
 import MaintenanceModulePage from './pages/MaintenanceModulePage';
 import DevelopmentModulePage from './pages/DevelopmentModulePage';
 import DrawingsPage from './pages/DrawingsPage';
@@ -150,6 +152,14 @@ export default function App() {
         }
       />
       <Route
+        path="/production/jh-inspections"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
+            <JHInspectionReportsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
         path="/quality-analyzer"
         element={
           <ProtectedLayout pendingCount={pendingCount}>
@@ -178,6 +188,14 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <PurchaseModulePage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/store"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
+            <StoreModulePage />
           </ProtectedLayout>
         }
       />

@@ -48,18 +48,22 @@ def _dispatch_async_websocket(group_name: str, payload: dict):
     _broadcast_pool.submit(_send)
 
 
+class CachedParamWrapper:
+    """Safely wraps cached parameter dictionary with attribute access and fallback."""
+    def __init__(self, data: dict):
+        self.__dict__.update(data)
+
+    def __getattr__(self, name):
+        return None
+
+
 def _get_cached_parameter(part_id: int, parameter_code: str):
     """Retrieves InspectionParameter from Redis cache (1 hour timeout) or DB."""
     cache_key = f"param_spec_{part_id}_{parameter_code}"
     cached_param = cache.get(cache_key)
     if cached_param is not None:
-        # If it's a dict (from new cache format), we can use it, but ToleranceValidator expects an object.
-        # However, Python handles dot notation via namedtuple/dataclass, or we can just reconstruct a basic object
         if isinstance(cached_param, dict):
-            class DummyParam: pass
-            p = DummyParam()
-            for k, v in cached_param.items(): setattr(p, k, v)
-            return p
+            return CachedParamWrapper(cached_param)
         return cached_param
 
     from django.db.models import Q
@@ -73,15 +77,19 @@ def _get_cached_parameter(part_id: int, parameter_code: str):
         ).first()
 
     if param:
-        # Cache dict instead of ORM object (NEW-H2)
         cache_data = {
             'id': param.id,
             'parameter_code': param.parameter_code,
             'parameter_name': param.parameter_name,
-            'nominal_value': float(param.nominal_value) if param.nominal_value else 0.0,
-            'upper_limit': float(param.upper_limit) if param.upper_limit else 0.0,
-            'lower_limit': float(param.lower_limit) if param.lower_limit else 0.0,
-            'is_critical': param.is_critical,
+            'measurement_type': param.measurement_type or 'dimensional',
+            'unit': param.unit or 'mm',
+            'nominal_value': float(param.nominal_value) if param.nominal_value is not None else 0.0,
+            'upper_tolerance': float(param.upper_tolerance) if param.upper_tolerance is not None else 0.0,
+            'lower_tolerance': float(param.lower_tolerance) if param.lower_tolerance is not None else 0.0,
+            'upper_limit': float(param.upper_limit) if param.upper_limit is not None else 0.0,
+            'lower_limit': float(param.lower_limit) if param.lower_limit is not None else 0.0,
+            'is_critical': bool(param.is_critical),
+            'is_process_parameter': False,
         }
         cache.set(cache_key, cache_data, timeout=3600)
     return param
@@ -93,10 +101,7 @@ def _get_cached_process_parameter(part_id: int, parameter_code: str):
     cached_proc_param = cache.get(cache_key)
     if cached_proc_param is not None:
         if isinstance(cached_proc_param, dict):
-            class DummyProcParam: pass
-            p = DummyProcParam()
-            for k, v in cached_proc_param.items(): setattr(p, k, v)
-            return p
+            return CachedParamWrapper(cached_proc_param)
         return cached_proc_param
 
     from django.db.models import Q
@@ -110,13 +115,21 @@ def _get_cached_process_parameter(part_id: int, parameter_code: str):
         ).first()
 
     if proc_param:
-        # Cache dict instead of ORM object
         cache_data = {
             'id': proc_param.id,
             'parameter_code': proc_param.parameter_code,
             'parameter_name': proc_param.parameter_name,
-            'target_value': float(proc_param.target_value) if proc_param.target_value else 0.0,
-            'unit': proc_param.unit,
+            'data_type': proc_param.data_type or 'numeric',
+            'measurement_type': proc_param.measurement_type or 'dimensional',
+            'unit': proc_param.unit or '',
+            'specification': proc_param.specification or '',
+            'nominal_value': float(proc_param.nominal_value) if proc_param.nominal_value is not None else None,
+            'upper_tolerance': float(proc_param.upper_tolerance) if proc_param.upper_tolerance is not None else None,
+            'lower_tolerance': float(proc_param.lower_tolerance) if proc_param.lower_tolerance is not None else None,
+            'upper_limit': float(proc_param.upper_limit) if proc_param.upper_limit is not None else None,
+            'lower_limit': float(proc_param.lower_limit) if proc_param.lower_limit is not None else None,
+            'is_required': bool(proc_param.is_required),
+            'is_process_parameter': True,
         }
         cache.set(cache_key, cache_data, timeout=3600)
     return proc_param
@@ -444,6 +457,7 @@ class InspectionService:
             'status':                    'in_progress',
             'trial_number':              trial_number,
             'parent_session_id':         parent_session_id,
+            'rejected_parameters':       list(rejected_codes),
             'started_at':                datetime.now(timezone.utc),
             'completed_at':              None,
             'measurements':              initial_measurements,

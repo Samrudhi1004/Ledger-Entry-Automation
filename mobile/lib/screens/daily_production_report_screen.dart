@@ -123,7 +123,8 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     final partId = provider.selectedPart?['id'] ?? 1;
 
     final operation = provider.selectedTemplate?['part_operation_name'] ?? provider.selectedTemplate?['version']?.toString() ?? 'Drilling';
-    final shift = provider.shift;
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final shift = auth.isShiftLocked ? auth.assignedShift : provider.shift;
 
     final payload = {
       'date': dateStr,
@@ -201,7 +202,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     final machineCode = provider.selectedMachine?['machine_code'] ?? 'CNC-01';
     final partName = provider.selectedPart?['part_name'] ?? 'Brake Drum Rear';
     final operation = provider.selectedTemplate?['part_operation_name'] ?? 'Drilling';
-    final shift = provider.shift;
+    final shift = auth.isShiftLocked ? auth.assignedShift : provider.shift;
     final operatorName = auth.fullName ?? auth.username ?? 'Operator User';
 
     final isTargetMet = _achievementPercentage >= 100;
@@ -251,7 +252,12 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                   ),
                   child: Column(
                     children: [
-                      _metaRow('Date:', dateDisplay, 'Shift:', 'Shift $shift'),
+                      _metaRow(
+                        'Date:',
+                        dateDisplay,
+                        'Shift:',
+                        auth.isShiftLocked ? 'Shift $shift 🔒' : 'Shift $shift',
+                      ),
                       const SizedBox(height: 8),
                       _metaRow('Machine:', machineCode, 'Operator:', operatorName),
                       const SizedBox(height: 8),

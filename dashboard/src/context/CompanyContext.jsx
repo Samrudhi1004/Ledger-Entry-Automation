@@ -12,6 +12,8 @@ export const CompanyProvider = ({ children }) => {
   const { user } = useAuth();
   const [companyName, setCompanyName] = useState('MANTRI METALLICS PVT. LTD.');
   const [companyCode, setCompanyCode] = useState('MMPL');
+  const [shiftHours, setShiftHours] = useState(8);
+  const [totalShiftsPerDay, setTotalShiftsPerDay] = useState(3);
 
   const fetchCompany = useCallback(() => {
     let mounted = true;
@@ -23,6 +25,9 @@ export const CompanyProvider = ({ children }) => {
           const primary = compData[0];
           setCompanyName(primary.name || 'MANTRI METALLICS PVT. LTD.');
           setCompanyCode(primary.code || 'MMPL');
+          const hrs = Number(primary.shift_hours) === 12 ? 12 : 8;
+          setShiftHours(hrs);
+          setTotalShiftsPerDay(hrs === 12 ? 2 : 3);
         }
       })
       .catch((err) => {
@@ -39,7 +44,16 @@ export const CompanyProvider = ({ children }) => {
   }, [user, fetchCompany]);
 
   return (
-    <CompanyContext.Provider value={{ companyName, companyCode, refreshCompany: fetchCompany }}>
+    <CompanyContext.Provider
+      value={{
+        companyName,
+        companyCode,
+        shiftHours,
+        totalShiftsPerDay,
+        availableShifts: shiftHours === 12 ? ['I', 'II'] : ['I', 'II', 'III'],
+        refreshCompany: fetchCompany,
+      }}
+    >
       {children}
     </CompanyContext.Provider>
   );

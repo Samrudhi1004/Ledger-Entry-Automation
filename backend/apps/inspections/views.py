@@ -1,6 +1,7 @@
 import time
 import logging
 from django.core.cache import cache
+from django.db import transaction
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -23,7 +24,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 # L1 FIX: Removed duplicate imports — Part and Machine already imported on lines 11-12.
 from apps.users.permissions import IsSupervisorOrAbove, IsOperatorOrSupervisor
-from .models import InspectionSession, DailyProductionReport, DowntimeReport
+from .models import (
+    InspectionSession,
+    DailyProductionReport,
+    DowntimeReport,
+    JHChecklistItem,
+    JHInspectionRecord,
+    JHInspectionItemResult,
+)
 from .serializers import (
     StartInspectionSerializer,
     RecordMeasurementSerializer,
@@ -32,6 +40,10 @@ from .serializers import (
     InspectionSessionSerializer,
     DailyProductionReportSerializer,
     DowntimeReportSerializer,
+    JHChecklistItemSerializer,
+    JHInspectionItemResultSerializer,
+    JHInspectionRecordSerializer,
+    JHInspectionSubmitSerializer,
 )
 from .pdf_generator import generate_daily_production_pdf, generate_downtime_pdf
 # M4 FIX: Import shared singleton — do NOT instantiate InspectionService() here.
@@ -84,12 +96,25 @@ class StartInspectionView(APIView):
             )
 
         try:
+            # Determine effective shift based on user's assigned_shift
+            requested_shift = d.get('shift') or 'I'
+            if requested_shift in ('A', 'B', 'C'):
+                shift_alias_map = {'A': 'I', 'B': 'II', 'C': 'III'}
+                requested_shift = shift_alias_map.get(requested_shift, 'I')
+
+            # If user has an assigned shift other than ALL, enforce it
+            user_shift = getattr(request.user, 'assigned_shift', 'ALL')
+            if user_shift and user_shift != 'ALL':
+                effective_shift = user_shift
+            else:
+                effective_shift = requested_shift
+
             session = _service.create_session(
                 part              = part,
                 machine           = machine,
                 operator          = request.user,
                 inspection_type   = d.get('inspection_type', 'first_piece'),
-                shift             = d.get('shift', 'A'),
+                shift             = effective_shift,
                 template_id       = d.get('template_id'),
                 trial_number      = d.get('trial_number', 1),
                 parent_session_id = d.get('parent_session_id'),
@@ -257,6 +282,15 @@ class BatchMeasureView(APIView):
                 _service.complete_session(session_id)
             except Exception:
                 pass  # may already be completed; ignore
+        else:
+            try:
+                _service.collection.update_one(
+                    {'_id': str(session_id)},
+                    {'$set': {'rejected_parameters': failed_codes}}
+                )
+                InspectionSession.objects.filter(session_id=session_id).update(has_ooc=True)
+            except Exception as e:
+                logger.warning("Could not update rejected_parameters on session %s: %s", session_id, e)
 
         duration_ms = (time.perf_counter() - t_batch_start) * 1000
         logger.info(
@@ -936,7 +970,18 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Set operator to current user if not explicitly passed
         operator = serializer.validated_data.get('operator') or self.request.user
-        serializer.save(operator=operator)
+        submitted_shift = serializer.validated_data.get('shift') or 'I'
+        if submitted_shift in ('A', 'B', 'C'):
+            submitted_shift = {'A': 'I', 'B': 'II', 'C': 'III'}.get(submitted_shift, 'I')
+
+        # If operator has an assigned shift other than ALL, enforce it
+        user_shift = getattr(operator, 'assigned_shift', 'ALL')
+        if user_shift and user_shift != 'ALL':
+            effective_shift = user_shift
+        else:
+            effective_shift = submitted_shift
+
+        serializer.save(operator=operator, shift=effective_shift)
 
     @action(detail=True, methods=['get'])
     def export_pdf(self, request, pk=None):
@@ -1408,6 +1453,393 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
             'since':   str(since_date),
             'results': history_list,
         }, status=status.HTTP_200_OK)
+
+
+# ─── JH (Autonomous Maintenance) Views ───────────────────────────────────────
+
+class JHChecklistItemsView(APIView):
+    """
+    GET /api/inspections/jh/items/
+    Returns all active JH checklist checkpoints ordered by sort_order.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        items = JHChecklistItem.objects.filter(is_active=True).order_by('sort_order', 'sub_no')
+        serializer = JHChecklistItemSerializer(items, many=True)
+        return Response({
+            'count': items.count(),
+            'results': serializer.data,
+        }, status=status.HTTP_200_OK)
+
+
+class JHInspectionSubmitView(APIView):
+    """
+    POST /api/inspections/jh/submit/
+    Submits a shift's Autonomous Maintenance checklist.
+    Stored in PostgreSQL under JHInspectionRecord and JHInspectionItemResult.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = JHInspectionSubmitSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        machine_id = data['machine_id']
+        insp_date = data['date']
+        shift = data['shift']
+        remarks = data.get('overall_remarks', '')
+        results_data = data['results']
+
+        machine = Machine.objects.select_related('plant', 'plant__factory').filter(id=machine_id).first()
+        if not machine:
+            return Response({'error': f"Machine ID {machine_id} not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Validate shift for 12-hr vs 8-hr schedule
+        machine_shift_hours = 8
+        if machine.plant and machine.plant.shift_duration_hours:
+            machine_shift_hours = machine.plant.shift_duration_hours
+        elif machine.plant and machine.plant.factory and machine.plant.factory.shift_hours:
+            machine_shift_hours = machine.plant.factory.shift_hours
+
+        if machine_shift_hours == 12 and shift == 'III':
+            return Response(
+                {'error': "Shift III is not applicable for 12-hour schedule machines (only Shift I and Shift II allowed)."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Enforce operator assigned shift restriction
+        user_shift = getattr(request.user, 'assigned_shift', 'ALL')
+        if user_shift and user_shift != 'ALL' and user_shift != shift:
+            return Response(
+                {'error': f"पहुंच अस्वीकृत (Access Denied): आप केवल शिफ्ट {user_shift} के लिए अधिकृत हैं। आप शिफ्ट {shift} का निरीक्षण सबमिट नहीं कर सकते।"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        with transaction.atomic():
+            record, _ = JHInspectionRecord.objects.update_or_create(
+                machine=machine,
+                date=insp_date,
+                shift=shift,
+                defaults={
+                    'operator': request.user,
+                    'overall_remarks': remarks,
+                }
+            )
+
+            record.item_results.all().delete()
+
+            ok_count = 0
+            not_ok_count = 0
+            corrected_count = 0
+
+            item_ids = [r['item_id'] for r in results_data]
+            items_dict = {item.id: item for item in JHChecklistItem.objects.filter(id__in=item_ids)}
+
+            new_results = []
+            for r in results_data:
+                item_obj = items_dict.get(r['item_id'])
+                if not item_obj:
+                    continue
+
+                item_status = r['status']
+                if item_status == 'OK':
+                    ok_count += 1
+                elif item_status == 'NOT_OK':
+                    not_ok_count += 1
+                elif item_status == 'CORRECTED':
+                    corrected_count += 1
+
+                new_results.append(
+                    JHInspectionItemResult(
+                        inspection=record,
+                        item=item_obj,
+                        status=item_status,
+                        remark=r.get('remark', ''),
+                        action_taken=r.get('action_taken', ''),
+                    )
+                )
+
+            JHInspectionItemResult.objects.bulk_create(new_results)
+
+            record.total_items = len(new_results)
+            record.ok_items = ok_count
+            record.not_ok_items = not_ok_count
+            record.corrected_items = corrected_count
+
+            if not_ok_count > 0:
+                record.status = JHInspectionRecord.Status.HAS_ISSUES
+            elif corrected_count > 0:
+                record.status = JHInspectionRecord.Status.CORRECTED
+            else:
+                record.status = JHInspectionRecord.Status.ALL_OK
+
+            record.save()
+
+        output_serializer = JHInspectionRecordSerializer(record)
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class JHInspectionReportsView(APIView):
+    """
+    GET /api/inspections/jh/reports/
+    Lists shift inspection records with filters (machine, date range, shift, status).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        qs = JHInspectionRecord.objects.select_related('machine', 'operator').prefetch_related('item_results', 'item_results__item').all()
+
+        machine_param = request.query_params.get('machine')
+        if machine_param:
+            if machine_param.isdigit():
+                qs = qs.filter(machine_id=int(machine_param))
+            else:
+                qs = qs.filter(machine__machine_code__iexact=machine_param)
+
+        date_param = request.query_params.get('date')
+        if date_param:
+            qs = qs.filter(date=date_param)
+
+        start_date = request.query_params.get('start_date')
+        if start_date:
+            qs = qs.filter(date__gte=start_date)
+
+        end_date = request.query_params.get('end_date')
+        if end_date:
+            qs = qs.filter(date__lte=end_date)
+
+        shift_param = request.query_params.get('shift')
+        if shift_param and shift_param != 'All':
+            qs = qs.filter(shift=shift_param)
+
+        status_param = request.query_params.get('status')
+        if status_param and status_param != 'All':
+            qs = qs.filter(status=status_param)
+
+        serializer = JHInspectionRecordSerializer(qs[:100], many=True)
+        return Response({
+            'count': qs.count(),
+            'results': serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class JHInspectionDetailView(APIView):
+    """
+    GET /api/inspections/jh/reports/<pk>/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        import uuid
+        qs = JHInspectionRecord.objects.select_related('machine', 'operator').prefetch_related('item_results', 'item_results__item')
+        if pk.isdigit():
+            record = qs.filter(id=int(pk)).first()
+        else:
+            try:
+                u = uuid.UUID(pk)
+                record = qs.filter(record_id=u).first()
+            except ValueError:
+                record = None
+
+        if not record:
+            return Response({'error': 'JH Inspection record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = JHInspectionRecordSerializer(record)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class JHInspectionMatrixView(APIView):
+    """
+    GET /api/inspections/jh/matrix/?machine=<machine_id_or_code>&month=<YYYY-MM>
+    Returns the full 31-day compliance grid with Shift I, II, III for each checklist item.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        import calendar
+        from datetime import datetime, date
+
+        machine_param = request.query_params.get('machine')
+        month_param = request.query_params.get('month')
+
+        now = datetime.now()
+        year = now.year
+        month = now.month
+
+        if month_param:
+            try:
+                parts = month_param.split('-')
+                year = int(parts[0])
+                month = int(parts[1])
+            except Exception:
+                pass
+
+        _, days_in_month = calendar.monthrange(year, month)
+
+        machine = None
+        if machine_param:
+            if machine_param.isdigit():
+                machine = Machine.objects.select_related('plant', 'plant__factory').filter(id=int(machine_param)).first()
+            else:
+                machine = Machine.objects.select_related('plant', 'plant__factory').filter(machine_code__iexact=machine_param).first()
+
+        if not machine:
+            machine = Machine.objects.select_related('plant', 'plant__factory').first()
+
+        # Determine shift duration from query param or machine.plant / factory
+        shift_hours_param = request.query_params.get('shift_hours')
+        if shift_hours_param and shift_hours_param in ('8', '12'):
+            shift_hours = int(shift_hours_param)
+        elif machine and machine.plant and machine.plant.shift_duration_hours:
+            shift_hours = machine.plant.shift_duration_hours
+        elif machine and machine.plant and machine.plant.factory and machine.plant.factory.shift_hours:
+            shift_hours = machine.plant.factory.shift_hours
+        else:
+            shift_hours = 8
+
+        if shift_hours == 12:
+            active_shifts = ['I', 'II']
+            shift_count = 2
+        else:
+            shift_hours = 8
+            active_shifts = ['I', 'II', 'III']
+            shift_count = 3
+
+        items = list(JHChecklistItem.objects.filter(is_active=True).order_by('sort_order', 'sub_no'))
+        items_data = JHChecklistItemSerializer(items, many=True).data
+
+        matrix = {}
+        for it in items:
+            matrix[it.sub_no] = {}
+
+        records_data = []
+
+        if machine:
+            start_date = date(year, month, 1)
+            end_date = date(year, month, days_in_month)
+
+            records = JHInspectionRecord.objects.filter(
+                machine=machine,
+                date__gte=start_date,
+                date__lte=end_date
+            ).select_related('operator').prefetch_related('item_results', 'item_results__item')
+
+            for rec in records:
+                day_num = rec.date.day
+                shift_code = rec.shift
+                col_key = f"{day_num}_{shift_code}"
+
+                records_data.append({
+                    'id': rec.id,
+                    'record_id': str(rec.record_id),
+                    'date': str(rec.date),
+                    'day': day_num,
+                    'shift': rec.shift,
+                    'status': rec.status,
+                    'operator_name': rec.operator.get_full_name() or rec.operator.username if rec.operator else '—',
+                    'ok_items': rec.ok_items,
+                    'not_ok_items': rec.not_ok_items,
+                    'corrected_items': rec.corrected_items,
+                })
+
+                for res in rec.item_results.all():
+                    if res.item.sub_no in matrix:
+                        matrix[res.item.sub_no][col_key] = {
+                            'status': res.status,
+                            'remark': res.remark,
+                            'action_taken': res.action_taken,
+                            'operator': rec.operator.get_full_name() or rec.operator.username if rec.operator else '—',
+                        }
+
+        return Response({
+            'month': f"{year:04d}-{month:02d}",
+            'year': year,
+            'month_num': month,
+            'days_in_month': days_in_month,
+            'shift_hours': shift_hours,
+            'shift_count': shift_count,
+            'shifts': active_shifts,
+            'machine': {
+                'id': machine.id if machine else None,
+                'machine_code': machine.machine_code if machine else '—',
+                'name': machine.name if machine else '—',
+                'shift_duration_hours': shift_hours,
+            } if machine else None,
+            'items': items_data,
+            'matrix': matrix,
+            'records': records_data,
+        }, status=status.HTTP_200_OK)
+
+
+class JHInspectionMatrixExportExcelView(APIView):
+    """
+    GET /api/inspections/jh/matrix/export_excel/?machine=<id_or_code>&month=<YYYY-MM>
+    Exports the official Form QF/MF-08 Jishu Hozen 31-day monitoring sheet in authentic Excel (.xlsx) format.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from datetime import datetime
+        from django.http import HttpResponse
+        from .jh_excel_generator import generate_jh_matrix_xlsx
+
+        machine_param = request.query_params.get('machine')
+        month_param = request.query_params.get('month')
+
+        now = datetime.now()
+        year = now.year
+        month = now.month
+
+        if month_param:
+            try:
+                parts = month_param.split('-')
+                year = int(parts[0])
+                month = int(parts[1])
+            except Exception:
+                pass
+
+        machine = None
+        if machine_param:
+            if machine_param.isdigit():
+                machine = Machine.objects.select_related('plant', 'plant__factory').filter(id=int(machine_param)).first()
+            else:
+                machine = Machine.objects.select_related('plant', 'plant__factory').filter(machine_code__iexact=machine_param).first()
+
+        if not machine:
+            machine = Machine.objects.select_related('plant', 'plant__factory').first()
+
+        # Determine shift duration
+        shift_hours_param = request.query_params.get('shift_hours')
+        if shift_hours_param and shift_hours_param in ('8', '12'):
+            shift_hours = int(shift_hours_param)
+        elif machine and machine.plant and machine.plant.shift_duration_hours:
+            shift_hours = machine.plant.shift_duration_hours
+        elif machine and machine.plant and machine.plant.factory and machine.plant.factory.shift_hours:
+            shift_hours = machine.plant.factory.shift_hours
+        else:
+            shift_hours = 8
+
+        excel_buffer = generate_jh_matrix_xlsx(
+            machine=machine,
+            year=year,
+            month=month,
+            shift_hours=shift_hours,
+        )
+
+        mc_code = machine.machine_code if machine else "Machine"
+        filename = f"JH_Matrix_{mc_code}_{year:04d}-{month:02d}.xlsx"
+
+        response = HttpResponse(
+            excel_buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+
 
 
 

@@ -169,6 +169,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
                                 if (context.mounted) {
                                   if (success) {
+                                    // Refresh company schedule details (shifts, factory info)
+                                    Provider.of<CompanyProvider>(context, listen: false).fetchCompanyDetails();
                                     Widget targetScreen = const AppHomeScreen();
                                     final role = (auth.userRole ?? '').toLowerCase();
 
