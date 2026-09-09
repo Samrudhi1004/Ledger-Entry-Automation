@@ -7,13 +7,16 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import Modal from '../components/common/Modal';
 import {
   createCalibrationEquipment, getCalibrationEquipment, getCalibrationSummary,
-  getCalibrationHistory, getCalibrationPlan, getCalibrationReport,
+  getCalibrationHistory, getCalibrationHistoryPdf, getCalibrationPlan, getCalibrationPlanPdf,
+  getCalibrationReport,
   createCalibrationPlanEntry, deleteCalibrationPlanEntry, updateCalibrationPlanEntry,
-  markCalibrationEquipmentFailed, markCalibrationEquipmentPassed,
+  recordCalibrationResult, setCalibrationDisposition,
   updateCalibrationEquipment,
 } from '../api/calibration';
 import { EquipmentFields, Field } from '../components/calibration/CalibrationFields';
-import { apiErrorMessage, EMPTY_FORM, EMPTY_SUMMARY, formatDate } from '../utils/calibrationData';
+import {
+  apiErrorMessage, calculateNextCalibrationDate, EMPTY_FORM, EMPTY_SUMMARY, formatDate,
+} from '../utils/calibrationData';
 import {
   CalibrationDashboard, CalibrationNavigation, EquipmentManagement,
   EquipmentRegistryForm, CalibrationHistoryCard, CalibrationPlanReport,
@@ -22,11 +25,11 @@ import {
 const VIEW_COPY = {
   dashboard: {
     title: 'Calibration Dashboard',
-    subtitle: 'Monitor calibration validity, due dates, overdue equipment, and failures',
+    subtitle: 'Monitor calibration validity, due dates, overdue equipment, and rejections',
   },
   equipment: {
     title: 'Equipment Management',
-    subtitle: 'Search, review, update, and mark registered calibration equipment as failed',
+    subtitle: 'Search, review, update, and record calibration decisions',
   },
   register: {
     title: 'Register Equipment',
@@ -43,8 +46,8 @@ const VIEW_COPY = {
 };
 
 const EMPTY_STATUS_DATA = {
-  result_date: '', calibration_agency: '', report_number: '',
-  certificate_number: '', traceability_certificate_number: '', specified_size: '',
+  result_date: '', calibration_agency: '',
+  certificate_number: '', traceability_certificate_number: '',
   calibration_details: '', remarks: '', report_file: null,
 };
 
@@ -67,11 +70,16 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [statusTarget, setStatusTarget] = useState(null);
-  const [statusAction, setStatusAction] = useState('passed');
+  const [statusAction, setStatusAction] = useState('accepted');
   const [statusData, setStatusData] = useState(EMPTY_STATUS_DATA);
+  const [dispositionTarget, setDispositionTarget] = useState(null);
+  const [documentPreview, setDocumentPreview] = useState(null);
   const [planYear, setPlanYear] = useState(() => new Date().getFullYear());
   const [planRows, setPlanRows] = useState([]);
+  const [company, setCompany] = useState({});
+  const [planPdfDownloading, setPlanPdfDownloading] = useState(false);
   const [historyData, setHistoryData] = useState(null);
+  const [historyPdfDownloading, setHistoryPdfDownloading] = useState(false);
   const [planEditorOpen, setPlanEditorOpen] = useState(false);
   const [planTarget, setPlanTarget] = useState(null);
   const [planForm, setPlanForm] = useState(EMPTY_PLAN_FORM);
@@ -97,6 +105,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
           ]);
           if (active) {
             setPlanRows(planResponse.data?.rows ?? []);
+            setCompany(planResponse.data?.company ?? {});
             const rows = equipmentResponse.data?.results ?? equipmentResponse.data ?? [];
             setEquipment(Array.isArray(rows) ? rows : []);
           }
@@ -127,7 +136,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
     return equipment.filter((item) => {
       const searchable = [
         item.equipment_id, item.equipment_name, item.equipment_type,
-        item.serial_number, item.department, item.location,
+        item.history_card_number, item.department, item.location,
       ].join(' ').toLowerCase();
       return (!statusFilter || item.status === statusFilter)
         && (!query || searchable.includes(query));
@@ -135,13 +144,24 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   }, [equipment, search, statusFilter]);
 
   const handleFormChange = (event) => {
-    setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
+    const { name, value } = event.target;
+    setFormData((current) => {
+      const next = { ...current, [name]: value };
+      if (name === 'last_calibration_date' || name === 'calibration_frequency_days') {
+        next.next_calibration_date = calculateNextCalibrationDate(
+          next.last_calibration_date, next.calibration_frequency_days,
+        );
+      }
+      return next;
+    });
   };
 
-  const payloadFromForm = () => ({
-    ...formData,
-    calibration_frequency_days: Number(formData.calibration_frequency_days),
-  });
+  const payloadFromForm = () => {
+    const payload = { ...formData };
+    delete payload.next_calibration_date;
+    payload.calibration_frequency_days = Number(payload.calibration_frequency_days);
+    return payload;
+  };
 
   const handleRegister = async (event) => {
     event.preventDefault();
@@ -193,7 +213,14 @@ export default function CalibrationPage({ view = 'dashboard' }) {
     }
   };
 
-  const openStatus = (item, action = 'passed') => {
+  const openStatus = (item, action = 'accepted') => {
+    if (item.state === 'rejected') {
+      setFormError('');
+      setSuccessMessage('');
+      setDispositionTarget(item);
+      return;
+    }
+    if (item.state === 'scrapped') return;
     const localToday = new Date();
     localToday.setMinutes(localToday.getMinutes() - localToday.getTimezoneOffset());
     setStatusTarget(item);
@@ -215,30 +242,23 @@ export default function CalibrationPage({ view = 'dashboard' }) {
     setFormError('');
     try {
       const recordData = {
+        result: statusAction,
+        calibration_date: statusData.result_date,
         calibration_agency: statusData.calibration_agency,
-        report_number: statusData.report_number,
         certificate_number: statusData.certificate_number,
         traceability_certificate_number: statusData.traceability_certificate_number,
-        specified_size: statusData.specified_size,
         calibration_details: statusData.calibration_details,
         remarks: statusData.remarks,
       };
-      let response;
-      if (statusAction === 'passed') {
-        const passedData = new FormData();
-        passedData.append('passed_date', statusData.result_date);
-        Object.entries(recordData).forEach(([key, value]) => passedData.append(key, value));
-        if (statusData.report_file) passedData.append('report_file', statusData.report_file);
-        response = await markCalibrationEquipmentPassed(statusTarget.id, passedData);
-      } else {
-        response = await markCalibrationEquipmentFailed(statusTarget.id, {
-          failed_date: statusData.result_date,
-        });
-      }
+      const resultData = new FormData();
+      Object.entries(recordData).forEach(([key, value]) => resultData.append(key, value));
+      if (statusData.report_file) resultData.append('report_file', statusData.report_file);
+      const response = await recordCalibrationResult(statusTarget.id, resultData);
       await refreshData();
-      setSuccessMessage(statusAction === 'passed'
-        ? `${statusTarget.equipment_id} passed calibration. Next calibration: ${formatDate(response.data.next_calibration_date)}.`
-        : `${statusTarget.equipment_id} marked as failed. The record was retained.`);
+      setSuccessMessage(statusAction === 'accepted'
+        ? `${statusTarget.equipment_id} accepted. Next calibration: ${formatDate(response.data.next_calibration_date)}.`
+        : `${statusTarget.equipment_id} rejected. Choose repair or scrap.`);
+      if (statusAction === 'rejected') setDispositionTarget(response.data);
       setStatusTarget(null);
     } catch (error) {
       setFormError(apiErrorMessage(error, 'Unable to save this calibration result.'));
@@ -247,18 +267,52 @@ export default function CalibrationPage({ view = 'dashboard' }) {
     }
   };
 
-  const downloadReport = async (record) => {
+  const handleDisposition = async (disposition) => {
+    setSubmitting(true);
+    setFormError('');
+    try {
+      await setCalibrationDisposition(dispositionTarget.id, disposition);
+      await refreshData();
+      setSuccessMessage(`${dispositionTarget.equipment_id} marked as ${disposition === 'repair' ? 'under repair' : 'scrapped'}.`);
+      setDispositionTarget(null);
+    } catch (error) {
+      setFormError(apiErrorMessage(error, 'Unable to save the equipment disposition.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const viewReport = useCallback(async (record) => {
     try {
       const response = await getCalibrationReport(record.id);
       const url = URL.createObjectURL(response.data);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = record.report_file_name;
-      link.click();
-      URL.revokeObjectURL(url);
+      setDocumentPreview({
+        url,
+        name: record.report_file_name,
+        type: record.report_content_type || response.data.type,
+      });
     } catch {
-      setPageError('Unable to download the calibration report.');
+      setPageError('Unable to open the certificate or evidence.');
     }
+  }, []);
+
+  useEffect(() => {
+    if (view !== 'history' || documentPreview) return;
+    const recordId = new URLSearchParams(location.search).get('certificate');
+    const record = historyData?.records?.find((item) => String(item.id) === recordId);
+    if (record?.has_report) viewReport(record);
+  }, [documentPreview, historyData, location.search, view, viewReport]);
+
+  const closeDocumentPreview = () => {
+    if (documentPreview?.url) URL.revokeObjectURL(documentPreview.url);
+    setDocumentPreview(null);
+  };
+
+  const downloadPreview = () => {
+    const link = document.createElement('a');
+    link.href = documentPreview.url;
+    link.download = documentPreview.name;
+    link.click();
   };
 
   const openPlanEditor = (row = null) => {
@@ -266,7 +320,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
     setPlanForm(row ? {
       equipment: String(row.equipment_pk),
       planned_date: row.planned_date,
-      remarks: row.remarks ?? '',
+      remarks: row.plan_remarks ?? '',
     } : EMPTY_PLAN_FORM);
     setFormError('');
     setPlanEditorOpen(true);
@@ -309,6 +363,42 @@ export default function CalibrationPage({ view = 'dashboard' }) {
     }
   };
 
+  const downloadPlanPdf = async (filters = {}) => {
+    setPlanPdfDownloading(true);
+    setPageError('');
+    try {
+      const response = await getCalibrationPlanPdf(planYear, filters);
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Calibration_Plan_${planYear}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setPageError('Unable to download the calibration plan PDF.');
+    } finally {
+      setPlanPdfDownloading(false);
+    }
+  };
+
+  const downloadHistoryPdf = async () => {
+    setHistoryPdfDownloading(true);
+    setPageError('');
+    try {
+      const response = await getCalibrationHistoryPdf(equipmentId);
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Gauge_History_Card_${historyData?.equipment?.equipment_id || equipmentId}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setPageError('Unable to download the gauge history card PDF.');
+    } finally {
+      setHistoryPdfDownloading(false);
+    }
+  };
+
   const copy = VIEW_COPY[view];
   return (
     <>
@@ -342,8 +432,8 @@ export default function CalibrationPage({ view = 'dashboard' }) {
                 onChange={handleFormChange} onSubmit={handleRegister}
               />
             )}
-            {view === 'plan' && <CalibrationPlanReport year={planYear} setYear={setPlanYear} rows={planRows} openEditor={openPlanEditor} removeEntry={removePlanEntry} />}
-            {view === 'history' && <CalibrationHistoryCard data={historyData} onDownloadReport={downloadReport} />}
+            {view === 'plan' && <CalibrationPlanReport year={planYear} setYear={setPlanYear} rows={planRows} company={company} openEditor={openPlanEditor} removeEntry={removePlanEntry} downloadPdf={downloadPlanPdf} downloadingPdf={planPdfDownloading} />}
+            {view === 'history' && <CalibrationHistoryCard data={historyData} onViewReport={viewReport} downloadPdf={downloadHistoryPdf} downloadingPdf={historyPdfDownloading} />}
           </>
         )}
       </div>
@@ -375,8 +465,8 @@ export default function CalibrationPage({ view = 'dashboard' }) {
           footer={(
             <>
               <button className="btn btn-ghost" type="button" onClick={closeStatus} disabled={submitting}>Cancel</button>
-              <button className={`btn ${statusAction === 'passed' ? 'btn-success' : 'btn-danger'}`} type="submit" form="calibration-status-form" disabled={submitting}>
-                {submitting ? 'Saving...' : `Confirm ${statusAction === 'passed' ? 'Passed' : 'Failed'}`}
+              <button className={`btn ${statusAction === 'accepted' ? 'btn-success' : 'btn-danger'}`} type="submit" form="calibration-status-form" disabled={submitting}>
+                {submitting ? 'Saving...' : `Confirm ${statusAction === 'accepted' ? 'Accepted' : 'Rejected'}`}
               </button>
             </>
           )}
@@ -388,34 +478,63 @@ export default function CalibrationPage({ view = 'dashboard' }) {
           </div>
           <form id="calibration-status-form" onSubmit={handleStatusUpdate}>
             <div className="calibration-status-choices" role="radiogroup" aria-label="Calibration result">
-              <button type="button" className={`calibration-status-choice passed${statusAction === 'passed' ? ' active' : ''}`} role="radio" aria-checked={statusAction === 'passed'} onClick={() => setStatusAction('passed')}>
-                <CircleCheckBig size={20} aria-hidden="true" /><span><strong>Passed</strong><small>Equipment passed calibration</small></span>
+              <button type="button" className={`calibration-status-choice passed${statusAction === 'accepted' ? ' active' : ''}`} role="radio" aria-checked={statusAction === 'accepted'} onClick={() => setStatusAction('accepted')}>
+                <CircleCheckBig size={20} aria-hidden="true" /><span><strong>Accepted</strong><small>Release equipment for use</small></span>
               </button>
-              <button type="button" className={`calibration-status-choice failed${statusAction === 'failed' ? ' active' : ''}`} role="radio" aria-checked={statusAction === 'failed'} onClick={() => { setStatusAction('failed'); setStatusData((current) => ({ ...EMPTY_STATUS_DATA, result_date: current.result_date })); }}>
-                <CircleX size={20} aria-hidden="true" /><span><strong>Failed</strong><small>Retain and flag the equipment</small></span>
+              <button type="button" className={`calibration-status-choice failed${statusAction === 'rejected' ? ' active' : ''}`} role="radio" aria-checked={statusAction === 'rejected'} onClick={() => setStatusAction('rejected')}>
+                <CircleX size={20} aria-hidden="true" /><span><strong>Rejected</strong><small>Choose repair or scrap next</small></span>
               </button>
             </div>
-            {statusAction === 'passed' ? (
-              <>
-                <Field label="Calibration Date" name="result_date" type="date" value={statusData.result_date} onChange={(event) => setStatusData((current) => ({ ...current, result_date: event.target.value }))} required />
-                <p className="calibration-status-help">The next calibration date will be calculated automatically using the {statusTarget.calibration_frequency_days}-day frequency.</p>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="calibration-report-file">Evidence Report (optional)</label>
-                  <input id="calibration-report-file" className="form-input" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => setStatusData((current) => ({ ...current, report_file: event.target.files?.[0] ?? null }))} />
-                  <small className="text-xs text-muted">PDF, JPG, or PNG; maximum 10 MB.</small>
-                </div>
-                <div className="calibration-form-grid calibration-result-details">
-                  <Field label="Calibration Agency" name="calibration_agency" value={statusData.calibration_agency} onChange={(event) => setStatusData((current) => ({ ...current, calibration_agency: event.target.value }))} />
-                  <Field label="Report Number" name="report_number" value={statusData.report_number} onChange={(event) => setStatusData((current) => ({ ...current, report_number: event.target.value }))} />
-                  <Field label="Certificate Number" name="certificate_number" value={statusData.certificate_number} onChange={(event) => setStatusData((current) => ({ ...current, certificate_number: event.target.value }))} />
-                  <Field label="Traceability Certificate" name="traceability_certificate_number" value={statusData.traceability_certificate_number} onChange={(event) => setStatusData((current) => ({ ...current, traceability_certificate_number: event.target.value }))} />
-                  <Field label="Specified Size" name="specified_size" value={statusData.specified_size} onChange={(event) => setStatusData((current) => ({ ...current, specified_size: event.target.value }))} />
-                  <div className="form-group calibration-form-span"><label className="form-label" htmlFor="calibration-details">Calibration Details</label><textarea id="calibration-details" className="form-textarea" value={statusData.calibration_details} onChange={(event) => setStatusData((current) => ({ ...current, calibration_details: event.target.value }))} /></div>
-                  <div className="form-group calibration-form-span"><label className="form-label" htmlFor="result-remarks">Record Remarks</label><textarea id="result-remarks" className="form-textarea" value={statusData.remarks} onChange={(event) => setStatusData((current) => ({ ...current, remarks: event.target.value }))} /></div>
-                </div>
-              </>
-            ) : <p className="calibration-status-help calibration-status-failed-help">Confirm to mark this equipment as failed today. No calibration report details will be saved.</p>}
+            <Field label="Calibration Date" name="result_date" type="date" value={statusData.result_date} onChange={(event) => setStatusData((current) => ({ ...current, result_date: event.target.value }))} required />
+            <p className="calibration-status-help">{statusAction === 'accepted' ? `The next calibration date will be calculated using the ${statusTarget.calibration_frequency_days}-day frequency.` : 'After saving the rejection, choose whether the equipment will be repaired or scrapped.'}</p>
+            <div className="form-group">
+              <label className="form-label" htmlFor="calibration-report-file">Certificate / Evidence (optional)</label>
+              <input id="calibration-report-file" className="form-input" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => setStatusData((current) => ({ ...current, report_file: event.target.files?.[0] ?? null }))} />
+              <small className="text-xs text-muted">PDF, JPG, or PNG; maximum 10 MB.</small>
+            </div>
+            <div className="calibration-form-grid calibration-result-details">
+              <Field label="Calibration Agency" name="calibration_agency" value={statusData.calibration_agency} onChange={(event) => setStatusData((current) => ({ ...current, calibration_agency: event.target.value }))} />
+              <Field label="Certificate No." name="certificate_number" value={statusData.certificate_number} onChange={(event) => setStatusData((current) => ({ ...current, certificate_number: event.target.value }))} />
+              <Field label="Traceability Certificate" name="traceability_certificate_number" value={statusData.traceability_certificate_number} onChange={(event) => setStatusData((current) => ({ ...current, traceability_certificate_number: event.target.value }))} />
+              <div className="form-group calibration-form-span"><label className="form-label" htmlFor="calibration-details">Calibration Details</label><textarea id="calibration-details" className="form-textarea" value={statusData.calibration_details} onChange={(event) => setStatusData((current) => ({ ...current, calibration_details: event.target.value }))} /></div>
+              <div className="form-group calibration-form-span"><label className="form-label" htmlFor="result-remarks">Record Remarks</label><textarea id="result-remarks" className="form-textarea" value={statusData.remarks} onChange={(event) => setStatusData((current) => ({ ...current, remarks: event.target.value }))} /></div>
+            </div>
           </form>
+        </Modal>
+      )}
+
+      {dispositionTarget && (
+        <Modal
+          title={`Rejected Equipment · ${dispositionTarget.equipment_id}`}
+          onClose={() => setDispositionTarget(null)}
+          footer={<button className="btn btn-ghost" type="button" onClick={() => setDispositionTarget(null)} disabled={submitting}>Decide Later</button>}
+        >
+          {formError && <div className="calibration-notice calibration-notice-error" role="alert">{formError}</div>}
+          <p className="calibration-status-help">Choose the next controlled state. Scrapped equipment remains available in history but cannot be recalibrated.</p>
+          <div className="calibration-disposition-actions">
+            <button className="btn btn-primary" type="button" onClick={() => handleDisposition('repair')} disabled={submitting}>Send for Repair</button>
+            <button className="btn btn-danger" type="button" onClick={() => handleDisposition('scrapped')} disabled={submitting}>Scrap Equipment</button>
+          </div>
+        </Modal>
+      )}
+
+      {documentPreview && (
+        <Modal
+          title={`Certificate / Evidence · ${documentPreview.name}`}
+          size="xl"
+          onClose={closeDocumentPreview}
+          footer={(
+            <>
+              <button className="btn btn-ghost" type="button" onClick={closeDocumentPreview}>Close</button>
+              <button className="btn btn-primary" type="button" onClick={downloadPreview}>Download</button>
+            </>
+          )}
+        >
+          {documentPreview.type?.startsWith('image/') ? (
+            <img className="calibration-evidence-image" src={documentPreview.url} alt={`Certificate or evidence ${documentPreview.name}`} />
+          ) : (
+            <iframe className="calibration-evidence-frame" src={documentPreview.url} title={`Certificate or evidence ${documentPreview.name}`} />
+          )}
         </Modal>
       )}
 
@@ -436,7 +555,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
               <label className="form-label" htmlFor="plan-equipment">Equipment *</label>
               <select id="plan-equipment" className="form-select" value={planForm.equipment} onChange={(event) => setPlanForm((current) => ({ ...current, equipment: event.target.value }))} required>
                 <option value="">Select equipment from master</option>
-                {equipment.map((item) => <option key={item.id} value={item.id}>{item.equipment_id} · {item.equipment_name}</option>)}
+                {equipment.filter((item) => item.state !== 'scrapped').map((item) => <option key={item.id} value={item.id}>{item.equipment_id} · {item.equipment_name}</option>)}
               </select>
             </div>
             <Field label="Planned Calibration Date" name="planned_date" type="date" min={`${planYear}-01-01`} max={`${planYear}-12-31`} value={planForm.planned_date} onChange={(event) => setPlanForm((current) => ({ ...current, planned_date: event.target.value }))} required />
