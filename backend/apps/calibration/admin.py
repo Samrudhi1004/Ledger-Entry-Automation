@@ -7,6 +7,7 @@ class CalibrationRecordInline(admin.TabularInline):
     model = CalibrationRecord
     extra = 0
     readonly_fields = ('created_at',)
+    exclude = ('report_number', 'specified_size')
 
 
 @admin.register(CalibrationEquipment)
@@ -15,8 +16,9 @@ class CalibrationEquipmentAdmin(admin.ModelAdmin):
         'equipment_id', 'equipment_name', 'equipment_type',
         'next_calibration_date', 'calibration_status',
     )
-    list_filter = ('is_failed', 'equipment_type', 'department')
-    search_fields = ('equipment_id', 'equipment_name', 'serial_number')
+    list_filter = ('state', 'equipment_type', 'department')
+    search_fields = ('equipment_id', 'equipment_name', 'history_card_number')
+    exclude = ('serial_number', 'acceptable_error', 'is_failed', 'failed_date', 'failure_remark')
     inlines = (CalibrationRecordInline,)
 
 
@@ -25,6 +27,7 @@ class CalibrationRecordAdmin(admin.ModelAdmin):
     list_display = ('equipment', 'calibration_date', 'result', 'certificate_number', 'report_file_name', 'next_due_date')
     list_filter = ('result', 'calibration_date')
     search_fields = ('equipment__equipment_id', 'equipment__equipment_name', 'certificate_number')
+    exclude = ('report_number', 'specified_size')
 
     def get_queryset(self, request):
         return super().get_queryset(request).defer('report_file')
