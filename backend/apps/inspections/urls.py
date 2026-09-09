@@ -26,6 +26,12 @@ from .views import (
     JHInspectionDetailView,
     JHInspectionMatrixView,
     JHInspectionMatrixExportExcelView,
+    JHChecklistUploadParseView,
+    JHChecklistBulkSaveView,
+    JHChecklistTemplateDownloadView,
+    JHChecklistVersionListView,
+    JHChecklistVersionDetailView,
+    JHChecklistVersionRestoreView,
 )
 
 router = SimpleRouter()
@@ -60,8 +66,16 @@ urlpatterns = [
     path('<str:session_id>/review/',        ApproveRejectView.as_view(),      name='approve-reject'),
 
     # JH (Autonomous Maintenance) Routes
-    path('jh/items/',                       JHChecklistItemsView.as_view(),              name='jh-checklist-items'),
-    path('jh/submit/',                      JHInspectionSubmitView.as_view(),             name='jh-inspection-submit'),
+    path('jh/items/',                                       JHChecklistItemsView.as_view(),              name='jh-checklist-items'),
+    path('jh/checklist/upload_parse/',                      JHChecklistUploadParseView.as_view(),        name='jh-checklist-upload-parse'),
+    path('jh/checklist/upload-parse/',                      JHChecklistUploadParseView.as_view(),        name='jh-checklist-upload-parse-alias'),
+    path('jh/checklist/bulk_save/',                         JHChecklistBulkSaveView.as_view(),           name='jh-checklist-bulk-save'),
+    path('jh/checklist/bulk-save/',                         JHChecklistBulkSaveView.as_view(),           name='jh-checklist-bulk-save-alias'),
+    path('jh/checklist/template/',                          JHChecklistTemplateDownloadView.as_view(),   name='jh-checklist-template-download'),
+    path('jh/checklist/versions/',                          JHChecklistVersionListView.as_view(),        name='jh-checklist-versions-list'),
+    path('jh/checklist/versions/<int:version_number>/',     JHChecklistVersionDetailView.as_view(),      name='jh-checklist-version-detail'),
+    path('jh/checklist/versions/<int:version_number>/restore/', JHChecklistVersionRestoreView.as_view(), name='jh-checklist-version-restore'),
+    path('jh/submit/',                                      JHInspectionSubmitView.as_view(),             name='jh-inspection-submit'),
     path('jh/reports/',                     JHInspectionReportsView.as_view(),            name='jh-inspection-reports'),
     path('jh/reports/<str:pk>/',            JHInspectionDetailView.as_view(),             name='jh-inspection-detail'),
     path('jh/matrix/export_excel/',         JHInspectionMatrixExportExcelView.as_view(),  name='jh-inspection-matrix-export-excel'),

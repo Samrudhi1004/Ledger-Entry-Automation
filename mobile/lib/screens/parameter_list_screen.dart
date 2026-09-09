@@ -131,27 +131,60 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
     return 1; // Rule 1: Range
   }
 
+  String _cleanNumber(dynamic val) {
+    if (val == null) return '';
+    final s = val.toString().trim();
+    if (s.isEmpty) return '';
+    final numVal = double.tryParse(s);
+    if (numVal == null) return s;
+    if (numVal == numVal.roundToDouble()) {
+      return numVal.toInt().toString();
+    }
+    String res = numVal.toString();
+    if (res.contains('.')) {
+      res = res.replaceAll(RegExp(r'0+$'), '');
+      res = res.replaceAll(RegExp(r'\.$'), '');
+    }
+    return res;
+  }
+
   String _formatSpec(Map<String, dynamic> param) {
     final rule = _getParameterRule(param);
     final unit = param['unit'] ?? 'mm';
-    final nom = param['nominal_value'] ?? '0';
+    final nomRaw = param['nominal_value'];
+    final nom = _cleanNumber(nomRaw);
 
     if (rule == 2) {
       final code = (param['parameter_code'] ?? '').toString().toUpperCase();
-      if (code == 'CHA-01' || nom == '0.5' || nom == '0.50') return '0.5x45°';
-      if (code == 'CHM-01' || nom == '1' || nom == '1.00') return '1x45°';
-      if (code == 'CHA-02' || nom == '2' || nom == '2.00') return '2x45°';
+      if (code == 'CHA-01' || nom == '0.5') return '0.5 x 45°';
+      if (code == 'CHM-01' || nom == '1') return '1 x 45°';
+      if (code == 'CHA-02' || nom == '2') return '2 x 45°';
+      if (nom.isEmpty || nom == '0') return 'Visual Pass';
       return '$nom $unit Spec';
     } else if (rule == 31) {
-      final minVal = param['lower_limit'] ?? nom;
+      final minVal = _cleanNumber(param['lower_limit'] ?? nomRaw);
       return '≥ $minVal $unit';
     } else if (rule == 32) {
       return '≤ $nom $unit';
     } else {
-      final upper = param['upper_tolerance'] ?? '+0.00';
-      final lower = param['lower_tolerance'] ?? '-0.00';
-      final upperStr = upper.toString().startsWith('+') || upper.toString().startsWith('-') ? '$upper' : '+$upper';
-      return '$nom ($upperStr / $lower) $unit';
+      final upperRaw = param['upper_tolerance'];
+      final lowerRaw = param['lower_tolerance'];
+      final upperVal = double.tryParse(upperRaw?.toString() ?? '0') ?? 0.0;
+      final lowerVal = double.tryParse(lowerRaw?.toString() ?? '0') ?? 0.0;
+
+      if (upperVal == 0.0 && lowerVal == 0.0) {
+        return nom.isNotEmpty ? '$nom $unit' : 'Pass Spec';
+      }
+
+      // Check if symmetrical tolerance, e.g. +0.25 and -0.25
+      if ((upperVal.abs() - lowerVal.abs()).abs() < 0.0001 && (upperVal > 0 && lowerVal < 0 || upperVal == lowerVal)) {
+        final tol = _cleanNumber(upperVal.abs());
+        return '$nom ± $tol $unit';
+      }
+
+      final upperStr = upperVal >= 0 ? '+${_cleanNumber(upperVal)}' : _cleanNumber(upperVal);
+      final lowerStr = lowerVal > 0 ? '+${_cleanNumber(lowerVal)}' : _cleanNumber(lowerVal);
+      return '$nom ($upperStr / $lowerStr) $unit';
     }
   }
 
@@ -164,8 +197,25 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
     final machineCode = selectedMachine?['machine_code'] ?? 'CNC-01';
     final partNo = selectedPart?['part_number'] ?? 'FBT00222';
     final opTitle = widget.template['operation_name'] ?? 'Operation ${widget.template['version'] ?? 10}';
-    final recordedCount = provider.recordedResults.length;
-    final totalParams = _parameters.length;
+    final currentDisplayed = _displayedParameters;
+    final totalInTab = currentDisplayed.length;
+    final recordedInTab = currentDisplayed.where((p) {
+      final code = p['parameter_code'] ?? p['code'] ?? '';
+      return provider.isParamFilled(code);
+    }).length;
+
+    final overallTotal = _parameters.length;
+    final overallRecorded = _parameters.where((p) {
+      final code = p['parameter_code'] ?? p['code'] ?? '';
+      return provider.isParamFilled(code);
+    }).length;
+
+    final isFilteredTab = isInspector && _activeCategoryTab != 'all';
+    final activeTotal = isFilteredTab ? totalInTab : overallTotal;
+    final activeRecorded = isFilteredTab ? recordedInTab : overallRecorded;
+    final tabTitle = _activeCategoryTab == 'product'
+        ? 'Product Parameters'
+        : (_activeCategoryTab == 'process' ? 'Process Parameters' : 'Parameter Matrix');
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -250,11 +300,11 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Parameter Matrix ($totalParams items)',
+                              '$tabTitle ($activeTotal items)',
                               style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                             ),
                             Text(
-                              '$recordedCount / $totalParams Recorded',
+                              '$activeRecorded / $activeTotal Recorded',
                               style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.bold),
                             ),
                           ],
@@ -263,12 +313,19 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(6),
                           child: LinearProgressIndicator(
-                            value: totalParams > 0 ? (recordedCount / totalParams) : 0,
+                            value: activeTotal > 0 ? (activeRecorded / activeTotal) : 0,
                             minHeight: 6,
                             backgroundColor: const Color(0xFF334155),
                             valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
                           ),
                         ),
+                        if (isFilteredTab && overallTotal > activeTotal) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            'Overall session: $overallRecorded / $overallTotal total recorded',
+                            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10, fontWeight: FontWeight.w500),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -461,7 +518,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                 ),
                 icon: const Icon(Icons.bolt_rounded, size: 22),
                 label: Text(
-                  recordedCount > 0 ? 'RESUME INSPECTION (AUTO-ADVANCE)' : 'START DATA ENTRY (AUTO-ADVANCE)',
+                  overallRecorded > 0 ? 'RESUME INSPECTION (AUTO-ADVANCE)' : 'START DATA ENTRY (AUTO-ADVANCE)',
                   style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5, letterSpacing: 0.4),
                 ),
               ),
@@ -472,16 +529,16 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
     );
   }
 
-  // 📱 Modern 3-Column App-Style Grid View
+  // 📱 Clean, Spacious 2-Column Card Grid
   Widget _buildGridView(InspectionProvider provider) {
     final list = _displayedParameters;
     return GridView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 0.78,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
+        crossAxisCount: 2,
+        childAspectRatio: 1.30,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
       ),
       itemCount: list.length,
       itemBuilder: (context, index) {
@@ -496,34 +553,31 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
         final status = provider.getParamStatus(code);
         final recordedVal = provider.getParamReading(code);
 
-        // Color theme by Rule
-        Color ruleColor;
-        String ruleLabel;
+        // Clean subtle tag for rule
+        String ruleLabel = 'Range';
+        Color ruleColor = const Color(0xFF38BDF8);
         if (rule == 2) {
-          ruleColor = const Color(0xFFA855F7); // Purple for Visual
           ruleLabel = 'Visual';
+          ruleColor = const Color(0xFFA78BFA);
         } else if (rule == 31 || rule == 32) {
-          ruleColor = const Color(0xFFF59E0B); // Amber for Limit
           ruleLabel = 'Limit';
-        } else {
-          ruleColor = const Color(0xFF3B82F6); // Blue for Range
-          ruleLabel = 'Range';
+          ruleColor = const Color(0xFFFBBF24);
         }
 
-        // Status border & background
+        // Clean Card theme
         Color cardBg = const Color(0xFF1E293B);
         Color borderCol = const Color(0xFF334155);
 
         if (isRecorded) {
           if (status == 'ok') {
-            cardBg = const Color(0xFF064E3B).withValues(alpha: 0.5);
-            borderCol = const Color(0xFF10B981);
+            cardBg = const Color(0xFF064E3B).withValues(alpha: 0.35);
+            borderCol = const Color(0xFF059669);
           } else {
-            cardBg = const Color(0xFF7F1D1D).withValues(alpha: 0.5);
-            borderCol = const Color(0xFFEF4444);
+            cardBg = const Color(0xFF7F1D1D).withValues(alpha: 0.35);
+            borderCol = const Color(0xFFDC2626);
           }
         } else if (isCritical) {
-          borderCol = const Color(0xFFEF4444).withValues(alpha: 0.6);
+          borderCol = const Color(0xFFF87171).withValues(alpha: 0.6);
         }
 
         return Material(
@@ -532,100 +586,122 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
             onTap: () => _startDataEntry(startIndex: index),
             borderRadius: BorderRadius.circular(14),
             child: Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               decoration: BoxDecoration(
                 color: cardBg,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: borderCol, width: isRecorded || isCritical ? 1.6 : 1.0),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 4,
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 5,
                     offset: const Offset(0, 2),
                   ),
                 ],
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Top Row: Rule Badge + Critical Icon
+                  // Top Row: Code + Type + (Critical Pill)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: ruleColor.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          ruleLabel,
-                          style: TextStyle(color: ruleColor, fontSize: 8.5, fontWeight: FontWeight.bold),
-                        ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0F172A),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              code,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            ruleLabel,
+                            style: TextStyle(
+                              color: ruleColor,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                       if (isCritical)
                         Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFFEF4444),
-                            boxShadow: [
-                              BoxShadow(color: Color(0xFFEF4444), blurRadius: 4, spreadRadius: 1),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.5)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 10),
+                              SizedBox(width: 2),
+                              Text(
+                                'Critical',
+                                style: TextStyle(
+                                  color: Color(0xFFF87171),
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ],
                           ),
                         ),
                     ],
                   ),
 
-                  // Center: Code & Name
-                  Column(
-                    children: [
-                      Text(
-                        code,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
+                  // Middle Content: Name + Clean Spec
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            height: 1.15,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        name,
-                        maxLines: 2,
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFFCBD5E1),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          height: 1.1,
+                        const SizedBox(height: 3),
+                        Text(
+                          spec,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF94A3B8),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        spec,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.grey.shade400,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
 
-                  // Bottom Status Badge
+                  // Bottom Status Pill
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     decoration: BoxDecoration(
                       color: isRecorded
                           ? (status == 'ok'
-                              ? const Color(0xFF10B981).withValues(alpha: 0.2)
-                              : const Color(0xFFEF4444).withValues(alpha: 0.2))
+                              ? const Color(0xFF10B981).withValues(alpha: 0.18)
+                              : const Color(0xFFEF4444).withValues(alpha: 0.18))
                           : const Color(0xFF0F172A),
                       borderRadius: BorderRadius.circular(6),
                     ),
@@ -637,22 +713,24 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                                 Icon(
                                   status == 'ok' ? Icons.check_circle_rounded : Icons.cancel_rounded,
                                   color: status == 'ok' ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                                  size: 11,
+                                  size: 13,
                                 ),
-                                const SizedBox(width: 3),
+                                const SizedBox(width: 4),
                                 Text(
-                                  recordedVal != null ? '$recordedVal' : (status == 'ok' ? 'OK' : 'FAIL'),
+                                  recordedVal != null && recordedVal.toString().isNotEmpty
+                                      ? (status == 'ok' ? 'OK  ($recordedVal)' : 'FAIL ($recordedVal)')
+                                      : (status == 'ok' ? 'OK' : 'FAIL'),
                                   style: TextStyle(
                                     color: status == 'ok' ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                                    fontSize: 9.5,
-                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
                               ],
                             )
                           : const Text(
-                              '⭕ Pending',
-                              style: TextStyle(color: Color(0xFF64748B), fontSize: 9, fontWeight: FontWeight.bold),
+                              'Tap to inspect',
+                              style: TextStyle(color: Color(0xFF64748B), fontSize: 10, fontWeight: FontWeight.w600),
                             ),
                     ),
                   ),

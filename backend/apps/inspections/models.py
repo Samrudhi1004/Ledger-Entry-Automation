@@ -241,6 +241,26 @@ class DowntimeReport(models.Model):
         return f"Downtime Report | ProdRef: {self.production_report_id} | Total: {self.total_downtime} min"
 
 
+class JHChecklistVersion(models.Model):
+    """
+    Audit log and version snapshot of every checklist upload/change.
+    """
+    version_number = models.IntegerField(unique=True, db_index=True)
+    filename = models.CharField(max_length=255, blank=True, default='')
+    uploaded_by = models.ForeignKey('users.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='checklist_uploads')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    total_items = models.IntegerField(default=0)
+    notes = models.TextField(blank=True, default='')
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'jh_checklist_versions'
+        ordering = ['-version_number']
+
+    def __str__(self):
+        return f"Checklist Version v{self.version_number} ({self.total_items} items) - {self.filename}"
+
+
 class JHChecklistItem(models.Model):
     """
     Master Autonomous Maintenance (Jishu Hozen) checklist items.
@@ -251,6 +271,7 @@ class JHChecklistItem(models.Model):
         TOUCH = 'TOUCH', 'Touch (Hand)'
         TOOL = 'TOOL', 'Tool / Wrench (Spanner)'
 
+    version = models.ForeignKey(JHChecklistVersion, on_delete=models.CASCADE, related_name='items', null=True, blank=True)
     sub_no = models.CharField(max_length=20, db_index=True)  # e.g. "1.1", "2.1"
     assembly = models.CharField(max_length=100, db_index=True)  # e.g. "1. Machine Front Side", "2. FIXTURE"
     sub_assembly = models.CharField(max_length=100, blank=True, default='')  # e.g. "एफ एम एफ बोर्ड", "फिक्सचर"

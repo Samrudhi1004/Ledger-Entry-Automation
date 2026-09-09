@@ -758,22 +758,6 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         iconColor: hasActiveSession ? const Color(0xFF059669) : const Color(0xFF64748B),
                         onTap: () => _resumeActiveSessionDirectly(context),
                       ),
-
-                      // Inspector / Supervisor Card 5: JH-Inspection
-                      _buildSoftPastelCard(
-                        title: 'JH-Inspection',
-                        description: 'Autonomous Maintenance shift audit (Form QF/MF-08)',
-                        icon: Icons.fact_check_rounded,
-                        bgColor: const Color(0xFFF0FDF4),
-                        borderColor: const Color(0xFFBBF7D0),
-                        iconColor: const Color(0xFF16A34A),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const JhInspectionScreen()),
-                          );
-                        },
-                      ),
                     ],
             ),
 

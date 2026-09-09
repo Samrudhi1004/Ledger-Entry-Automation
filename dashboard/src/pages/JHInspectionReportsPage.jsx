@@ -24,6 +24,15 @@ import {
   Layers,
   ArrowUpRight,
   Sparkles,
+  UploadCloud,
+  Trash2,
+  Plus,
+  Edit3,
+  FileText,
+  Upload,
+  History,
+  RotateCcw,
+  Clock,
 } from 'lucide-react';
 
 export default function JHInspectionReportsPage() {
@@ -53,6 +62,21 @@ export default function JHInspectionReportsPage() {
   const [matrixData, setMatrixData] = useState(null);
   const [loadingMatrix, setLoadingMatrix] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  // Checklist Upload Modal State
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadModalTab, setUploadModalTab] = useState('upload'); // 'upload' | 'history'
+  const [uploadFile, setUploadFile] = useState(null);
+  const [isParsingFile, setIsParsingFile] = useState(false);
+  const [parsedChecklistItems, setParsedChecklistItems] = useState([]);
+  const [isSavingChecklist, setIsSavingChecklist] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadSuccessMsg, setUploadSuccessMsg] = useState('');
+  const [checklistVersions, setChecklistVersions] = useState([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [selectedVersionDetail, setSelectedVersionDetail] = useState(null);
+  const [loadingVersionDetail, setLoadingVersionDetail] = useState(false);
+  const [isRestoringVersion, setIsRestoringVersion] = useState(false);
 
   // Load Machines list
   useEffect(() => {
@@ -184,6 +208,169 @@ export default function JHInspectionReportsPage() {
     }
   };
 
+  // Download Form QF/MF-08 template
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await api.get('/api/inspections/jh/checklist/template/', { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'JH_Checklist_Template_Form_QF_MF_08.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download template', err);
+      alert('Failed to download Excel template. Please try again.');
+    }
+  };
+
+  // Upload & parse file (.pdf or .xlsx)
+  const handleParseFile = async (e) => {
+    if (e) e.preventDefault();
+    if (!uploadFile) {
+      setUploadError('Please select an Excel (.xlsx) or PDF file to upload.');
+      return;
+    }
+    setIsParsingFile(true);
+    setUploadError('');
+    setUploadSuccessMsg('');
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+      const res = await api.post('/api/inspections/jh/checklist/upload_parse/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (res.data?.items && res.data.items.length > 0) {
+        setParsedChecklistItems(res.data.items);
+      } else {
+        setUploadError('No checklist items could be identified in this file. Please verify format.');
+      }
+    } catch (err) {
+      console.error('File parsing error', err);
+      setUploadError(err.response?.data?.error || 'Failed to parse file. Please check file format.');
+    } finally {
+      setIsParsingFile(false);
+    }
+  };
+
+  // Save confirmed items to DB
+  const handleSaveParsedChecklist = async () => {
+    if (!parsedChecklistItems.length) return;
+    setIsSavingChecklist(true);
+    setUploadError('');
+    setUploadSuccessMsg('');
+    try {
+      const res = await api.post('/api/inspections/jh/checklist/bulk_save/', {
+        items: parsedChecklistItems,
+        replace_all: true,
+        filename: uploadFile?.name || 'uploaded_checklist.pdf',
+        notes: `Uploaded via Dashboard (${parsedChecklistItems.length} items)`,
+      });
+      setUploadSuccessMsg(res.data?.message || 'Checklist successfully updated in database!');
+      fetchMatrix();
+      fetchReports();
+      fetchChecklistVersions();
+      setTimeout(() => {
+        setShowUploadModal(false);
+        setParsedChecklistItems([]);
+        setUploadFile(null);
+        setUploadSuccessMsg('');
+      }, 1500);
+    } catch (err) {
+      console.error('Checklist save error', err);
+      setUploadError(err.response?.data?.error || 'Failed to save checklist to database.');
+    } finally {
+      setIsSavingChecklist(false);
+    }
+  };
+
+  // Fetch Checklist Versions History
+  const fetchChecklistVersions = async () => {
+    setLoadingVersions(true);
+    try {
+      const res = await api.get('/api/inspections/jh/checklist/versions/');
+      setChecklistVersions(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Failed to fetch checklist versions', err);
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  // View specific version details
+  const handleViewVersionDetail = async (versionNumber) => {
+    setLoadingVersionDetail(true);
+    try {
+      const res = await api.get(`/api/inspections/jh/checklist/versions/${versionNumber}/`);
+      setSelectedVersionDetail(res.data);
+    } catch (err) {
+      console.error('Failed to fetch version detail', err);
+      alert('Failed to load details for this version.');
+    } finally {
+      setLoadingVersionDetail(false);
+    }
+  };
+
+  // Restore specific version
+  const handleRestoreVersion = async (versionNumber) => {
+    if (!window.confirm(`Are you sure you want to restore Version v${versionNumber} as the active checklist? The mobile operator terminal will immediately use these questions.`)) {
+      return;
+    }
+    setIsRestoringVersion(true);
+    setUploadError('');
+    setUploadSuccessMsg('');
+    try {
+      const res = await api.post(`/api/inspections/jh/checklist/versions/${versionNumber}/restore/`);
+      setUploadSuccessMsg(res.data?.message || `Version v${versionNumber} restored successfully!`);
+      fetchChecklistVersions();
+      fetchMatrix();
+      fetchReports();
+    } catch (err) {
+      console.error('Failed to restore version', err);
+      setUploadError(err.response?.data?.error || 'Failed to restore version.');
+    } finally {
+      setIsRestoringVersion(false);
+    }
+  };
+
+  // Inline edit handlers for preview table
+  const handleEditPreviewItem = (index, field, value) => {
+    setParsedChecklistItems((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const handleDeletePreviewItem = (index) => {
+    setParsedChecklistItems((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleAddPreviewItem = () => {
+    setParsedChecklistItems((prev) => [
+      ...prev,
+      {
+        sub_no: `${prev.length + 1}.1`,
+        assembly: 'General Inspection',
+        sub_assembly: '',
+        check_point: 'नया निरीक्षण बिंदु (New Checkpoint)',
+        standard: 'मानक अनुसार (As per standard)',
+        tool_type: 'VISUAL',
+        rank: 'D',
+        frequency: 'D',
+        timing_sec: '5 DPT',
+        action_clean: false,
+        action_lubricate: false,
+        action_inspect: true,
+        action_retighten: false,
+        sort_order: prev.length + 1,
+      },
+    ]);
+  };
+
   return (
     <>
       <Header
@@ -192,99 +379,6 @@ export default function JHInspectionReportsPage() {
       />
 
       <div className="page-content" style={{ padding: '24px', background: '#F8FAFC', minHeight: '100vh' }}>
-        {/* KPI Metrics Row */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '16px',
-            marginBottom: '24px',
-          }}
-        >
-          <div
-            style={{
-              background: '#FFFFFF',
-              borderRadius: '12px',
-              padding: '18px',
-              border: '1px solid #E2E8F0',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' }}>
-                Total Shift Audits
-              </span>
-              <ClipboardCheck size={20} color="#3B82F6" />
-            </div>
-            <div style={{ fontSize: '26px', fontWeight: '800', color: '#0F172A', marginTop: '8px' }}>
-              {totalAudits}
-            </div>
-            <span style={{ fontSize: '11px', color: '#64748B' }}>Recorded across shifts</span>
-          </div>
-
-          <div
-            style={{
-              background: '#FFFFFF',
-              borderRadius: '12px',
-              padding: '18px',
-              border: '1px solid #E2E8F0',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' }}>
-                100% OK Compliance
-              </span>
-              <CheckCircle2 size={20} color="#16A34A" />
-            </div>
-            <div style={{ fontSize: '26px', fontWeight: '800', color: '#16A34A', marginTop: '8px' }}>
-              {complianceRate}%
-            </div>
-            <span style={{ fontSize: '11px', color: '#64748B' }}>{okAudits} audits completely clear</span>
-          </div>
-
-          <div
-            style={{
-              background: '#FFFFFF',
-              borderRadius: '12px',
-              padding: '18px',
-              border: '1px solid #E2E8F0',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' }}>
-                Issues Flagged (Not OK)
-              </span>
-              <XCircle size={20} color="#DC2626" />
-            </div>
-            <div style={{ fontSize: '26px', fontWeight: '800', color: '#DC2626', marginTop: '8px' }}>
-              {issueAudits}
-            </div>
-            <span style={{ fontSize: '11px', color: '#64748B' }}>Unresolved abnormalities</span>
-          </div>
-
-          <div
-            style={{
-              background: '#FFFFFF',
-              borderRadius: '12px',
-              padding: '18px',
-              border: '1px solid #E2E8F0',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' }}>
-                Immediate Corrections
-              </span>
-              <Wrench size={20} color="#D97706" />
-            </div>
-            <div style={{ fontSize: '26px', fontWeight: '800', color: '#D97706', marginTop: '8px' }}>
-              {correctedAudits}
-            </div>
-            <span style={{ fontSize: '11px', color: '#64748B' }}>Resolved on shopfloor</span>
-          </div>
-        </div>
 
         {/* Tab Selection Bar & Global Actions */}
         <div
@@ -381,6 +475,32 @@ export default function JHInspectionReportsPage() {
                 </button>
               </>
             )}
+
+            <button
+              onClick={() => {
+                setShowUploadModal(true);
+                setUploadError('');
+                setUploadSuccessMsg('');
+              }}
+              className="btn btn-outline"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                fontSize: '13px',
+                borderRadius: '8px',
+                background: '#4F46E5',
+                color: '#FFFFFF',
+                border: '1px solid #4338CA',
+                cursor: 'pointer',
+                fontWeight: '700',
+                boxShadow: '0 1px 3px rgba(79, 70, 229, 0.25)',
+              }}
+            >
+              <UploadCloud size={16} color="#FFFFFF" />
+              <span>Upload Checklist (PDF/Excel)</span>
+            </button>
 
             <button
               onClick={activeTab === 'log' ? fetchReports : fetchMatrix}
@@ -1305,6 +1425,819 @@ export default function JHInspectionReportsPage() {
                 >
                   Close
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CHECKLIST UPLOAD & LIVE PREVIEW MODAL */}
+        {showUploadModal && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(15, 23, 42, 0.65)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000,
+              padding: '20px',
+              backdropFilter: 'blur(4px)',
+            }}
+          >
+            <div
+              style={{
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                maxWidth: (parsedChecklistItems.length > 0 || uploadModalTab === 'history') ? '1100px' : '620px',
+                width: '100%',
+                maxHeight: '90vh',
+                display: 'flex',
+                flexDirection: 'column',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                overflow: 'hidden',
+                transition: 'all 0.3s ease',
+              }}
+            >
+              {/* Modal Header */}
+              <div
+                style={{
+                  padding: '20px 24px',
+                  borderBottom: '1px solid #E2E8F0',
+                  background: '#F8FAFC',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <UploadCloud size={20} color="#4F46E5" />
+                      Form QF/MF-08 Checklist Manager
+                    </h3>
+                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748B' }}>
+                      Upload SOP checkpoints via PDF/Excel or review audit history and past versions.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowUploadModal(false)}
+                    style={{
+                      background: '#F1F5F9',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '6px',
+                      cursor: 'pointer',
+                      color: '#64748B',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Sub-Tabs: Upload vs Version History */}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUploadModalTab('upload');
+                      setSelectedVersionDetail(null);
+                      setUploadError('');
+                    }}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: uploadModalTab === 'upload' ? '#4F46E5' : '#E2E8F0',
+                      color: uploadModalTab === 'upload' ? '#FFFFFF' : '#475569',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    <Upload size={14} /> Upload New Checklist
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUploadModalTab('history');
+                      fetchChecklistVersions();
+                      setSelectedVersionDetail(null);
+                      setUploadError('');
+                    }}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: uploadModalTab === 'history' ? '#4F46E5' : '#E2E8F0',
+                      color: uploadModalTab === 'history' ? '#FFFFFF' : '#475569',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    <History size={14} /> Version History & Audit Log
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+                {uploadError && (
+                  <div
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      background: '#FEF2F2',
+                      border: '1px solid #FCA5A5',
+                      color: '#991B1B',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      marginBottom: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <AlertTriangle size={18} color="#DC2626" />
+                    <span>{uploadError}</span>
+                  </div>
+                )}
+
+                {uploadSuccessMsg && (
+                  <div
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      background: '#F0FDF4',
+                      border: '1px solid #86EFAC',
+                      color: '#166534',
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      marginBottom: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <CheckCircle2 size={18} color="#16A34A" />
+                    <span>{uploadSuccessMsg}</span>
+                  </div>
+                )}
+
+                {/* TAB 1: UPLOAD WORKFLOW */}
+                {uploadModalTab === 'upload' && (
+                  parsedChecklistItems.length === 0 ? (
+                    /* STEP 1: UPLOAD SCREEN */
+                    <div>
+                      {/* Template download pill */}
+                      <div
+                        style={{
+                          background: '#EFF6FF',
+                          border: '1px solid #BFDBFE',
+                          borderRadius: '12px',
+                          padding: '14px 18px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginBottom: '20px',
+                          flexWrap: 'wrap',
+                          gap: '10px',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#1E40AF' }}>
+                            Need the standard template?
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#3B82F6' }}>
+                            Download our pre-formatted Form QF/MF-08 Excel template with Hindi headers and sample items.
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleDownloadTemplate}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            background: '#FFFFFF',
+                            color: '#1D4ED8',
+                            border: '1px solid #93C5FD',
+                            padding: '7px 14px',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                          }}
+                        >
+                          <Download size={14} /> Download Template (.xlsx)
+                        </button>
+                      </div>
+
+                      {/* Drag & Drop Upload Container */}
+                      <div
+                        style={{
+                          border: '2px dashed #CBD5E1',
+                          borderRadius: '14px',
+                          padding: '36px 20px',
+                          textAlign: 'center',
+                          background: uploadFile ? '#F0FDF4' : '#F8FAFC',
+                          borderColor: uploadFile ? '#86EFAC' : '#CBD5E1',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onClick={() => document.getElementById('jh-file-input').click()}
+                      >
+                        <input
+                          id="jh-file-input"
+                          type="file"
+                          accept=".xlsx,.xls,.pdf"
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setUploadFile(e.target.files[0]);
+                              setUploadError('');
+                            }
+                          }}
+                        />
+                        <div
+                          style={{
+                            width: '54px',
+                            height: '54px',
+                            borderRadius: '50%',
+                            background: uploadFile ? '#DCFCE7' : '#EEF2FF',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginBottom: '12px',
+                          }}
+                        >
+                          {uploadFile ? (
+                            <FileSpreadsheet size={28} color="#16A34A" />
+                          ) : (
+                            <UploadCloud size={28} color="#4F46E5" />
+                          )}
+                        </div>
+
+                        {uploadFile ? (
+                          <div>
+                            <div style={{ fontSize: '14px', fontWeight: '800', color: '#166534' }}>
+                              {uploadFile.name}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#64748B', marginTop: '4px' }}>
+                              {(uploadFile.size / 1024).toFixed(1)} KB • Click to choose a different file
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div style={{ fontSize: '14px', fontWeight: '700', color: '#1E293B' }}>
+                              Click to upload or drag and drop
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#64748B', marginTop: '4px' }}>
+                              Excel spreadsheets (.xlsx, .xls) or PDF tables matching Form QF/MF-08
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                        <button
+                          onClick={() => setShowUploadModal(false)}
+                          style={{
+                            padding: '9px 18px',
+                            borderRadius: '8px',
+                            background: '#FFFFFF',
+                            border: '1px solid #CBD5E1',
+                            color: '#475569',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleParseFile}
+                          disabled={!uploadFile || isParsingFile}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '9px 20px',
+                            borderRadius: '8px',
+                            background: !uploadFile || isParsingFile ? '#94A3B8' : '#4F46E5',
+                            border: 'none',
+                            color: '#FFFFFF',
+                            fontSize: '13px',
+                            fontWeight: '700',
+                            cursor: !uploadFile || isParsingFile ? 'not-allowed' : 'pointer',
+                            boxShadow: '0 2px 4px rgba(79, 70, 229, 0.25)',
+                          }}
+                        >
+                          {isParsingFile && <RefreshCw size={14} className="spin" />}
+                          <span>{isParsingFile ? 'Parsing Document...' : 'Parse Document & Preview'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* STEP 2: INTERACTIVE LIVE PREVIEW TABLE */
+                    <div>
+                      {/* Action & stats banner */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '16px',
+                          flexWrap: 'wrap',
+                          gap: '12px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span
+                            style={{
+                              background: '#DCFCE7',
+                              color: '#166534',
+                              padding: '4px 12px',
+                              borderRadius: '9999px',
+                              fontSize: '12px',
+                              fontWeight: '800',
+                            }}
+                          >
+                            ✓ Detected {parsedChecklistItems.length} Checkpoints
+                          </span>
+                          <span style={{ fontSize: '12px', color: '#64748B' }}>
+                            Review and fine-tune questions or standards directly in the table before saving.
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={handleAddPreviewItem}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '6px 12px',
+                              borderRadius: '8px',
+                              background: '#FFFFFF',
+                              border: '1px solid #CBD5E1',
+                              fontSize: '12px',
+                              fontWeight: '700',
+                              color: '#0F172A',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Plus size={14} color="#10B981" /> Add Row
+                          </button>
+                          <button
+                            onClick={() => setParsedChecklistItems([])}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '8px',
+                              background: '#FFFFFF',
+                              border: '1px solid #CBD5E1',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              color: '#64748B',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Re-upload File
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Preview Table Container */}
+                      <div
+                        style={{
+                          border: '1px solid #E2E8F0',
+                          borderRadius: '10px',
+                          overflow: 'auto',
+                          maxHeight: '48vh',
+                          background: '#FFFFFF',
+                        }}
+                      >
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                          <thead>
+                            <tr style={{ background: '#0F172A', color: '#FFFFFF', position: 'sticky', top: 0, zIndex: 10 }}>
+                              <th style={{ padding: '8px 10px', textAlign: 'center', width: '55px' }}>Sub No</th>
+                              <th style={{ padding: '8px 10px', textAlign: 'left', width: '150px' }}>Assembly</th>
+                              <th style={{ padding: '8px 10px', textAlign: 'left', width: '110px' }}>Sub Assembly</th>
+                              <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '220px' }}>Check Point (Hindi / Eng)</th>
+                              <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '180px' }}>Standard / Specification</th>
+                              <th style={{ padding: '8px 10px', textAlign: 'center', width: '90px' }}>Tool</th>
+                              <th style={{ padding: '8px 10px', textAlign: 'center', width: '70px' }}>Timing</th>
+                              <th style={{ padding: '8px 10px', textAlign: 'center', width: '40px' }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {parsedChecklistItems.map((item, idx) => (
+                              <tr
+                                key={idx}
+                                style={{
+                                  borderBottom: '1px solid #E2E8F0',
+                                  background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC',
+                                }}
+                              >
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                  <input
+                                    type="text"
+                                    value={item.sub_no}
+                                    onChange={(e) => handleEditPreviewItem(idx, 'sub_no', e.target.value)}
+                                    style={{
+                                      width: '50px',
+                                      padding: '4px',
+                                      border: '1px solid #CBD5E1',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      textAlign: 'center',
+                                      fontWeight: '700',
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input
+                                    type="text"
+                                    value={item.assembly}
+                                    onChange={(e) => handleEditPreviewItem(idx, 'assembly', e.target.value)}
+                                    style={{
+                                      width: '140px',
+                                      padding: '4px 6px',
+                                      border: '1px solid #CBD5E1',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input
+                                    type="text"
+                                    value={item.sub_assembly}
+                                    onChange={(e) => handleEditPreviewItem(idx, 'sub_assembly', e.target.value)}
+                                    style={{
+                                      width: '100px',
+                                      padding: '4px 6px',
+                                      border: '1px solid #CBD5E1',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input
+                                    type="text"
+                                    value={item.check_point}
+                                    onChange={(e) => handleEditPreviewItem(idx, 'check_point', e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      minWidth: '220px',
+                                      padding: '4px 6px',
+                                      border: '1px solid #CBD5E1',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: '600',
+                                      color: '#0F172A',
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input
+                                    type="text"
+                                    value={item.standard}
+                                    onChange={(e) => handleEditPreviewItem(idx, 'standard', e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      minWidth: '180px',
+                                      padding: '4px 6px',
+                                      border: '1px solid #CBD5E1',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      color: '#334155',
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                  <select
+                                    value={item.tool_type}
+                                    onChange={(e) => handleEditPreviewItem(idx, 'tool_type', e.target.value)}
+                                    style={{
+                                      padding: '4px',
+                                      border: '1px solid #CBD5E1',
+                                      borderRadius: '4px',
+                                      fontSize: '10px',
+                                      fontWeight: '700',
+                                      background: '#FFFFFF',
+                                    }}
+                                  >
+                                    <option value="VISUAL">VISUAL</option>
+                                    <option value="TOUCH">TOUCH</option>
+                                    <option value="TOOL">TOOL</option>
+                                  </select>
+                                </td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                  <input
+                                    type="text"
+                                    value={item.timing_sec}
+                                    onChange={(e) => handleEditPreviewItem(idx, 'timing_sec', e.target.value)}
+                                    style={{
+                                      width: '60px',
+                                      padding: '4px',
+                                      border: '1px solid #CBD5E1',
+                                      borderRadius: '4px',
+                                      fontSize: '10px',
+                                      textAlign: 'center',
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                  <button
+                                    onClick={() => handleDeletePreviewItem(idx)}
+                                    style={{
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: '#DC2626',
+                                      cursor: 'pointer',
+                                      padding: '4px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                    title="Remove item"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Modal Footer actions */}
+                      <div
+                        style={{
+                          marginTop: '20px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <button
+                          onClick={() => setShowUploadModal(false)}
+                          style={{
+                            padding: '9px 18px',
+                            borderRadius: '8px',
+                            background: '#FFFFFF',
+                            border: '1px solid #CBD5E1',
+                            color: '#475569',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleSaveParsedChecklist}
+                          disabled={isSavingChecklist || parsedChecklistItems.length === 0}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '9px 24px',
+                            borderRadius: '8px',
+                            background: isSavingChecklist ? '#94A3B8' : '#10B981',
+                            border: 'none',
+                            color: '#FFFFFF',
+                            fontSize: '13px',
+                            fontWeight: '800',
+                            cursor: isSavingChecklist ? 'not-allowed' : 'pointer',
+                            boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)',
+                          }}
+                        >
+                          {isSavingChecklist && <RefreshCw size={14} className="spin" />}
+                          <span>{isSavingChecklist ? 'Saving to Database...' : `Confirm & Save ${parsedChecklistItems.length} Items to Database`}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {/* TAB 2: VERSION HISTORY & AUDIT LOG */}
+                {uploadModalTab === 'history' && (
+                  <div>
+                    {selectedVersionDetail ? (
+                      /* Detail view for selected version */
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                          <button
+                            onClick={() => setSelectedVersionDetail(null)}
+                            style={{
+                              background: '#F1F5F9',
+                              border: '1px solid #CBD5E1',
+                              borderRadius: '8px',
+                              padding: '6px 14px',
+                              fontSize: '12px',
+                              fontWeight: '700',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            ← Back to All Versions
+                          </button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A' }}>
+                              Version v{selectedVersionDetail.version_number} Checkpoints ({selectedVersionDetail.total_items} items)
+                            </span>
+                            {selectedVersionDetail.is_active ? (
+                              <span style={{ background: '#DCFCE7', color: '#166534', padding: '3px 10px', borderRadius: '9999px', fontSize: '11px', fontWeight: '800' }}>
+                                Currently Active
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleRestoreVersion(selectedVersionDetail.version_number)}
+                                disabled={isRestoringVersion}
+                                style={{
+                                  background: '#10B981',
+                                  color: '#FFFFFF',
+                                  border: 'none',
+                                  padding: '5px 12px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: '800',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <RotateCcw size={12} /> Restore Version v{selectedVersionDetail.version_number}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ border: '1px solid #E2E8F0', borderRadius: '10px', overflow: 'auto', maxHeight: '52vh' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                            <thead>
+                              <tr style={{ background: '#0F172A', color: '#FFFFFF', position: 'sticky', top: 0 }}>
+                                <th style={{ padding: '8px 10px', textAlign: 'center' }}>Sub No</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'left' }}>Assembly</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'left' }}>Sub Assembly</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'left' }}>Check Point (Hindi)</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'left' }}>Standard</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'center' }}>Tool</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'center' }}>Timing</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedVersionDetail.items?.map((it, idx) => (
+                                <tr key={idx} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                                  <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: '800' }}>{it.sub_no}</td>
+                                  <td style={{ padding: '8px 10px' }}>{it.assembly}</td>
+                                  <td style={{ padding: '8px 10px' }}>{it.sub_assembly}</td>
+                                  <td style={{ padding: '8px 10px', fontWeight: '600', color: '#0F172A' }}>{it.check_point}</td>
+                                  <td style={{ padding: '8px 10px', color: '#475569' }}>{it.standard}</td>
+                                  <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: '700' }}>{it.tool_type}</td>
+                                  <td style={{ padding: '8px 10px', textAlign: 'center' }}>{it.timing_sec}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Table list of versions */
+                      <div>
+                        {loadingVersions ? (
+                          <div style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
+                            <RefreshCw size={24} className="spin" style={{ margin: '0 auto 10px' }} />
+                            <div>Loading version audit history...</div>
+                          </div>
+                        ) : checklistVersions.length === 0 ? (
+                          <div style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
+                            No version records found.
+                          </div>
+                        ) : (
+                          <div style={{ border: '1px solid #E2E8F0', borderRadius: '10px', overflow: 'hidden' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                              <thead>
+                                <tr style={{ background: '#0F172A', color: '#FFFFFF' }}>
+                                  <th style={{ padding: '10px 14px', textAlign: 'center', width: '80px' }}>Version</th>
+                                  <th style={{ padding: '10px 14px', textAlign: 'left' }}>Filename / Source</th>
+                                  <th style={{ padding: '10px 14px', textAlign: 'left' }}>Uploaded By</th>
+                                  <th style={{ padding: '10px 14px', textAlign: 'left' }}>Upload Date & Time</th>
+                                  <th style={{ padding: '10px 14px', textAlign: 'center' }}>Total Items</th>
+                                  <th style={{ padding: '10px 14px', textAlign: 'center' }}>Status</th>
+                                  <th style={{ padding: '10px 14px', textAlign: 'center', width: '180px' }}>Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {checklistVersions.map((v, idx) => (
+                                  <tr
+                                    key={v.id || idx}
+                                    style={{
+                                      borderBottom: '1px solid #E2E8F0',
+                                      background: v.is_active ? '#F0FDF4' : idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC',
+                                    }}
+                                  >
+                                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                      <span style={{ fontWeight: '800', color: v.is_active ? '#166534' : '#0F172A' }}>
+                                        v{v.version_number}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '10px 14px', fontWeight: '600', color: '#1E293B' }}>
+                                      {v.filename || 'Form_QF_MF_08.xlsx'}
+                                    </td>
+                                    <td style={{ padding: '10px 14px', color: '#475569' }}>
+                                      {v.uploaded_by}
+                                    </td>
+                                    <td style={{ padding: '10px 14px', color: '#64748B', fontSize: '11px' }}>
+                                      {new Date(v.uploaded_at).toLocaleString()}
+                                    </td>
+                                    <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '700' }}>
+                                      {v.total_items} items
+                                    </td>
+                                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                      {v.is_active ? (
+                                        <span style={{ background: '#DCFCE7', color: '#166534', padding: '3px 10px', borderRadius: '9999px', fontSize: '11px', fontWeight: '800' }}>
+                                          ✓ Active (Live)
+                                        </span>
+                                      ) : (
+                                        <span style={{ background: '#F1F5F9', color: '#64748B', padding: '3px 10px', borderRadius: '9999px', fontSize: '11px', fontWeight: '600' }}>
+                                          Archived
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                        <button
+                                          onClick={() => handleViewVersionDetail(v.version_number)}
+                                          disabled={loadingVersionDetail}
+                                          style={{
+                                            background: '#FFFFFF',
+                                            border: '1px solid #CBD5E1',
+                                            color: '#0F172A',
+                                            padding: '4px 8px',
+                                            borderRadius: '6px',
+                                            fontSize: '11px',
+                                            fontWeight: '700',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                          }}
+                                          title="Inspect checkpoints in this version"
+                                        >
+                                          <Eye size={12} /> View
+                                        </button>
+                                        {!v.is_active && (
+                                          <button
+                                            onClick={() => handleRestoreVersion(v.version_number)}
+                                            disabled={isRestoringVersion}
+                                            style={{
+                                              background: '#10B981',
+                                              border: 'none',
+                                              color: '#FFFFFF',
+                                              padding: '4px 10px',
+                                              borderRadius: '6px',
+                                              fontSize: '11px',
+                                              fontWeight: '700',
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '4px',
+                                            }}
+                                            title="Restore this version as active"
+                                          >
+                                            <RotateCcw size={12} /> Restore
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
