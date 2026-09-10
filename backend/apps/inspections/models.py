@@ -278,6 +278,7 @@ class JHChecklistVersion(models.Model):
         return f"Checklist Version v{self.version_number} ({self.total_items} items) - {self.filename}"
 
 
+
 class JHChecklistItem(models.Model):
     """
     Master Autonomous Maintenance (Jishu Hozen) checklist items.
@@ -424,3 +425,4 @@ class SetupApproval(models.Model):
             f"SetupApproval | template={self.template_id} "
             f"machine={self.machine_id} | {self.submitted_at:%Y-%m-%d}"
         )
+

@@ -102,7 +102,7 @@ function CalibrationYearOverview({ equipment, selectedFilter, onFilterChange }) 
       <div className="section-header calibration-calendar-header">
         <div>
           <h2 className="section-title" id="calibration-calendar-title"><CalendarDays size={16} aria-hidden="true" /> Yearly Calibration Calendar</h2>
-          <p className="text-xs text-muted mt-4">Select a month to show every item planned for calibration.</p>
+          <p className="text-xs text-muted mt-4">Select a month to show instruments whose next calibration is due.</p>
         </div>
         <div className="calibration-calendar-toolbar" aria-label="Calendar year controls">
           <button type="button" className="btn btn-ghost calibration-calendar-icon-button" onClick={() => setYear((value) => value - 1)} aria-label="Previous year"><ChevronLeft size={18} aria-hidden="true" /></button>
@@ -116,7 +116,7 @@ function CalibrationYearOverview({ equipment, selectedFilter, onFilterChange }) 
           const filter = `month:${year}-${String(month + 1).padStart(2, '0')}`;
           return (
             <button key={name} type="button" className={`calibration-month-card${selectedFilter === filter ? ' selected' : ''}`} onClick={() => onFilterChange(filter)} aria-pressed={selectedFilter === filter}>
-              <span>{name}</span><strong>{counts[month]}</strong><small>planned</small>
+              <span>{name}</span><strong>{counts[month]}</strong><small>due</small>
             </button>
           );
         })}
@@ -345,12 +345,12 @@ export function CalibrationDashboard({ summary, equipment, selectedFilter, onFil
   );
 }
 
-export function EquipmentManagement({ equipment, filteredEquipment, search, statusFilter, setSearch, setStatusFilter, openEdit, openStatus }) {
+export function EquipmentManagement({ equipment, filteredEquipment, search, statusFilter, setSearch, setStatusFilter, openEdit, openStatus, onRegister }) {
   return (
     <section className="card" aria-labelledby="equipment-registry-title">
       <div className="section-header calibration-section-header">
         <h2 className="section-title" id="equipment-registry-title"><span className="dot" /> Equipment Registry ({filteredEquipment.length})</h2>
-        <Link className="btn btn-primary" to="/calibration/equipment/new"><Plus size={16} aria-hidden="true" /> Register Equipment</Link>
+        <button className="btn btn-primary" type="button" onClick={onRegister}><Plus size={16} aria-hidden="true" /> Register Equipment</button>
       </div>
       <div className="filter-bar calibration-toolbar">
         <label className="calibration-search">
@@ -392,18 +392,45 @@ function EquipmentTable({ equipment, openEdit, openStatus }) {
   );
 }
 
-export function EquipmentRegistryForm({ formData, formError, submitting, onChange, onSubmit }) {
-  return (
-    <section className="card calibration-registry-card" aria-labelledby="register-equipment-title">
-      <div className="section-header"><div><h2 className="section-title" id="register-equipment-title"><span className="dot" /> Equipment Details</h2><p className="text-xs text-muted mt-4">All fields marked with * are required.</p></div></div>
-      {formError && <div className="calibration-notice calibration-notice-error" role="alert">{formError}</div>}
-      <form id="calibration-registry-form" onSubmit={onSubmit}>
-        <EquipmentFields formData={formData} onChange={onChange} />
+export function EquipmentRegistryForm({ formData, formError, submitting, onChange, onSubmit, onCancel, modal = false }) {
+  const form = (
+    <form id="calibration-registry-form" onSubmit={onSubmit}>
+      <EquipmentFields formData={formData} onChange={onChange} showHistoryCardNumber historyCardReadOnly />
+      <p className="text-xs text-muted mt-4">The history card number is generated automatically from the equipment ID.</p>
+      {!modal && (
         <div className="calibration-form-actions">
           <Link className="btn btn-ghost" to="/calibration/equipment">Cancel</Link>
           <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? 'Registering...' : 'Register Equipment'}</button>
         </div>
-      </form>
+      )}
+    </form>
+  );
+
+  if (modal) {
+    return (
+      <Modal
+        title="Register Equipment"
+        size="lg"
+        onClose={onCancel}
+        footer={(
+          <>
+            <button className="btn btn-ghost" type="button" onClick={onCancel} disabled={submitting}>Cancel</button>
+            <button className="btn btn-primary" type="submit" form="calibration-registry-form" disabled={submitting}>{submitting ? 'Registering...' : 'Register Equipment'}</button>
+          </>
+        )}
+      >
+        <p className="text-xs text-muted mb-4">All fields marked with * are required.</p>
+        {formError && <div className="calibration-notice calibration-notice-error" role="alert">{formError}</div>}
+        {form}
+      </Modal>
+    );
+  }
+
+  return (
+    <section className="card calibration-registry-card" aria-labelledby="register-equipment-title">
+      <div className="section-header"><div><h2 className="section-title" id="register-equipment-title"><span className="dot" /> Equipment Details</h2><p className="text-xs text-muted mt-4">All fields marked with * are required.</p></div></div>
+      {formError && <div className="calibration-notice calibration-notice-error" role="alert">{formError}</div>}
+      {form}
     </section>
   );
 }
@@ -486,10 +513,10 @@ export function CalibrationPlanReport({ year, setYear, rows, company, openEditor
               <tr><th rowSpan="2">Sr. No.</th><th rowSpan="2">Description</th><th rowSpan="2">Equipment<br />ID</th><th rowSpan="2">Plan vs<br />Actual</th><th colSpan="12">Month</th><th rowSpan="2">Remarks</th></tr>
               <tr>{MONTHS.map((month) => <th key={month}>{month.slice(0, 3)}<br />'{String(year).slice(-2)}</th>)}</tr>
             </thead>
-            <tbody>{filteredRows.length === 0 ? <tr><td colSpan="17">No equipment matches the selected plan filters.</td></tr> : visibleRows.map((row, index) => (
+           <tbody>{filteredRows.length === 0 ? <tr><td colSpan="17">No equipment matches the selected plan filters.</td></tr> : filteredRows.map((row, index) => (
               <Fragment key={row.key}>
                 <tr>
-                  <td rowSpan="2">{(page - 1) * PAGE_SIZE + index + 1}</td><td rowSpan="2">{row.equipment_name}</td><td rowSpan="2">{row.equipment_id}</td><td>Plan</td>
+                   <td rowSpan="2">{index + 1}</td><td rowSpan="2">{row.equipment_name}</td><td rowSpan="2">{row.equipment_id}</td><td>Plan</td>
                   {MONTHS.map((month, monthIndex) => { const day = planDateCell(row.planned_date, year, monthIndex); return <td key={month} className={day ? 'calibration-plan-mark planned' : ''}>{day || ''}</td>; })}
                   <td rowSpan="2">{planRemarks(row)}</td>
                 </tr>

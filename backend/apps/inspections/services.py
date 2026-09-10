@@ -463,6 +463,7 @@ class InspectionService:
         if rejected_codes:
             doc_utils.update_document(session, {'rejected_parameters': list(rejected_codes)}, save=True)
 
+
         self._push_session_event(session, 'session_started')
         return session
 

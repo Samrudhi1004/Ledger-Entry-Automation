@@ -27,7 +27,12 @@ from .serializers import (
 
 
 def _equipment_queryset():
-    latest = CalibrationRecord.objects.filter(equipment=OuterRef('pk')).order_by(
+    today = timezone.localdate()
+    latest = CalibrationRecord.objects.filter(
+        equipment=OuterRef('pk'),
+        planned_date__year=today.year,
+        planned_date__lte=today,
+    ).order_by(
         '-calibration_date', '-created_at'
     )
     return CalibrationEquipment.objects.annotate(
@@ -92,11 +97,8 @@ def _calibration_plan_rows(year, search='', result='', month='', due=''):
             item for item in records_by_equipment.get(entry.equipment_id, [])
             if item.pk not in used_record_ids
         ]
-        record = min(
-            candidates,
-            key=lambda item: abs((item.calibration_date - entry.planned_date).days),
-            default=None,
-        )
+        candidates = [item for item in candidates if item.planned_date == entry.planned_date]
+        record = max(candidates, key=lambda item: item.created_at, default=None)
         if record:
             used_record_ids.add(record.pk)
         rows.append({
@@ -159,26 +161,58 @@ class RecordCalibrationResultView(APIView):
 
     def post(self, request, pk):
         equipment = get_object_or_404(CalibrationEquipment, pk=pk)
-        if equipment.state == CalibrationEquipment.State.SCRAPPED:
-            return Response({'detail': 'Scrapped equipment cannot be recalibrated.'}, status=status.HTTP_400_BAD_REQUEST)
-        if equipment.state == CalibrationEquipment.State.REJECTED:
-            return Response({'detail': 'Choose repair or scrap before recalibrating.'}, status=status.HTTP_400_BAD_REQUEST)
-
         serializer = CalibrationResultSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         data = serializer.validated_data
         calibration_date = data['calibration_date']
+        if calibration_date < equipment.last_calibration_date:
+            return Response(
+                {'calibration_date': ['Calibration date cannot be before the equipment last calibration date.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         report_file = data.pop('report_file', None)
         accepted = data['result'] == CalibrationRecord.Result.ACCEPTED
-        next_due_date = (
-            calibration_date + timedelta(days=equipment.calibration_frequency_days)
-            if accepted else None
-        )
         with transaction.atomic():
+            equipment = CalibrationEquipment.objects.select_for_update().get(pk=pk)
+            if equipment.state == CalibrationEquipment.State.SCRAPPED:
+                return Response({'detail': 'Scrapped equipment cannot be recalibrated.'}, status=status.HTTP_400_BAD_REQUEST)
+            if equipment.state == CalibrationEquipment.State.REJECTED:
+                return Response({'detail': 'Choose repair or scrap before recalibrating.'}, status=status.HTTP_400_BAD_REQUEST)
+            if calibration_date < equipment.last_calibration_date:
+                return Response(
+                    {'calibration_date': ['Calibration date cannot be before the equipment last calibration date.']},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            next_due_date = (
+                calibration_date + timedelta(days=equipment.calibration_frequency_days)
+                if accepted else None
+            )
+            if next_due_date and next_due_date.year > 2100:
+                return Response(
+                    {'calibration_date': ['Calibration result produces a due date after 2100.']},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            planned_date = equipment.next_calibration_date
+            if equipment.state == CalibrationEquipment.State.REPAIR:
+                rejected_record = equipment.calibration_records.filter(
+                    result=CalibrationRecord.Result.REJECTED,
+                ).order_by('-created_at').first()
+                if rejected_record:
+                    planned_date = rejected_record.planned_date
+            duplicate = CalibrationRecord.objects.filter(
+                equipment=equipment,
+                calibration_date=calibration_date,
+                result=data['result'],
+            ).first()
+            if duplicate:
+                return Response(
+                    CalibrationEquipmentSerializer(_equipment_queryset().get(pk=equipment.pk)).data,
+                    status=status.HTTP_200_OK,
+                )
             CalibrationRecord.objects.create(
                 equipment=equipment,
-                planned_date=equipment.next_calibration_date,
+                planned_date=planned_date,
                 calibration_date=calibration_date,
                 result=data['result'],
                 calibration_agency=data['calibration_agency'],
@@ -222,20 +256,22 @@ class SetCalibrationDispositionView(APIView):
     permission_classes = [IsCalibratorOrAdmin]
 
     def post(self, request, pk):
-        equipment = get_object_or_404(CalibrationEquipment, pk=pk)
-        if equipment.state != CalibrationEquipment.State.REJECTED:
-            return Response({'detail': 'Only rejected equipment needs a disposition.'}, status=status.HTTP_400_BAD_REQUEST)
         serializer = CalibrationDispositionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         disposition = serializer.validated_data['disposition']
-        record = equipment.calibration_records.filter(
-            result=CalibrationRecord.Result.REJECTED,
-            disposition='',
-        ).first()
-        if not record:
-            return Response({'detail': 'No rejected calibration is awaiting disposition.'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
+            equipment = get_object_or_404(
+                CalibrationEquipment.objects.select_for_update(), pk=pk,
+            )
+            if equipment.state != CalibrationEquipment.State.REJECTED:
+                return Response({'detail': 'Only rejected equipment needs a disposition.'}, status=status.HTTP_400_BAD_REQUEST)
+            record = equipment.calibration_records.filter(
+                result=CalibrationRecord.Result.REJECTED,
+                disposition='',
+            ).first()
+            if not record:
+                return Response({'detail': 'No rejected calibration is awaiting disposition.'}, status=status.HTTP_400_BAD_REQUEST)
             record.disposition = disposition
             record.save(update_fields=['disposition'])
             equipment.state = disposition
@@ -317,7 +353,12 @@ class CalibrationPlanView(APIView):
     def post(self, request):
         serializer = CalibrationPlanEntrySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        entry = serializer.save()
+        with transaction.atomic():
+            entry = serializer.save()
+            equipment = CalibrationEquipment.objects.select_for_update().get(pk=entry.equipment_id)
+            if equipment.state == CalibrationEquipment.State.ACTIVE and entry.planned_date < equipment.next_calibration_date:
+                equipment.next_calibration_date = entry.planned_date
+                equipment.save(update_fields=['next_calibration_date', 'updated_at'])
         return Response(
             CalibrationPlanEntrySerializer(entry).data,
             status=status.HTTP_201_CREATED,
@@ -355,6 +396,28 @@ class CalibrationPlanEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = CalibrationPlanEntry.objects.select_related('equipment')
     serializer_class = CalibrationPlanEntrySerializer
     permission_classes = [IsCalibratorOrAdmin]
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        previous_date = serializer.instance.planned_date
+        entry = serializer.save()
+        equipment = CalibrationEquipment.objects.select_for_update().get(pk=entry.equipment_id)
+        if previous_date == equipment.next_calibration_date:
+            equipment.next_calibration_date = entry.planned_date
+            equipment.save(update_fields=['next_calibration_date', 'updated_at'])
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        equipment = CalibrationEquipment.objects.select_for_update().get(pk=instance.equipment_id)
+        was_current = instance.planned_date == equipment.next_calibration_date
+        instance.delete()
+        if was_current:
+            replacement = equipment.calibration_plan_entries.filter(
+                planned_date__gte=timezone.localdate(),
+            ).order_by('planned_date').first()
+            if replacement:
+                equipment.next_calibration_date = replacement.planned_date
+                equipment.save(update_fields=['next_calibration_date', 'updated_at'])
 
 
 class CalibrationSummaryView(APIView):
