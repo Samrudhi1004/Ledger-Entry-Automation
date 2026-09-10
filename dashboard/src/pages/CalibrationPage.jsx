@@ -61,7 +61,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(view !== 'register');
   const [pageError, setPageError] = useState('');
-  const [successMessage, setSuccessMessage] = useState(location.state?.success ?? '');
+  const [successMessage, setSuccessMessage] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [dashboardFilter, setDashboardFilter] = useState('due30');
@@ -74,7 +74,12 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   const [statusData, setStatusData] = useState(EMPTY_STATUS_DATA);
   const [dispositionTarget, setDispositionTarget] = useState(null);
   const [documentPreview, setDocumentPreview] = useState(null);
-  const [planYear, setPlanYear] = useState(() => new Date().getFullYear());
+  const [planYear, setPlanYear] = useState(() => {
+    const requestedYear = Number(new URLSearchParams(location.search).get('year'));
+    return requestedYear >= 2000 && requestedYear <= 2100
+      ? requestedYear
+      : new Date().getFullYear();
+  });
   const [planRows, setPlanRows] = useState([]);
   const [company, setCompany] = useState({});
   const [planPdfDownloading, setPlanPdfDownloading] = useState(false);
@@ -83,6 +88,39 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   const [planEditorOpen, setPlanEditorOpen] = useState(false);
   const [planTarget, setPlanTarget] = useState(null);
   const [planForm, setPlanForm] = useState(EMPTY_PLAN_FORM);
+  const [registryOpen, setRegistryOpen] = useState(false);
+
+  useEffect(() => {
+    const message = location.state?.success ?? '';
+    if (!message) {
+      setSuccessMessage('');
+      return;
+    }
+    setSuccessMessage(message);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.key, location.pathname, location.search, location.state, navigate]);
+
+  useEffect(() => {
+    if (!successMessage) return undefined;
+    const timeout = window.setTimeout(() => setSuccessMessage(''), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [successMessage]);
+
+  useEffect(() => {
+    if (view !== 'plan') return;
+    const requestedYear = Number(new URLSearchParams(location.search).get('year'));
+    if (requestedYear >= 2000 && requestedYear <= 2100 && requestedYear !== planYear) {
+      setPlanYear(requestedYear);
+    }
+  }, [location.search, planYear, view]);
+
+  useEffect(() => {
+    if (view !== 'plan') return;
+    const params = new URLSearchParams(location.search);
+    if (params.get('year') === String(planYear)) return;
+    params.set('year', String(planYear));
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+  }, [location.pathname, location.search, navigate, planYear, view]);
 
   const refreshData = useCallback(async () => {
     const [equipmentResponse, summaryResponse] = await Promise.all([
@@ -94,12 +132,16 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   }, []);
 
   useEffect(() => {
-    if (view === 'register') return;
     let active = true;
     const load = async () => {
+      setLoading(true);
       setPageError('');
       try {
-        if (view === 'plan') {
+        if (view === 'register') {
+          const response = await getCalibrationEquipment();
+          const rows = response.data?.results ?? response.data ?? [];
+          if (active) setEquipment(Array.isArray(rows) ? rows : []);
+        } else if (view === 'plan') {
           const [planResponse, equipmentResponse] = await Promise.all([
             getCalibrationPlan(planYear), getCalibrationEquipment(),
           ]);
@@ -147,6 +189,10 @@ export default function CalibrationPage({ view = 'dashboard' }) {
     const { name, value } = event.target;
     setFormData((current) => {
       const next = { ...current, [name]: value };
+      if (name === 'equipment_id') {
+        const normalizedId = value.trim();
+        next.history_card_number = normalizedId ? `HC-${normalizedId}` : '';
+      }
       if (name === 'last_calibration_date' || name === 'calibration_frequency_days') {
         next.next_calibration_date = calculateNextCalibrationDate(
           next.last_calibration_date, next.calibration_frequency_days,
@@ -154,23 +200,41 @@ export default function CalibrationPage({ view = 'dashboard' }) {
       }
       return next;
     });
+    if (name === 'equipment_id') {
+      const normalizedId = value.trim().toLowerCase();
+      const duplicate = equipment.some((item) => item.id !== editTarget?.id
+        && item.equipment_id?.trim().toLowerCase() === normalizedId);
+      setFormError(duplicate ? 'This equipment ID is already registered.' : '');
+    }
   };
 
   const payloadFromForm = () => {
     const payload = { ...formData };
     delete payload.next_calibration_date;
+    delete payload.history_card_number;
+    payload.equipment_id = payload.equipment_id.trim();
     payload.calibration_frequency_days = Number(payload.calibration_frequency_days);
     return payload;
   };
 
   const handleRegister = async (event) => {
     event.preventDefault();
+    const duplicate = equipment.some((item) => item.equipment_id?.trim().toLowerCase() === formData.equipment_id.trim().toLowerCase());
+    if (duplicate) {
+      setFormError('This equipment ID is already registered. Use a different equipment ID.');
+      return;
+    }
     setSubmitting(true);
     setFormError('');
     try {
-      await createCalibrationEquipment(payloadFromForm());
+      const response = await createCalibrationEquipment(payloadFromForm());
+      const nextDueDate = response.data?.next_calibration_date || formData.next_calibration_date;
+      const nextPlanYear = nextDueDate?.slice(0, 4) || String(new Date().getFullYear());
+      setFormData(EMPTY_FORM);
+      setFormError('');
+      setRegistryOpen(false);
       setSuccessMessage(`${formData.equipment_id} registered successfully.`);
-      navigate('/calibration/equipment', {
+      navigate(`/calibration/plan?year=${nextPlanYear}`, {
         state: { success: `${formData.equipment_id} registered successfully.` },
       });
     } catch (error) {
@@ -202,10 +266,14 @@ export default function CalibrationPage({ view = 'dashboard' }) {
     setFormError('');
     try {
       await updateCalibrationEquipment(editTarget.id, payloadFromForm());
-      await refreshData();
       setSuccessMessage(`${editTarget.equipment_id} updated successfully.`);
       setEditTarget(null);
       setFormData(EMPTY_FORM);
+      try {
+        await refreshData();
+      } catch {
+        setPageError('Equipment saved, but the list could not be refreshed. Try refreshing the page.');
+      }
     } catch (error) {
       setFormError(apiErrorMessage(error, 'Unable to save this equipment.'));
     } finally {
@@ -254,12 +322,16 @@ export default function CalibrationPage({ view = 'dashboard' }) {
       Object.entries(recordData).forEach(([key, value]) => resultData.append(key, value));
       if (statusData.report_file) resultData.append('report_file', statusData.report_file);
       const response = await recordCalibrationResult(statusTarget.id, resultData);
-      await refreshData();
       setSuccessMessage(statusAction === 'accepted'
         ? `${statusTarget.equipment_id} accepted. Next calibration: ${formatDate(response.data.next_calibration_date)}.`
         : `${statusTarget.equipment_id} rejected. Choose repair or scrap.`);
       if (statusAction === 'rejected') setDispositionTarget(response.data);
       setStatusTarget(null);
+      try {
+        await refreshData();
+      } catch {
+        setPageError('Result saved, but the equipment list could not be refreshed. Try refreshing the page.');
+      }
     } catch (error) {
       setFormError(apiErrorMessage(error, 'Unable to save this calibration result.'));
     } finally {
@@ -267,14 +339,31 @@ export default function CalibrationPage({ view = 'dashboard' }) {
     }
   };
 
+  const openRegistry = () => {
+    setFormData(EMPTY_FORM);
+    setFormError('');
+    setRegistryOpen(true);
+  };
+
+  const closeRegistry = () => {
+    if (submitting) return;
+    setRegistryOpen(false);
+    setFormData(EMPTY_FORM);
+    setFormError('');
+  };
+
   const handleDisposition = async (disposition) => {
     setSubmitting(true);
     setFormError('');
     try {
       await setCalibrationDisposition(dispositionTarget.id, disposition);
-      await refreshData();
       setSuccessMessage(`${dispositionTarget.equipment_id} marked as ${disposition === 'repair' ? 'under repair' : 'scrapped'}.`);
       setDispositionTarget(null);
+      try {
+        await refreshData();
+      } catch {
+        setPageError('Disposition saved, but the equipment list could not be refreshed. Try refreshing the page.');
+      }
     } catch (error) {
       setFormError(apiErrorMessage(error, 'Unable to save the equipment disposition.'));
     } finally {
@@ -306,6 +395,11 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   const closeDocumentPreview = () => {
     if (documentPreview?.url) URL.revokeObjectURL(documentPreview.url);
     setDocumentPreview(null);
+    const params = new URLSearchParams(location.search);
+    if (params.has('certificate')) {
+      params.delete('certificate');
+      navigate(`${location.pathname}${params.toString() ? `?${params.toString()}` : ''}`, { replace: true });
+    }
   };
 
   const downloadPreview = () => {
@@ -341,10 +435,17 @@ export default function CalibrationPage({ view = 'dashboard' }) {
     try {
       if (planTarget) await updateCalibrationPlanEntry(planTarget.id, planForm);
       else await createCalibrationPlanEntry(planForm);
-      const response = await getCalibrationPlan(planYear);
-      setPlanRows(response.data?.rows ?? []);
       setSuccessMessage(`Calibration plan entry ${planTarget ? 'updated' : 'added'} successfully.`);
-      closePlanEditor();
+      setPlanEditorOpen(false);
+      setPlanTarget(null);
+      setPlanForm(EMPTY_PLAN_FORM);
+      setFormError('');
+      try {
+        const response = await getCalibrationPlan(planYear);
+        setPlanRows(response.data?.rows ?? []);
+      } catch {
+        setPageError('Plan entry saved, but the plan could not be refreshed. Try refreshing the page.');
+      }
     } catch (error) {
       setFormError(apiErrorMessage(error, 'Unable to save this calibration plan entry.'));
     } finally {
@@ -402,7 +503,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   const copy = VIEW_COPY[view];
   return (
     <>
-      <Header title={copy.title} subtitle={copy.subtitle} />
+      <Header title={copy.title} subtitle={copy.subtitle} showLiveStatus={false} />
       <div className="page-content bg-gradient-animated calibration-page">
         <CalibrationNavigation />
         {loading ? <LoadingSpinner message="Loading calibration equipment..." /> : (
@@ -423,13 +524,14 @@ export default function CalibrationPage({ view = 'dashboard' }) {
                 equipment={equipment} filteredEquipment={filteredEquipment}
                 search={search} statusFilter={statusFilter}
                 setSearch={setSearch} setStatusFilter={setStatusFilter}
-                openEdit={openEdit} openStatus={openStatus}
+                openEdit={openEdit} openStatus={openStatus} onRegister={openRegistry}
               />
             )}
             {view === 'register' && (
               <EquipmentRegistryForm
                 formData={formData} formError={formError} submitting={submitting}
                 onChange={handleFormChange} onSubmit={handleRegister}
+                onCancel={() => navigate('/calibration/equipment')} modal
               />
             )}
             {view === 'plan' && <CalibrationPlanReport year={planYear} setYear={setPlanYear} rows={planRows} company={company} openEditor={openPlanEditor} removeEntry={removePlanEntry} downloadPdf={downloadPlanPdf} downloadingPdf={planPdfDownloading} />}
@@ -452,7 +554,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
         >
           {formError && <div className="calibration-notice calibration-notice-error" role="alert">{formError}</div>}
           <form id="calibration-edit-form" onSubmit={handleEdit}>
-            <EquipmentFields formData={formData} onChange={handleFormChange} />
+            <EquipmentFields formData={formData} onChange={handleFormChange} historyCardReadOnly />
           </form>
         </Modal>
       )}
@@ -485,8 +587,12 @@ export default function CalibrationPage({ view = 'dashboard' }) {
                 <CircleX size={20} aria-hidden="true" /><span><strong>Rejected</strong><small>Choose repair or scrap next</small></span>
               </button>
             </div>
-            <Field label="Calibration Date" name="result_date" type="date" value={statusData.result_date} onChange={(event) => setStatusData((current) => ({ ...current, result_date: event.target.value }))} required />
+            <div className="calibration-form-grid">
+              <Field label="Planned Calibration Date" name="planned_date" type="date" value={statusTarget.next_calibration_date} readOnly />
+              <Field label="Calibration Date" name="result_date" type="date" value={statusData.result_date} onChange={(event) => setStatusData((current) => ({ ...current, result_date: event.target.value }))} required />
+            </div>
             <p className="calibration-status-help">{statusAction === 'accepted' ? `The next calibration date will be calculated using the ${statusTarget.calibration_frequency_days}-day frequency.` : 'After saving the rejection, choose whether the equipment will be repaired or scrapped.'}</p>
+            {statusTarget.acceptance_criteria && <p className="calibration-status-help"><strong>Acceptance criteria:</strong> {statusTarget.acceptance_criteria}</p>}
             <div className="form-group">
               <label className="form-label" htmlFor="calibration-report-file">Certificate / Evidence (optional)</label>
               <input id="calibration-report-file" className="form-input" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => setStatusData((current) => ({ ...current, report_file: event.target.files?.[0] ?? null }))} />
@@ -501,6 +607,13 @@ export default function CalibrationPage({ view = 'dashboard' }) {
             </div>
           </form>
         </Modal>
+      )}
+
+      {registryOpen && (
+        <EquipmentRegistryForm
+          formData={formData} formError={formError} submitting={submitting}
+          onChange={handleFormChange} onSubmit={handleRegister} onCancel={closeRegistry} modal
+        />
       )}
 
       {dispositionTarget && (

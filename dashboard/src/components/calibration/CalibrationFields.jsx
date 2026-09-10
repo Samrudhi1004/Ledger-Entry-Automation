@@ -1,4 +1,4 @@
-export function EquipmentFields({ formData, onChange }) {
+export function EquipmentFields({ formData, onChange, showHistoryCardNumber = true, historyCardReadOnly = false }) {
   return (
     <div className="calibration-form-grid">
       <Field label="Equipment ID" name="equipment_id" value={formData.equipment_id} onChange={onChange} required />
@@ -8,7 +8,7 @@ export function EquipmentFields({ formData, onChange }) {
       <Field label="Model Number" name="model_number" value={formData.model_number} onChange={onChange} />
       <Field label="Range / Size" name="range_size" value={formData.range_size} onChange={onChange} />
       <Field label="Least Count" name="least_count" value={formData.least_count} onChange={onChange} />
-      <Field label="History Card Number" name="history_card_number" value={formData.history_card_number} onChange={onChange} />
+      {showHistoryCardNumber && <Field label="History Card Number" name="history_card_number" value={formData.history_card_number} onChange={onChange} readOnly={historyCardReadOnly} />}
       <Field label="Department" name="department" value={formData.department} onChange={onChange} />
       <Field label="Location" name="location" value={formData.location} onChange={onChange} />
       <Field label="Calibration Frequency (days)" name="calibration_frequency_days" type="number" min="1" value={formData.calibration_frequency_days} onChange={onChange} required />

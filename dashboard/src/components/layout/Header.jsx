@@ -2,7 +2,7 @@ import { useWebSocket } from '../../context/WebSocketContext';
 
 const SHIFTS = ['A', 'B', 'C'];
 
-export default function Header({ title, subtitle, shift, onShiftChange }) {
+export default function Header({ title, subtitle, shift, onShiftChange, showLiveStatus = true }) {
   const ws = useWebSocket();
   const connected = ws?.connected ?? false;
 
@@ -31,10 +31,12 @@ export default function Header({ title, subtitle, shift, onShiftChange }) {
         )}
 
         {/* WebSocket status */}
-        <div className="ws-indicator" title={connected ? 'Live feed connected' : 'Reconnecting...'}>
-          <span className={`ws-dot${connected ? '' : ' disconnected'}`} />
-          {connected ? 'Live' : 'Offline'}
-        </div>
+        {showLiveStatus && (
+          <div className="ws-indicator" title={connected ? 'Live feed connected' : 'Reconnecting...'}>
+            <span className={`ws-dot${connected ? '' : ' disconnected'}`} />
+            {connected ? 'Live' : 'Offline'}
+          </div>
+        )}
 
         {/* Current time */}
         <span className="text-xs text-muted">

@@ -43,6 +43,12 @@ class CalibrationEquipment(models.Model):
     def __str__(self):
         return f'{self.equipment_id} - {self.equipment_name}'
 
+    def save(self, *args, **kwargs):
+        # Generate a stable history-card number only when the record is created.
+        if self._state.adding and not self.history_card_number and self.equipment_id:
+            self.history_card_number = f'HC-{self.equipment_id}'
+        super().save(*args, **kwargs)
+
     @property
     def days_remaining(self):
         if self.state != self.State.ACTIVE:
