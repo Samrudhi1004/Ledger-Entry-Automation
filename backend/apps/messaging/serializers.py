@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from apps.messaging.models import Conversation, Message, MessageAttachment, MessageRead
+from apps.messaging.models import Conversation, Message, MessageAttachment, MessageRead, MessageReaction
 
 User = get_user_model()
 
@@ -35,11 +35,22 @@ class MessageReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class MessageReactionSerializer(serializers.ModelSerializer):
+    """Serializer for message reactions."""
+    user = UserBasicSerializer(read_only=True)
+
+    class Meta:
+        model = MessageReaction
+        fields = ['id', 'user', 'emoji', 'created_at']
+        read_only_fields = ['id', 'user', 'created_at']
+
+
 class MessageSerializer(serializers.ModelSerializer):
     """Serializer for messages with attachments and read status."""
     sender = UserBasicSerializer(read_only=True)
     attachments = MessageAttachmentSerializer(many=True, read_only=True)
     read_by = MessageReadSerializer(many=True, read_only=True)
+    reactions = MessageReactionSerializer(many=True, read_only=True)
     reply_to_message = serializers.SerializerMethodField()
 
     class Meta:
@@ -47,7 +58,7 @@ class MessageSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'conversation', 'sender', 'content', 'message_type',
             'meeting_link', 'meeting_scheduled_at', 'reply_to',
-            'reply_to_message', 'attachments', 'read_by',
+            'reply_to_message', 'attachments', 'read_by', 'reactions',
             'created_at', 'edited_at', 'is_deleted'
         ]
         read_only_fields = ['id', 'sender', 'created_at', 'edited_at']
@@ -81,13 +92,14 @@ class ConversationSerializer(serializers.ModelSerializer):
     admin = UserBasicSerializer(read_only=True)
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
+    pinned_messages = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
         fields = [
             'id', 'type', 'name', 'description', 'participants',
             'participant_ids', 'created_by', 'admin', 'plant',
-            'last_message', 'unread_count', 'created_at', 'updated_at'
+            'last_message', 'unread_count', 'pinned_messages', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
 
@@ -112,6 +124,20 @@ class ConversationSerializer(serializers.ModelSerializer):
             read_by__user=user
         ).exclude(sender=user).count()
         return unread
+
+    def get_pinned_messages(self, obj):
+        """Get pinned messages with basic info for the banner."""
+        pinned = obj.pinned_messages.filter(is_deleted=False).order_by('created_at')
+        return [
+            {
+                'id': str(msg.id),
+                'content': msg.content[:120],
+                'message_type': msg.message_type,
+                'sender': UserBasicSerializer(msg.sender).data,
+                'created_at': msg.created_at,
+            }
+            for msg in pinned
+        ]
 
     def create(self, validated_data):
         """Create conversation with participants."""

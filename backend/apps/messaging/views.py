@@ -10,12 +10,13 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.core.cache import cache
 
-from apps.messaging.models import Conversation, Message, MessageAttachment, MessageRead
+from apps.messaging.models import Conversation, Message, MessageAttachment, MessageRead, MessageReaction
 from apps.messaging.serializers import (
     ConversationSerializer,
     ConversationDetailSerializer,
     MessageSerializer,
     MessageAttachmentSerializer,
+    MessageReactionSerializer,
     UserSearchSerializer
 )
 
@@ -206,12 +207,56 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+    @action(detail=True, methods=['post'], url_path='pin-message')
+    def pin_message(self, request, pk=None):
+        """Pin or unpin a message in the conversation (max 3 pinned at a time)."""
+        conversation = self.get_object()
+        message_id = request.data.get('message_id')
+
+        if not message_id:
+            return Response(
+                {'error': 'message_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            message = Message.objects.get(id=message_id, conversation=conversation)
+        except Message.DoesNotExist:
+            return Response(
+                {'error': 'Message not found in this conversation'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Toggle: if already pinned, unpin it
+        if conversation.pinned_messages.filter(id=message_id).exists():
+            conversation.pinned_messages.remove(message)
+            action_taken = 'unpinned'
+        else:
+            # Enforce max 3 pinned messages
+            if conversation.pinned_messages.count() >= 3:
+                return Response(
+                    {'error': 'Maximum 3 messages can be pinned. Unpin one first.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            conversation.pinned_messages.add(message)
+            action_taken = 'pinned'
+
+        # Return updated list of pinned messages
+        from apps.messaging.serializers import MessageSerializer
+        pinned = conversation.pinned_messages.filter(is_deleted=False).order_by('created_at')
+        serializer = MessageSerializer(pinned, many=True, context={'request': request})
+        return Response({
+            'action': action_taken,
+            'pinned_messages': serializer.data
+        }, status=status.HTTP_200_OK)
+
 
 class MessageViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing messages within conversations.
     """
     permission_classes = [IsAuthenticated]
+
     serializer_class = MessageSerializer
 
     def get_queryset(self):
@@ -409,6 +454,90 @@ class MessageViewSet(viewsets.ModelViewSet):
             traceback.print_exc()
 
         return Response(message_data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post', 'delete'], url_path='react')
+    def react(self, request, conversation_pk=None, pk=None):
+        """Add or remove emoji reaction to/from a message."""
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        message = self.get_object()
+        conversation = message.conversation
+        emoji = request.data.get('emoji')
+
+        if not emoji:
+            return Response(
+                {'error': 'emoji is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if request.method == 'POST':
+            # Add or toggle reaction
+            reaction, created = MessageReaction.objects.get_or_create(
+                message=message,
+                user=request.user,
+                emoji=emoji
+            )
+
+            if not created:
+                # If reaction already exists, remove it (toggle)
+                reaction.delete()
+                action = 'removed'
+            else:
+                action = 'added'
+
+        elif request.method == 'DELETE':
+            # Remove reaction
+            try:
+                reaction = MessageReaction.objects.get(
+                    message=message,
+                    user=request.user,
+                    emoji=emoji
+                )
+                reaction.delete()
+                action = 'removed'
+            except MessageReaction.DoesNotExist:
+                return Response(
+                    {'error': 'Reaction not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        # Update conversation timestamp to move it to top
+        conversation.updated_at = timezone.now()
+        conversation.save(update_fields=['updated_at'])
+
+        # Get updated message with reactions
+        message.refresh_from_db()
+        message = Message.objects.select_related('sender').prefetch_related(
+            'attachments', 'read_by', 'reactions__user'
+        ).get(id=message.id)
+
+        serializer = self.get_serializer(message)
+
+        # Broadcast reaction update via WebSocket
+        try:
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                async_to_sync(channel_layer.group_send)(
+                    f'conversation_{conversation_pk}',
+                    {
+                        'type': 'message_reaction',
+                        'data': {
+                            'message_id': str(message.id),
+                            'reactions': serializer.data.get('reactions', []),
+                            'action': action,
+                            'user_id': request.user.id,
+                            'emoji': emoji
+                        }
+                    }
+                )
+        except Exception as e:
+            print(f"Error broadcasting reaction: {e}")
+
+        return Response({
+            'message': f'Reaction {action}',
+            'reactions': serializer.data.get('reactions', [])
+        }, status=status.HTTP_200_OK)
 
 
 class FileUploadView(generics.CreateAPIView):
