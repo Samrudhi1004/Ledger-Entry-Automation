@@ -8,6 +8,7 @@ django.setup()
 
 from apps.users.models import User
 from apps.inspections.models import InspectionSession, DailyProductionReport
+from apps.tasks.models import Task
 
 ALLOWED_USERNAMES = ["admin", "supervisor", "calibrator", "inspector", "operator"]
 
@@ -101,6 +102,10 @@ def cleanup_and_seed():
         
         # Re-assign DailyProductionReport references
         DailyProductionReport.objects.filter(operator=extra).update(operator=op_user)
+
+        # Re-assign Task references (PROTECT FK — must be done before delete)
+        Task.objects.filter(allocated_to=extra).update(allocated_to=op_user)
+        Task.objects.filter(allocated_by=extra).update(allocated_by=sup_user)
 
     # Now safely delete extra users
     deleted_count, _ = extra_users.delete()
