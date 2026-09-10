@@ -60,7 +60,7 @@ class InspectionConsumer(AsyncWebsocketConsumer):
 
         # ── Authentication handshake (first message the client must send) ──
         if msg_type in ('authenticate', 'auth'):
-            token = data.get('token', '').strip()
+            token = (data.get('token') or '').strip()
             if not token:
                 await self._reject_auth('No token provided.')
                 return

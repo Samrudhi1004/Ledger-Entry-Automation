@@ -177,6 +177,17 @@ export const MessagingProvider = ({ children }) => {
           }
           break;
 
+        case 'message_reaction':
+          // Update message reactions in real-time
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === data.data.message_id
+                ? { ...msg, reactions: data.data.reactions }
+                : msg
+            )
+          );
+          break;
+
         case 'error':
           console.error('WebSocket error:', data.message);
           break;
@@ -334,6 +345,47 @@ export const MessagingProvider = ({ children }) => {
       connectWebSocket(conversation.id);
     }
   }, [fetchMessages, connectWebSocket]);
+
+  // Update message reactions (for optimistic updates)
+  const updateMessageReactions = useCallback((messageId, reactions) => {
+    setMessages(prev =>
+      prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, reactions }
+          : msg
+      )
+    );
+  }, []);
+
+  // Pin / unpin a message in the active conversation (max 3)
+  const pinMessage = useCallback(async (conversationId, messageId) => {
+    try {
+      const response = await api.post(
+        `${API_BASE}/messaging/conversations/${conversationId}/pin-message/`,
+        { message_id: messageId }
+      );
+      const { pinned_messages } = response.data;
+      // Update the conversation in state with the new pinned list
+      setActiveConversation(prev =>
+        prev && prev.id === conversationId
+          ? { ...prev, pinned_messages }
+          : prev
+      );
+      setConversations(prev =>
+        prev.map(conv =>
+          conv.id === conversationId
+            ? { ...conv, pinned_messages }
+            : conv
+        )
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Failed to pin message:', error);
+      // Surface error message to caller
+      const msg = error?.response?.data?.error || 'Failed to pin message';
+      throw new Error(msg);
+    }
+  }, [API_BASE]);
 
   // Connect to user notification WebSocket for real-time updates across all conversations
   useEffect(() => {
@@ -571,6 +623,8 @@ export const MessagingProvider = ({ children }) => {
     uploadFile,
     selectConversation,
     setActiveConversation,
+    updateMessageReactions,
+    pinMessage,
   };
 
   return (

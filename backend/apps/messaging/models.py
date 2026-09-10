@@ -49,6 +49,14 @@ class Conversation(models.Model):
         blank=True
     )
 
+    # Pinned messages (max 3, like Instagram)
+    pinned_messages = models.ManyToManyField(
+        'Message',
+        blank=True,
+        related_name='pinned_in_conversations',
+        symmetrical=False,
+    )
+
     class Meta:
         db_table = 'conversations'
         ordering = ['-updated_at']
@@ -186,3 +194,28 @@ class MessageRead(models.Model):
 
     def __str__(self):
         return f"{self.user.email} read message {self.message.id} at {self.read_at}"
+
+
+class MessageReaction(models.Model):
+    """
+    Track emoji reactions to messages.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='reactions'
+    )
+    user = models.ForeignKey('users.User', on_delete=models.CASCADE)
+    emoji = models.CharField(max_length=10)  # Unicode emoji
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'message_reactions'
+        unique_together = [['message', 'user', 'emoji']]
+        indexes = [
+            models.Index(fields=['message']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} reacted {self.emoji} to message {self.message.id}"

@@ -1,13 +1,41 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { MessagingProvider } from '../context/MessagingContext';
 import ConversationList from '../components/messaging/ConversationList';
 import ChatWindow from '../components/messaging/ChatWindow';
 import UserSearch from '../components/messaging/UserSearch';
-import { Plus } from 'lucide-react';
+import GroupCreation from '../components/messaging/GroupCreation';
+import { Plus, MessageCircle, Users, ChevronDown } from 'lucide-react';
 import './MessagesPage.css';
 
 export default function MessagesPage() {
   const [showUserSearch, setShowUserSearch] = useState(false);
+  const [showGroupCreation, setShowGroupCreation] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    };
+
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showDropdown]);
+
+  const handleNewChat = () => {
+    setShowDropdown(false);
+    setShowUserSearch(true);
+  };
+
+  const handleNewGroup = () => {
+    setShowDropdown(false);
+    setShowGroupCreation(true);
+  };
 
   return (
     <MessagingProvider>
@@ -15,13 +43,30 @@ export default function MessagesPage() {
         <div className="messages-layout">
           <div className="conversations-panel">
             <ConversationList />
-            <button
-              className="new-chat-button"
-              onClick={() => setShowUserSearch(true)}
-            >
-              <Plus size={20} />
-              <span>New Chat</span>
-            </button>
+
+            <div className="new-action-container" ref={dropdownRef}>
+              <button
+                className="new-chat-button"
+                onClick={() => setShowDropdown(!showDropdown)}
+              >
+                <Plus size={20} />
+                <span>New</span>
+                <ChevronDown size={16} className={`dropdown-icon ${showDropdown ? 'open' : ''}`} />
+              </button>
+
+              {showDropdown && (
+                <div className="new-action-dropdown">
+                  <button className="dropdown-item" onClick={handleNewChat}>
+                    <MessageCircle size={18} />
+                    <span>New Chat</span>
+                  </button>
+                  <button className="dropdown-item" onClick={handleNewGroup}>
+                    <Users size={18} />
+                    <span>New Group</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="chat-panel">
@@ -31,6 +76,10 @@ export default function MessagesPage() {
 
         {showUserSearch && (
           <UserSearch onClose={() => setShowUserSearch(false)} />
+        )}
+
+        {showGroupCreation && (
+          <GroupCreation onClose={() => setShowGroupCreation(false)} />
         )}
       </div>
     </MessagingProvider>
