@@ -337,3 +337,16 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@example.com')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
+
+# ─── Sentry Error Monitoring ──────────────────────────────────
+SENTRY_DSN = os.getenv('SENTRY_DSN', '')
+if SENTRY_DSN:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        send_default_pii=True,
+        enable_logs=True,
+        traces_sample_rate=1.0 if not DEBUG else 0.0,  # Full tracing on prod only
+        environment='production' if not DEBUG else 'development',
+        release=os.getenv('RENDER_GIT_COMMIT', 'local'),
+    )

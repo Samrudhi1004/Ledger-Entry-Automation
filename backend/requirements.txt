@@ -8,6 +8,9 @@ tzdata==2026.3
 djangorestframework==3.17.1
 django-cors-headers==4.9.0
 
+# ─── Error Monitoring ─────────────────────────────────────────
+sentry-sdk[django]
+
 # ─── Authentication ────────────────────────────────────────────
 djangorestframework-simplejwt==5.5.1
 PyJWT==2.13.0
