@@ -5,10 +5,17 @@ from django.utils import timezone
 
 
 class CalibrationEquipment(models.Model):
+    class State(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        REJECTED = 'rejected', 'Rejected'
+        REPAIR = 'repair', 'Under Repair'
+        SCRAPPED = 'scrapped', 'Scrapped'
+
     equipment_id = models.CharField(max_length=50, unique=True)
     equipment_name = models.CharField(max_length=150)
     equipment_type = models.CharField(max_length=100)
-    serial_number = models.CharField(max_length=100, unique=True)
+    # Kept nullable for existing data; serial number is no longer part of the calibration UI.
+    serial_number = models.CharField(max_length=100, unique=True, blank=True, null=True)
     manufacturer = models.CharField(max_length=150, blank=True)
     model_number = models.CharField(max_length=100, blank=True)
     range_size = models.CharField(max_length=100, blank=True)
@@ -16,12 +23,13 @@ class CalibrationEquipment(models.Model):
     acceptable_error = models.CharField(max_length=100, blank=True)
     acceptance_criteria = models.TextField(blank=True)
     history_card_number = models.CharField(max_length=100, blank=True)
-    department = models.CharField(max_length=100)
-    location = models.CharField(max_length=150)
+    department = models.CharField(max_length=100, blank=True, default='')
+    location = models.CharField(max_length=150, blank=True, default='')
     calibration_frequency_days = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     last_calibration_date = models.DateField()
     next_calibration_date = models.DateField(db_index=True)
     remarks = models.TextField(blank=True)
+    state = models.CharField(max_length=12, choices=State.choices, default=State.ACTIVE, db_index=True)
     is_failed = models.BooleanField(default=False, db_index=True)
     failed_date = models.DateField(blank=True, null=True)
     failure_remark = models.TextField(blank=True)
@@ -35,16 +43,26 @@ class CalibrationEquipment(models.Model):
     def __str__(self):
         return f'{self.equipment_id} - {self.equipment_name}'
 
+    def save(self, *args, **kwargs):
+        # Generate a stable history-card number only when the record is created.
+        if self._state.adding and not self.history_card_number and self.equipment_id:
+            self.history_card_number = f'HC-{self.equipment_id}'
+        super().save(*args, **kwargs)
+
     @property
     def days_remaining(self):
-        if self.is_failed:
+        if self.state != self.State.ACTIVE:
             return None
         return (self.next_calibration_date - timezone.localdate()).days
 
     @property
     def calibration_status(self):
-        if self.is_failed:
-            return 'Failed'
+        if self.state == self.State.REJECTED:
+            return 'Rejected'
+        if self.state == self.State.REPAIR:
+            return 'Under Repair'
+        if self.state == self.State.SCRAPPED:
+            return 'Scrapped'
         if self.days_remaining < 0:
             return 'Overdue'
         if self.days_remaining == 0:
@@ -56,8 +74,12 @@ class CalibrationEquipment(models.Model):
 
 class CalibrationRecord(models.Model):
     class Result(models.TextChoices):
-        PASSED = 'passed', 'Passed'
-        FAILED = 'failed', 'Failed'
+        ACCEPTED = 'accepted', 'Accepted'
+        REJECTED = 'rejected', 'Rejected'
+
+    class Disposition(models.TextChoices):
+        REPAIR = 'repair', 'Under Repair'
+        SCRAPPED = 'scrapped', 'Scrapped'
 
     equipment = models.ForeignKey(
         CalibrationEquipment,
@@ -67,6 +89,7 @@ class CalibrationRecord(models.Model):
     planned_date = models.DateField()
     calibration_date = models.DateField()
     result = models.CharField(max_length=10, choices=Result.choices)
+    disposition = models.CharField(max_length=10, choices=Disposition.choices, blank=True)
     calibration_agency = models.CharField(max_length=150, blank=True)
     report_number = models.CharField(max_length=100, blank=True)
     certificate_number = models.CharField(max_length=100, blank=True)

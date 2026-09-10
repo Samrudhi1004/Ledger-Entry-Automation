@@ -609,8 +609,44 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                     ),
                   ],
                 ),
-                ],
-              ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chat_outlined, color: Color(0xFF4F46E5), size: 24),
+                      tooltip: 'Messages',
+                      onPressed: () => Navigator.pushNamed(context, '/messages'),
+                    ),
+                    Stack(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.notifications_none_rounded, color: Color(0xFF0F172A), size: 26),
+                          tooltip: 'Notifications',
+                          onPressed: () => _showNotificationsModal(context),
+                        ),
+                        if (unreadNotifCount > 0)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFEF4444),
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                              child: Text(
+                                '$unreadNotifCount',
+                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
 
             const SizedBox(height: 24),
 
@@ -757,22 +793,6 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         borderColor: hasActiveSession ? const Color(0xFFA7F3D0) : const Color(0xFFE2E8F0),
                         iconColor: hasActiveSession ? const Color(0xFF059669) : const Color(0xFF64748B),
                         onTap: () => _resumeActiveSessionDirectly(context),
-                      ),
-
-                      // Inspector / Supervisor Card 5: JH-Inspection
-                      _buildSoftPastelCard(
-                        title: 'JH-Inspection',
-                        description: 'Autonomous Maintenance shift audit (Form QF/MF-08)',
-                        icon: Icons.fact_check_rounded,
-                        bgColor: const Color(0xFFF0FDF4),
-                        borderColor: const Color(0xFFBBF7D0),
-                        iconColor: const Color(0xFF16A34A),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const JhInspectionScreen()),
-                          );
-                        },
                       ),
                     ],
             ),

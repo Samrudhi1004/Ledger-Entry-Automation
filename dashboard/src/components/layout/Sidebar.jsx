@@ -18,8 +18,8 @@ import {
   Cpu,
   TrendingUp,
   BarChart3,
-  MessageSquare,
   Store,
+  MessageSquare,
 } from 'lucide-react';
 
 const MODULES = [

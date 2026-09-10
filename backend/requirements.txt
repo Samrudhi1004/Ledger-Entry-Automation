@@ -8,6 +8,9 @@ tzdata==2026.3
 djangorestframework==3.17.1
 django-cors-headers==4.9.0
 
+# ─── Error Monitoring ─────────────────────────────────────────
+sentry-sdk[django]
+
 # ─── Authentication ────────────────────────────────────────────
 djangorestframework-simplejwt==5.5.1
 PyJWT==2.13.0
@@ -47,8 +50,8 @@ Pillow==11.1.0
 
 # ─── Messaging Module ──────────────────────────────────────────
 cloudinary==1.41.0
-python-magic==0.4.27
-python-magic-bin==0.4.14  # Windows binary for python-magic
+filetype==1.2.0
+
 
 # ─── Production Server ────────────────────────────────────────
 gunicorn

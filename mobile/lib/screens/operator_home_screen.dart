@@ -177,6 +177,16 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.chat_outlined, color: Color(0xFF6366F1)),
+            tooltip: 'Messages',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const MessagesScreen()),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Color(0xFF10B981)),
             tooltip: 'Refresh Status',
             onPressed: () {

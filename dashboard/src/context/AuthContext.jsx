@@ -25,7 +25,8 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (username, password) => {
     const res = await apiLogin(username, password);
-    const { access, refresh, user: userData } = res.data;
+    const { access, refresh } = res.data;
+    sessionStorage.removeItem('calibration-notifications-seen');
     localStorage.setItem('access_token', access);
     localStorage.setItem('refresh_token', refresh);
     // Fetch full profile after login
@@ -37,6 +38,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => {
     const refresh = localStorage.getItem('refresh_token');
     try { await apiLogout(refresh); } catch { /* ignore */ }
+    sessionStorage.removeItem('calibration-notifications-seen');
     localStorage.clear();
     setUser(null);
   }, []);
