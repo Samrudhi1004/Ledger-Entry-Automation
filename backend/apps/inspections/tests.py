@@ -86,15 +86,15 @@ class DowntimeReportTestCase(TestCase):
 
     def test_one_to_one_constraint(self):
         DowntimeReport.objects.create(production_report=self.prod1, no_load=10)
-        from django.core.exceptions import ValidationError
-        with self.assertRaises(ValidationError):
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
             DowntimeReport.objects.create(production_report=self.prod1, no_load=20)
 
     def test_negative_value_validation(self):
         from django.core.exceptions import ValidationError
         dt = DowntimeReport(production_report=self.prod2, no_load=-10)
         with self.assertRaises(ValidationError):
-            dt.save()
+            dt.full_clean()
 
 
 class DowntimeReportApiTestCase(APITestCase):

@@ -47,6 +47,17 @@ class _JhInspectionScreenState extends State<JhInspectionScreen> {
       _errorMessage = null;
     });
 
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    if (!auth.isOperator) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'J-H Autonomous Maintenance केवल मशीन ऑपरेटरों के लिए है (Restricted to Operators only).';
+        });
+      }
+      return;
+    }
+
     try {
       // 1. Keep company shift configuration up to date
       await Provider.of<CompanyProvider>(context, listen: false).fetchCompanyDetails();

@@ -1503,6 +1503,14 @@ class JHInspectionSubmitView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Enforce operator role restriction (JH Inspection is strictly for operators)
+        user_role = getattr(request.user, 'role', '')
+        if user_role and user_role not in ('operator', 'admin'):
+            return Response(
+                {'error': "पहुंच अस्वीकृत (Access Denied): J-H (Autonomous Maintenance) निरीक्षण केवल मशीन ऑपरेटरों के लिए है।"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         # Enforce operator assigned shift restriction
         user_shift = getattr(request.user, 'assigned_shift', 'ALL')
         if user_shift and user_shift != 'ALL' and user_shift != shift:
@@ -1831,6 +1839,251 @@ class JHInspectionMatrixExportExcelView(APIView):
         )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
+
+
+class JHChecklistUploadParseView(APIView):
+    """
+    POST /api/inspections/jh/checklist/upload_parse/
+    Accepts multipart/form-data with 'file' (PDF or Excel).
+    Parses table checkpoints and returns structured JSON for review/preview.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .jh_checklist_parser import parse_jh_checklist_file
+
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            return Response({'error': 'No file uploaded. Please select a .pdf or .xlsx file.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            items = parse_jh_checklist_file(uploaded_file, uploaded_file.name)
+            if not items:
+                return Response({'error': 'No checklist items could be parsed from the uploaded file. Please check file format.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+            return Response({
+                'success': True,
+                'filename': uploaded_file.name,
+                'count': len(items),
+                'items': items,
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': f'Failed to parse file: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class JHChecklistBulkSaveView(APIView):
+    """
+    POST /api/inspections/jh/checklist/bulk_save/
+    Saves or replaces checklist items in the database atomically, recording version audit history.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from django.db import transaction
+        from .models import JHChecklistItem, JHChecklistVersion
+
+        items_data = request.data.get('items', [])
+        replace_all = request.data.get('replace_all', True)
+        filename = request.data.get('filename') or 'uploaded_checklist.xlsx'
+        notes = request.data.get('notes') or ''
+
+        if not items_data or not isinstance(items_data, list):
+            return Response({'error': 'A list of checklist items is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                # Compute next version number
+                last_ver = JHChecklistVersion.objects.order_by('-version_number').values_list('version_number', flat=True).first() or 0
+                next_ver = last_ver + 1
+
+                if replace_all:
+                    # Deactivate existing active items and versions
+                    JHChecklistVersion.objects.filter(is_active=True).update(is_active=False)
+                    JHChecklistItem.objects.filter(is_active=True).update(is_active=False)
+
+                # Create new version record
+                ver_obj = JHChecklistVersion.objects.create(
+                    version_number=next_ver,
+                    filename=filename,
+                    uploaded_by=request.user if request.user.is_authenticated else None,
+                    total_items=len(items_data),
+                    notes=notes,
+                    is_active=True,
+                )
+
+                created_records = []
+                for idx, row in enumerate(items_data, start=1):
+                    sub_no = str(row.get('sub_no') or f"1.{idx}").strip()
+                    assembly = str(row.get('assembly') or "General Inspection").strip()
+                    sub_assembly = str(row.get('sub_assembly') or "").strip()
+                    check_point = str(row.get('check_point') or "").strip()
+                    standard = str(row.get('standard') or "").strip()
+
+                    if not check_point:
+                        continue
+
+                    tool_type = str(row.get('tool_type') or 'VISUAL').upper()
+                    if tool_type not in ('VISUAL', 'TOUCH', 'TOOL'):
+                        tool_type = 'VISUAL'
+
+                    item = JHChecklistItem(
+                        version=ver_obj,
+                        sub_no=sub_no,
+                        assembly=assembly,
+                        sub_assembly=sub_assembly,
+                        check_point=check_point,
+                        standard=standard,
+                        tool_type=tool_type,
+                        rank=str(row.get('rank') or 'D').strip(),
+                        frequency=str(row.get('frequency') or 'D').strip(),
+                        timing_sec=str(row.get('timing_sec') or '5 DPT').strip(),
+                        action_clean=bool(row.get('action_clean', False)),
+                        action_lubricate=bool(row.get('action_lubricate', False)),
+                        action_inspect=bool(row.get('action_inspect', True)),
+                        action_retighten=bool(row.get('action_retighten', False)),
+                        sort_order=int(row.get('sort_order') or idx),
+                        is_active=True,
+                    )
+                    created_records.append(item)
+
+                JHChecklistItem.objects.bulk_create(created_records)
+
+                # Update count
+                ver_obj.total_items = len(created_records)
+                ver_obj.save(update_fields=['total_items'])
+
+            return Response({
+                'success': True,
+                'message': f'Successfully saved {len(created_records)} checklist items as Version v{next_ver}.',
+                'version_number': next_ver,
+                'count': len(created_records),
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': f'Database save error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class JHChecklistVersionListView(APIView):
+    """
+    GET /api/inspections/jh/checklist/versions/
+    Returns audit history of all uploaded checklist versions.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .models import JHChecklistVersion
+        versions = JHChecklistVersion.objects.select_related('uploaded_by').order_by('-version_number')
+        data = []
+        for v in versions:
+            uploader_name = 'System'
+            if v.uploaded_by:
+                uploader_name = f"{v.uploaded_by.first_name} {v.uploaded_by.last_name}".strip() or v.uploaded_by.username
+            data.append({
+                'id': v.id,
+                'version_number': v.version_number,
+                'filename': v.filename,
+                'uploaded_by': uploader_name,
+                'uploaded_at': v.uploaded_at.isoformat(),
+                'total_items': v.total_items,
+                'notes': v.notes,
+                'is_active': v.is_active,
+            })
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class JHChecklistVersionDetailView(APIView):
+    """
+    GET /api/inspections/jh/checklist/versions/<int:version_number>/
+    Returns items for a specific historical checklist version.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, version_number):
+        from .models import JHChecklistVersion, JHChecklistItem
+        ver = JHChecklistVersion.objects.filter(version_number=version_number).first()
+        if not ver:
+            return Response({'error': 'Version not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        items = JHChecklistItem.objects.filter(version=ver).order_by('sort_order', 'sub_no')
+        items_data = [{
+            'id': it.id,
+            'sub_no': it.sub_no,
+            'assembly': it.assembly,
+            'sub_assembly': it.sub_assembly,
+            'check_point': it.check_point,
+            'standard': it.standard,
+            'tool_type': it.tool_type,
+            'rank': it.rank,
+            'frequency': it.frequency,
+            'timing_sec': it.timing_sec,
+            'sort_order': it.sort_order,
+        } for it in items]
+
+        return Response({
+            'version_number': ver.version_number,
+            'filename': ver.filename,
+            'is_active': ver.is_active,
+            'total_items': len(items_data),
+            'items': items_data,
+        }, status=status.HTTP_200_OK)
+
+
+class JHChecklistVersionRestoreView(APIView):
+    """
+    POST /api/inspections/jh/checklist/versions/<int:version_number>/restore/
+    Rolls back / restores a previous checklist version as active.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, version_number):
+        from django.db import transaction
+        from .models import JHChecklistVersion, JHChecklistItem
+
+        ver = JHChecklistVersion.objects.filter(version_number=version_number).first()
+        if not ver:
+            return Response({'error': 'Version not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            with transaction.atomic():
+                # Deactivate all
+                JHChecklistVersion.objects.filter(is_active=True).update(is_active=False)
+                JHChecklistItem.objects.filter(is_active=True).update(is_active=False)
+
+                # Activate selected version and its items
+                ver.is_active = True
+                ver.save(update_fields=['is_active'])
+
+                JHChecklistItem.objects.filter(version=ver).update(is_active=True)
+
+            return Response({
+                'success': True,
+                'message': f'Version v{version_number} ({ver.filename}) has been restored as the active checklist.',
+                'version_number': ver.version_number,
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': f'Failed to restore version: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class JHChecklistTemplateDownloadView(APIView):
+    """
+    GET /api/inspections/jh/checklist/template/
+    Downloads blank Form QF/MF-08 Excel template.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.http import HttpResponse
+        from .jh_checklist_parser import generate_jh_template_xlsx
+
+        buf = generate_jh_template_xlsx()
+        response = HttpResponse(
+            buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response['Content-Disposition'] = 'attachment; filename="JH_Checklist_Template_Form_QF_MF_08.xlsx"'
+        return response
+
 
 
 

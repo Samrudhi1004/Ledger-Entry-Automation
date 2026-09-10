@@ -258,56 +258,25 @@ class DowntimeReport(models.Model):
         return f"Downtime Report | ProdRef: {self.production_report_id} | Total: {self.total_downtime} min"
 
 
-class SetupApproval(models.Model):
+class JHChecklistVersion(models.Model):
     """
-    Replaces MongoDB documents with inspection_type='setup_approval'.
-
-    Setup approval documents are architecturally separate from InspectionSession
-    (normal first-piece / hourly / final inspections).  They record the
-    inspector's process-parameter trial readings that must be approved before
-    a production run begins.
+    Audit log and version snapshot of every checklist upload/change.
     """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
-    template = models.ForeignKey(
-        'parts.InspectionTemplate',
-        on_delete=models.CASCADE,
-        related_name='setup_approvals',
-    )
-    machine = models.ForeignKey(
-        'machines.Machine',
-        on_delete=models.CASCADE,
-        related_name='setup_approvals',
-    )
-    part_number    = models.CharField(max_length=100, blank=True)
-    inspector      = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='setup_approvals',
-    )
-    inspector_name = models.CharField(max_length=255, blank=True)
-
-    # List of {parameter_code, parameter_name, trial_1, trial_2, trial_3, …}
-    process_param_entries = models.JSONField(default=list)
-
-    status       = models.CharField(max_length=50, default='submitted')
-    submitted_at = models.DateTimeField(auto_now_add=True)
+    version_number = models.IntegerField(unique=True, db_index=True)
+    filename = models.CharField(max_length=255, blank=True, default='')
+    uploaded_by = models.ForeignKey('users.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='checklist_uploads')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    total_items = models.IntegerField(default=0)
+    notes = models.TextField(blank=True, default='')
+    is_active = models.BooleanField(default=True)
 
     class Meta:
-        db_table = 'inspection_setup_approvals'
-        ordering = ['-submitted_at']
-        indexes = [
-            models.Index(fields=['template', 'machine', 'submitted_at']),
-        ]
+        db_table = 'jh_checklist_versions'
+        ordering = ['-version_number']
 
     def __str__(self):
-        return (
-            f"SetupApproval | template={self.template_id} "
-            f"machine={self.machine_id} | {self.submitted_at:%Y-%m-%d}"
-        )
+        return f"Checklist Version v{self.version_number} ({self.total_items} items) - {self.filename}"
+
 
 
 class JHChecklistItem(models.Model):
@@ -320,6 +289,7 @@ class JHChecklistItem(models.Model):
         TOUCH = 'TOUCH', 'Touch (Hand)'
         TOOL = 'TOOL', 'Tool / Wrench (Spanner)'
 
+    version = models.ForeignKey(JHChecklistVersion, on_delete=models.CASCADE, related_name='items', null=True, blank=True)
     sub_no = models.CharField(max_length=20, db_index=True)  # e.g. "1.1", "2.1"
     assembly = models.CharField(max_length=100, db_index=True)  # e.g. "1. Machine Front Side", "2. FIXTURE"
     sub_assembly = models.CharField(max_length=100, blank=True, default='')  # e.g. "एफ एम एफ बोर्ड", "फिक्सचर"
@@ -403,4 +373,56 @@ class JHInspectionItemResult(models.Model):
 
     def __str__(self):
         return f"{self.inspection.date} Shift {self.inspection.shift} - Item {self.item.sub_no}: {self.status}"
+
+
+class SetupApproval(models.Model):
+    """
+    Replaces MongoDB documents with inspection_type='setup_approval'.
+
+    Setup approval documents are architecturally separate from InspectionSession
+    (normal first-piece / hourly / final inspections).  They record the
+    inspector's process-parameter trial readings that must be approved before
+    a production run begins.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    template = models.ForeignKey(
+        'parts.InspectionTemplate',
+        on_delete=models.CASCADE,
+        related_name='setup_approvals',
+    )
+    machine = models.ForeignKey(
+        'machines.Machine',
+        on_delete=models.CASCADE,
+        related_name='setup_approvals',
+    )
+    part_number    = models.CharField(max_length=100, blank=True)
+    inspector      = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='setup_approvals',
+    )
+    inspector_name = models.CharField(max_length=255, blank=True)
+
+    # List of {parameter_code, parameter_name, trial_1, trial_2, trial_3, …}
+    process_param_entries = models.JSONField(default=list)
+
+    status       = models.CharField(max_length=50, default='submitted')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'inspection_setup_approvals'
+        ordering = ['-submitted_at']
+        indexes = [
+            models.Index(fields=['template', 'machine', 'submitted_at']),
+        ]
+
+    def __str__(self):
+        return (
+            f"SetupApproval | template={self.template_id} "
+            f"machine={self.machine_id} | {self.submitted_at:%Y-%m-%d}"
+        )
 

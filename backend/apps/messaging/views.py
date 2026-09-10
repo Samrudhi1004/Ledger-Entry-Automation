@@ -19,8 +19,10 @@ from apps.messaging.serializers import (
     UserSearchSerializer
 )
 
-import cloudinary.uploader
-import filetype
+try:
+    import filetype
+except ImportError:
+    filetype = None
 from io import BytesIO
 
 User = get_user_model()
@@ -448,7 +450,7 @@ class FileUploadView(generics.CreateAPIView):
         # Validate file type
         file_bytes = file.read(2048)
         file.seek(0)  # Reset file pointer
-        kind = filetype.guess(file_bytes)
+        kind = filetype.guess(file_bytes) if filetype else None
         if kind is not None:
             file_type = kind.mime
         else:
