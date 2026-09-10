@@ -174,9 +174,12 @@ export default function DailyProductionReportsPage() {
                   style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', color: '#0F172A' }}
                 >
                   <option value="">All Shifts</option>
-                  <option value="A">Shift A</option>
-                  <option value="B">Shift B</option>
-                  <option value="C">Shift C</option>
+                  <option value="I">Shift I</option>
+                  <option value="II">Shift II</option>
+                  <option value="III">Shift III</option>
+                  <option value="A">Shift A (Legacy)</option>
+                  <option value="B">Shift B (Legacy)</option>
+                  <option value="C">Shift C (Legacy)</option>
                 </select>
               </div>
 

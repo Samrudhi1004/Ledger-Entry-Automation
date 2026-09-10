@@ -15,10 +15,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        token['role']        = user.role
-        token['employee_id'] = user.employee_id
-        token['full_name']   = user.get_full_name()
-        token['plant_id']    = user.plant_id
+        token['role']           = user.role
+        token['assigned_shift'] = user.assigned_shift
+        token['employee_id']    = user.employee_id
+        token['full_name']      = user.get_full_name()
+        token['plant_id']       = user.plant_id
         return token
 
     def validate(self, attrs):
@@ -31,14 +32,16 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data = super().validate(attrs)
         # Append extra user info to the login response
         data['user'] = {
-            'id':          self.user.id,
-            'username':    self.user.username,
-            'email':       self.user.email,
-            'is_email_verified': self.user.is_email_verified,
-            'full_name':   self.user.get_full_name(),
-            'role':        self.user.role,
-            'employee_id': self.user.employee_id,
-            'plant_id':    self.user.plant_id,
+            'id':                     self.user.id,
+            'username':               self.user.username,
+            'email':                  self.user.email,
+            'is_email_verified':      self.user.is_email_verified,
+            'full_name':              self.user.get_full_name(),
+            'role':                   self.user.role,
+            'assigned_shift':         self.user.assigned_shift,
+            'assigned_shift_display': self.user.get_assigned_shift_display(),
+            'employee_id':            self.user.employee_id,
+            'plant_id':               self.user.plant_id,
         }
         return data
 
@@ -52,7 +55,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         model  = User
         fields = [
             'username', 'email', 'first_name', 'last_name',
-            'employee_id', 'role', 'phone', 'plant',
+            'employee_id', 'role', 'assigned_shift', 'phone', 'plant',
             'password', 'password2',
         ]
 
@@ -72,8 +75,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 # ─── Profile ───────────────────────────────────────────────────────────────
 class UserProfileSerializer(serializers.ModelSerializer):
-    plant_name        = serializers.CharField(source='plant.name', read_only=True)
-    profile_photo_url = serializers.SerializerMethodField()
+    plant_name             = serializers.CharField(source='plant.name', read_only=True)
+    profile_photo_url      = serializers.SerializerMethodField()
+    assigned_shift_display = serializers.CharField(source='get_assigned_shift_display', read_only=True)
 
     def get_profile_photo_url(self, obj):
         request = self.context.get('request')
@@ -85,7 +89,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model  = User
         fields = [
             'id', 'username', 'email', 'is_email_verified', 'first_name', 'last_name',
-            'employee_id', 'role', 'phone', 'plant', 'plant_name',
+            'employee_id', 'role', 'assigned_shift', 'assigned_shift_display', 'phone', 'plant', 'plant_name',
             'profile_photo', 'profile_photo_url', 'is_active', 'date_joined', 'created_at',
         ]
         read_only_fields = ['id', 'username', 'date_joined', 'created_at', 'is_email_verified']
@@ -100,13 +104,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 # ─── User List (Admin view) ────────────────────────────────────────────────
 class UserListSerializer(serializers.ModelSerializer):
-    plant_name = serializers.CharField(source='plant.name', read_only=True)
+    plant_name             = serializers.CharField(source='plant.name', read_only=True)
+    assigned_shift_display = serializers.CharField(source='get_assigned_shift_display', read_only=True)
 
     class Meta:
         model  = User
         fields = [
             'id', 'username', 'email', 'is_email_verified', 'phone', 'full_name', 'employee_id',
-            'role', 'plant_name', 'is_active', 'created_at',
+            'role', 'assigned_shift', 'assigned_shift_display', 'plant_name', 'is_active', 'created_at',
         ]
 
     full_name = serializers.SerializerMethodField()

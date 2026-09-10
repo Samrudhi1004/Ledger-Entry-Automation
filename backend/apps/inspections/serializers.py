@@ -1,5 +1,12 @@
 from rest_framework import serializers
-from .models import InspectionSession, DailyProductionReport, DowntimeReport
+from .models import (
+    InspectionSession,
+    DailyProductionReport,
+    DowntimeReport,
+    JHChecklistItem,
+    JHInspectionRecord,
+    JHInspectionItemResult,
+)
 
 
 class StartInspectionSerializer(serializers.Serializer):
@@ -144,8 +151,8 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
 
     def get_rejected_parameters(self, obj):
         try:
-            from .services import InspectionService
-            doc = InspectionService().get_session_document(str(obj.session_id))
+            from .services import inspection_service
+            doc = inspection_service.get_session_document(str(obj.session_id))
             if doc:
                 rej = doc.get('rejected_parameters', [])
                 if rej and len(rej) > 0:
@@ -284,5 +291,71 @@ class DowntimeReportSerializer(serializers.ModelSerializer):
                         field: f"{field} must be a non-negative integer."
                     })
         return attrs
+ 
+ 
+class JHChecklistItemSerializer(serializers.ModelSerializer):
+    tool_type_display = serializers.CharField(source='get_tool_type_display', read_only=True)
+
+    class Meta:
+        model = JHChecklistItem
+        fields = [
+            'id', 'sub_no', 'assembly', 'sub_assembly', 'check_point',
+            'standard', 'tool_type', 'tool_type_display', 'rank', 'frequency',
+            'action_clean', 'action_lubricate', 'action_inspect', 'action_retighten',
+            'timing_sec', 'sort_order', 'is_active',
+        ]
+
+
+class JHInspectionItemResultSerializer(serializers.ModelSerializer):
+    item_details = JHChecklistItemSerializer(source='item', read_only=True)
+    sub_no = serializers.CharField(source='item.sub_no', read_only=True)
+    check_point = serializers.CharField(source='item.check_point', read_only=True)
+    standard = serializers.CharField(source='item.standard', read_only=True)
+    tool_type = serializers.CharField(source='item.tool_type', read_only=True)
+
+    class Meta:
+        model = JHInspectionItemResult
+        fields = [
+            'id', 'item', 'item_details', 'sub_no', 'check_point', 'standard',
+            'tool_type', 'status', 'remark', 'action_taken'
+        ]
+
+
+class JHInspectionRecordSerializer(serializers.ModelSerializer):
+    item_results = JHInspectionItemResultSerializer(many=True, read_only=True)
+    machine_code = serializers.CharField(source='machine.machine_code', read_only=True)
+    machine_name = serializers.CharField(source='machine.name', read_only=True)
+    operator_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JHInspectionRecord
+        fields = [
+            'id', 'record_id', 'machine', 'machine_code', 'machine_name',
+            'operator', 'operator_name', 'date', 'shift', 'status',
+            'total_items', 'ok_items', 'not_ok_items', 'corrected_items',
+            'overall_remarks', 'created_at', 'updated_at', 'item_results'
+        ]
+
+    def get_operator_name(self, obj):
+        if obj.operator:
+            name = obj.operator.get_full_name().strip()
+            return name if name else obj.operator.username
+        return '—'
+
+
+class JHSubmitItemResultInputSerializer(serializers.Serializer):
+    item_id = serializers.IntegerField()
+    status = serializers.ChoiceField(choices=['OK', 'NOT_OK', 'CORRECTED'])
+    remark = serializers.CharField(required=False, allow_blank=True, default='')
+    action_taken = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class JHInspectionSubmitSerializer(serializers.Serializer):
+    machine_id = serializers.IntegerField()
+    date = serializers.DateField()
+    shift = serializers.ChoiceField(choices=['I', 'II', 'III'])
+    overall_remarks = serializers.CharField(required=False, allow_blank=True, default='')
+    results = JHSubmitItemResultInputSerializer(many=True)
+
 
 

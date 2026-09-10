@@ -20,6 +20,12 @@ from .views import (
     SetupApprovalView,
     DailyProductionReportViewSet,
     DowntimeReportViewSet,
+    JHChecklistItemsView,
+    JHInspectionSubmitView,
+    JHInspectionReportsView,
+    JHInspectionDetailView,
+    JHInspectionMatrixView,
+    JHInspectionMatrixExportExcelView,
 )
 
 router = SimpleRouter()
@@ -52,6 +58,14 @@ urlpatterns = [
     path('<str:session_id>/measure/',       RecordMeasurementView.as_view(),  name='record-measurement'),
     path('<str:session_id>/complete/',      CompleteInspectionView.as_view(), name='inspection-complete'),
     path('<str:session_id>/review/',        ApproveRejectView.as_view(),      name='approve-reject'),
+
+    # JH (Autonomous Maintenance) Routes
+    path('jh/items/',                       JHChecklistItemsView.as_view(),              name='jh-checklist-items'),
+    path('jh/submit/',                      JHInspectionSubmitView.as_view(),             name='jh-inspection-submit'),
+    path('jh/reports/',                     JHInspectionReportsView.as_view(),            name='jh-inspection-reports'),
+    path('jh/reports/<str:pk>/',            JHInspectionDetailView.as_view(),             name='jh-inspection-detail'),
+    path('jh/matrix/export_excel/',         JHInspectionMatrixExportExcelView.as_view(),  name='jh-inspection-matrix-export-excel'),
+    path('jh/matrix/',                      JHInspectionMatrixView.as_view(),             name='jh-inspection-matrix'),
 
     # Session detail (full MongoDB document) — wildcard route must be last
     path('<str:session_id>/batch-measure/', BatchMeasureView.as_view(),      name='batch-measure'),

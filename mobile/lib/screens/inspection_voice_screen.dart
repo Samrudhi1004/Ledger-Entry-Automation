@@ -343,13 +343,26 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                       _isSubmitModalOpen = false;
                       if (context.mounted) {
                         Navigator.pop(ctx);
+
+                        // Operators (hourly): always go directly to Summary — no retrial.
+                        // Inspectors (first_piece): show retrial modal only if a param failed.
+                        final isFirstPiece = provider.inspectionType == 'first_piece';
                         final isComplete = res['piece_complete'] == true;
-                        if (isComplete) {
+                        final failedCodes = (res['failed_codes'] as List?)?.map((e) => e.toString()).toList() ?? [];
+
+                        if (isFirstPiece) {
+                          provider.recordTrialResult(provider.trialNumber, isComplete, failedCodes);
+                        }
+
+                        if (!isFirstPiece || isComplete) {
+                          // Operator: submit and done.
+                          // Inspector all-pass: submit and done.
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(builder: (_) => const SummaryScreen()),
                           );
                         } else {
+                          // Inspector only: some params failed → offer 1PC#2 / 1PC#3 corrective trial.
                           _showRetrialModal(res);
                         }
                       }
@@ -391,12 +404,31 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
   void _showRetrialModal(Map<String, dynamic> res) {
     if (!mounted) return;
     final provider = Provider.of<InspectionProvider>(context, listen: false);
+    // Use inspectionType as ground truth — it is always set by startSession().
+    // Do NOT use auth.isInspector here: a role check alone cannot distinguish
+    // whether the current session is first_piece or hourly.
+    final isFirstPiece = provider.inspectionType == 'first_piece';
+
     final currentTrial = provider.trialNumber;
     final failedCount = res['failed_count'] ?? (res['failed_codes'] as List?)?.length ?? 1;
     final failedCodes = (res['failed_codes'] as List?)?.map((e) => e.toString()).toList() ?? [];
 
-    final isMaxTrials = currentTrial >= 3;
+    final isMaxTrials = isFirstPiece && currentTrial >= 3;
     final nextTrial = currentTrial + 1;
+
+    final modalTitle = isFirstPiece
+        ? (isMaxTrials ? 'MAXIMUM TRIALS FAILED (3/3)' : '1ST PC #$currentTrial OUT OF SPEC')
+        : 'HOURLY SLOT #${provider.hourlySlot} OUT OF SPEC';
+
+    final modalMessage = isFirstPiece
+        ? (isMaxTrials
+            ? '3 consecutive First Piece trials have failed. Please notify quality supervisor for setup adjustment.'
+            : '$failedCount parameter(s) failed specification limits in 1ST PC #$currentTrial trial.')
+        : '$failedCount parameter(s) failed specification limits in Hourly Slot #${provider.hourlySlot}.';
+
+    final buttonLabel = isFirstPiece
+        ? 'START 1PC#$nextTrial'
+        : 'RE-RECORD SLOT #${provider.hourlySlot}';
 
     showDialog(
       context: context,
@@ -419,9 +451,7 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              isMaxTrials
-                  ? 'MAXIMUM TRIALS FAILED (3/3)'
-                  : '1ST PC #$currentTrial OUT OF SPEC',
+              modalTitle,
               style: TextStyle(
                 color: isMaxTrials ? const Color(0xFFEF4444) : const Color(0xFFF59E0B),
                 fontWeight: FontWeight.w900,
@@ -436,9 +466,7 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              isMaxTrials
-                  ? '3 consecutive First Piece trials have failed. Please notify quality supervisor for setup adjustment.'
-                  : '$failedCount parameter(s) failed specification limits in 1ST PC #$currentTrial trial.',
+              modalMessage,
               style: const TextStyle(color: Colors.white70, fontSize: 13),
               textAlign: TextAlign.center,
             ),
@@ -503,16 +531,37 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                       Navigator.pop(ctx);
                       final template = provider.selectedTemplate;
                       if (template != null) {
-                        await provider.loadParametersForRetrial(template, trial: nextTrial);
-                        final started = await provider.startSession(
-                          trial: nextTrial,
-                          inspectionType: 'first_piece',
-                        );
-                        if (started && mounted) {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+                        if (isFirstPiece) {
+                          final currentSessId = provider.sessionId;
+                          await provider.loadParametersForRetrial(
+                            template,
+                            trial: nextTrial,
+                            targetFailedCodes: failedCodes,
                           );
+                          final started = await provider.startSession(
+                            trial: nextTrial,
+                            inspectionType: 'first_piece',
+                            parentId: currentSessId,
+                          );
+                          if (started && mounted) {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+                            );
+                          }
+                        } else {
+                          await provider.loadParameters(template, isFirstPiece: false, categoryFilter: 'product');
+                          final started = await provider.startSession(
+                            trial: 0,
+                            hourlySlot: provider.hourlySlot,
+                            inspectionType: 'hourly',
+                          );
+                          if (started && mounted) {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+                            );
+                          }
                         }
                       }
                     },
@@ -526,7 +575,7 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                     icon: const Icon(Icons.play_arrow_rounded, size: 16),
                     label: FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text('START 1PC#$nextTrial', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                      child: Text(buttonLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ),
@@ -876,7 +925,9 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
               overflow: TextOverflow.ellipsis,
             ),
             Text(
-              'Step $currentIndex of $totalCount',
+              provider.inspectionType == 'first_piece'
+                  ? '1ST PC #${provider.trialNumber}${provider.trialNumber > 1 ? " (Corrective)" : ""} · Step $currentIndex of $totalCount'
+                  : 'Step $currentIndex of $totalCount',
               style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.w600),
             ),
           ],

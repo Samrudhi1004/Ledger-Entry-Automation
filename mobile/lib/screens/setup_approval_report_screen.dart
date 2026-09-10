@@ -136,7 +136,9 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
     final processNo = provider.selectedTemplate?['version']?.toString() ?? '10';
     final inspectorName = _setupApprovalData?['inspector_name'] ?? auth.fullName ?? auth.username ?? 'Samruddhi Bartakke';
     final now = DateTime.now();
-    final dateStr = '${now.day} Aug ${now.year} | Shift A';
+    const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final effectiveShift = auth.isShiftLocked ? auth.assignedShift : (provider.shift.isNotEmpty ? provider.shift : 'I');
+    final dateStr = '${now.day} ${months[now.month]} ${now.year} | Shift $effectiveShift';
     final status = _setupApprovalData?['status']?.toString().toUpperCase() ?? 'FINALIZED PASSED';
 
     return Scaffold(

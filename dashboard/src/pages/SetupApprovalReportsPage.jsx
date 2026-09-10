@@ -137,9 +137,12 @@ export default function SetupApprovalReportsPage() {
                 onChange={(e) => setSelectedShift(e.target.value)}
               >
                 <option value="All">All Shifts</option>
-                <option value="A">Shift A</option>
-                <option value="B">Shift B</option>
-                <option value="C">Shift C</option>
+                <option value="I">Shift I</option>
+                <option value="II">Shift II</option>
+                <option value="III">Shift III</option>
+                <option value="A">Shift A (Legacy)</option>
+                <option value="B">Shift B (Legacy)</option>
+                <option value="C">Shift C (Legacy)</option>
               </select>
             </div>
 
@@ -247,8 +250,15 @@ export default function SetupApprovalReportsPage() {
                         
                         <td style={{ padding: '12px 16px', fontWeight: 600, color: '#334155' }}>
                           <div>{formatDate(s.started_at || s.created_at)}</div>
-                          <span style={{ fontSize: 10, background: '#F1F5F9', padding: '1px 6px', borderRadius: 4, color: '#64748B', fontWeight: 700 }}>
-                            Shift {s.shift || 'A'}
+                          <span style={{
+                            fontSize: 10,
+                            background: s.shift === 'I' || s.shift === 'A' ? '#EFF6FF' : s.shift === 'II' || s.shift === 'B' ? '#F5F3FF' : s.shift === 'III' || s.shift === 'C' ? '#FFFBEB' : '#F1F5F9',
+                            color: s.shift === 'I' || s.shift === 'A' ? '#1D4ED8' : s.shift === 'II' || s.shift === 'B' ? '#6D28D9' : s.shift === 'III' || s.shift === 'C' ? '#B45309' : '#475569',
+                            padding: '2px 7px',
+                            borderRadius: 4,
+                            fontWeight: 700,
+                          }}>
+                            Shift {s.shift || 'I'}
                           </span>
                         </td>
 

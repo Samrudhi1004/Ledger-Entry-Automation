@@ -18,6 +18,8 @@ import {
   Cpu,
   TrendingUp,
   BarChart3,
+  MessageSquare,
+  Store,
 } from 'lucide-react';
 
 const MODULES = [
@@ -33,6 +35,13 @@ const MODULES = [
     label: 'Tasks Management',
     icon: CheckSquare,
     to: '/tasks',
+    items: [],
+  },
+  {
+    key: 'messages',
+    label: 'Messages',
+    icon: MessageSquare,
+    to: '/messages',
     items: [],
   },
 
@@ -56,6 +65,13 @@ const MODULES = [
     label: 'Purchase',
     icon: ShoppingCart,
     to: '/purchase',
+    items: [],
+  },
+  {
+    key: 'store',
+    label: 'Store',
+    icon: Store,
+    to: '/store',
     items: [],
   },
   {
@@ -125,12 +141,29 @@ export default function Sidebar({ pendingCount = 0 }) {
     ? `${user.first_name?.[0] ?? ''}${user.last_name?.[0] ?? ''}`.toUpperCase() || user.username?.[0]?.toUpperCase()
     : '?';
   const isCalibrator = user?.role === 'calibrator';
+
+  // For calibrators, add Messages to their modules
+  const calibratorModules = [
+    ...CALIBRATION_MODULES,
+    {
+      key: 'messages',
+      label: 'Messages',
+      icon: MessageSquare,
+      to: '/messages',
+      items: [],
+    }
+  ];
+
   const visibleModules = isCalibrator
-    ? CALIBRATION_MODULES
+    ? calibratorModules
     : MODULES.filter((module) => {
         if (user?.role === 'admin') return true;
         if (user?.role === 'supervisor') {
-          return ['development', 'quality_analyzer', 'production_old', 'tasks'].includes(module.key);
+          return ['development', 'quality_analyzer', 'production_old', 'tasks', 'messages'].includes(module.key);
+        }
+        if (user?.role === 'inspector') {
+          // Inspector gets: quality_analyzer, production, tasks, and messages
+          return ['production_old', 'quality_analyzer', 'tasks', 'messages'].includes(module.key);
         }
         if (user?.role === 'operator') {
           return ['production_old', 'quality_analyzer'].includes(module.key);

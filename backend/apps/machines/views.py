@@ -33,13 +33,30 @@ class FactoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     def perform_update(self, serializer):
         instance = serializer.save()
         shift_hrs = instance.shift_hours or 8
+        total_break = (instance.lunch_break_minutes or 0) + (instance.tea_break_minutes or 0)
+
+        # Cascade shift duration and break minutes to all plants under this factory
+        instance.plants.all().update(
+            shift_duration_hours=shift_hrs,
+            total_break_mins=total_break
+        )
+
+        # Update all inspection sessions' document_payload with new shift_hours
         try:
-            from config.db import get_mongo_db
-            db = get_mongo_db()
-            db.inspection_documents.update_many(
-                {},
-                {'$set': {'shift_hours': shift_hrs, 'total_hourly_slots': shift_hrs}}
+            from apps.inspections.models import InspectionSession
+            from apps.inspections import document_utils as doc_utils
+            sessions = InspectionSession.objects.filter(
+                machine__plant__factory=instance
             )
+            for session in sessions:
+                doc_utils.update_document(
+                    session,
+                    updates={
+                        'shift_hours': shift_hrs,
+                        'total_hourly_slots': shift_hrs
+                    },
+                    save=True
+                )
         except Exception:
             pass
 

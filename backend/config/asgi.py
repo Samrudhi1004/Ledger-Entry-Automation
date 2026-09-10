@@ -18,7 +18,11 @@ os.environ.setdefault('SERVER_SOFTWARE', 'daphne')
 # Import websocket URL patterns after Django is set up
 django_asgi_app = get_asgi_application()
 
-from apps.dashboard.routing import websocket_urlpatterns  # noqa: E402
+from apps.dashboard.routing import websocket_urlpatterns as dashboard_ws_patterns  # noqa: E402
+from apps.messaging.routing import websocket_urlpatterns as messaging_ws_patterns  # noqa: E402
+
+# Combine WebSocket URL patterns
+websocket_urlpatterns = dashboard_ws_patterns + messaging_ws_patterns
 
 application = ProtocolTypeRouter({
     # HTTP requests → standard Django

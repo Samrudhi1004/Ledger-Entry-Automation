@@ -13,6 +13,7 @@ import 'inspection_voice_screen.dart';
 import 'setup_approval_report_screen.dart';
 import 'report_sheet_screen.dart';
 import 'tasks_screen.dart';
+import 'jh_inspection_screen.dart';
 
 class AppHomeScreen extends StatefulWidget {
   const AppHomeScreen({super.key});
@@ -679,6 +680,22 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                           );
                         },
                       ),
+
+                      // Operator Card 4: JH-Inspection (Autonomous Maintenance Checklist)
+                      _buildSoftPastelCard(
+                        title: 'JH-Inspection',
+                        description: 'Autonomous Maintenance & machine shift checklist (Form QF/MF-08)',
+                        icon: Icons.fact_check_rounded,
+                        bgColor: const Color(0xFFF0FDF4),
+                        borderColor: const Color(0xFFBBF7D0),
+                        iconColor: const Color(0xFF16A34A),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const JhInspectionScreen()),
+                          );
+                        },
+                      ),
                     ]
                   : [
                       // Inspector / Supervisor Card 1: Machine
@@ -740,6 +757,22 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         borderColor: hasActiveSession ? const Color(0xFFA7F3D0) : const Color(0xFFE2E8F0),
                         iconColor: hasActiveSession ? const Color(0xFF059669) : const Color(0xFF64748B),
                         onTap: () => _resumeActiveSessionDirectly(context),
+                      ),
+
+                      // Inspector / Supervisor Card 5: JH-Inspection
+                      _buildSoftPastelCard(
+                        title: 'JH-Inspection',
+                        description: 'Autonomous Maintenance shift audit (Form QF/MF-08)',
+                        icon: Icons.fact_check_rounded,
+                        bgColor: const Color(0xFFF0FDF4),
+                        borderColor: const Color(0xFFBBF7D0),
+                        iconColor: const Color(0xFF16A34A),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const JhInspectionScreen()),
+                          );
+                        },
                       ),
                     ],
             ),

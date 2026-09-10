@@ -58,6 +58,8 @@ class MachineSerializer(serializers.ModelSerializer):
 
 class MachineListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for dropdowns on the Flutter app."""
+    shift_duration_hours = serializers.IntegerField(source='plant.shift_duration_hours', read_only=True)
+
     class Meta:
         model  = Machine
-        fields = ['id', 'machine_code', 'name', 'status', 'qr_code']
+        fields = ['id', 'machine_code', 'name', 'status', 'qr_code', 'shift_duration_hours']
