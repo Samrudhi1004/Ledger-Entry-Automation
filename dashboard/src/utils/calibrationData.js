@@ -124,9 +124,10 @@ export function daysLabel(equipment) {
 
 export function calculateNextCalibrationDate(lastDate, frequencyDays) {
   const days = Number(frequencyDays);
-  if (!lastDate || !Number.isInteger(days) || days < 1) return '';
+  if (!lastDate || !Number.isInteger(days) || days < 1 || days > 36500) return '';
   const date = new Date(`${lastDate}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
+  if (Number.isNaN(date.getTime()) || date.getUTCFullYear() > 2100) return '';
   return date.toISOString().slice(0, 10);
 }
 

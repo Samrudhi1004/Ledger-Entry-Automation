@@ -90,6 +90,30 @@ class CalibrationEquipmentStatusTests(TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('calibration_frequency_days', serializer.errors)
 
+    def test_future_last_calibration_date_is_rejected(self):
+        serializer = CalibrationEquipmentSerializer(data=equipment_data(
+            last_calibration_date=timezone.localdate() + timedelta(days=1),
+        ))
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('last_calibration_date', serializer.errors)
+
+    def test_frequency_that_overflows_supported_dates_is_rejected(self):
+        serializer = CalibrationEquipmentSerializer(data=equipment_data(
+            calibration_frequency_days=2147483647,
+        ))
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('calibration_frequency_days', serializer.errors)
+
+    def test_equipment_id_must_be_unique_case_insensitively(self):
+        CalibrationEquipment.objects.create(**equipment_data())
+        serializer = CalibrationEquipmentSerializer(data=equipment_data(
+            equipment_id=' eq-001 ',
+            serial_number=None,
+        ))
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('equipment_id', serializer.errors)
+
     def test_registry_hides_legacy_fields_and_allows_optional_assignment(self):
         serializer = CalibrationEquipmentSerializer(data=equipment_data(
             serial_number=None,
@@ -100,6 +124,7 @@ class CalibrationEquipmentStatusTests(TestCase):
         equipment = serializer.save()
         self.assertNotIn('serial_number', serializer.data)
         self.assertNotIn('acceptable_error', serializer.data)
+        self.assertEqual(equipment.history_card_number, 'HC-EQ-001')
         self.assertEqual(equipment.department, '')
         self.assertEqual(equipment.location, '')
 
@@ -168,6 +193,49 @@ class CalibrationEquipmentApiTests(APITestCase):
             equipment=equipment,
             planned_date=date(2027, 1, 1),
         ).exists())
+
+    def test_plan_read_does_not_create_missing_entries(self):
+        response = self.client.get(reverse('calibration-plan'), {'year': 2027})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(CalibrationPlanEntry.objects.filter(
+            equipment=self.equipment,
+            planned_date=date(2027, 1, 1),
+        ).exists())
+        self.assertEqual(response.data['rows'], [])
+
+    def test_plan_matches_results_by_scheduled_date(self):
+        january = CalibrationPlanEntry.objects.create(
+            equipment=self.equipment, planned_date=date(2027, 1, 1),
+        )
+        september = CalibrationPlanEntry.objects.create(
+            equipment=self.equipment, planned_date=date(2027, 9, 1),
+        )
+        CalibrationRecord.objects.create(
+            equipment=self.equipment,
+            planned_date=september.planned_date,
+            calibration_date=date(2027, 9, 1),
+            result=CalibrationRecord.Result.ACCEPTED,
+        )
+
+        response = self.client.get(reverse('calibration-plan'), {'year': 2027})
+
+        self.assertEqual(response.status_code, 200)
+        rows = {row['id']: row for row in response.data['rows']}
+        self.assertIsNone(rows[january.pk]['actual_date'])
+        self.assertEqual(rows[september.pk]['actual_date'], date(2027, 9, 1))
+
+    def test_editing_equipment_keeps_history_card_stable(self):
+        original = self.equipment.history_card_number
+        response = self.client.patch(
+            reverse('calibration-equipment-detail', args=[self.equipment.pk]),
+            {'equipment_id': 'EQ-001-RENAMED', 'history_card_number': 'MANUAL-CARD'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.equipment.refresh_from_db()
+        self.assertEqual(self.equipment.history_card_number, original)
 
     def test_accepting_repaired_equipment_schedules_next_calibration(self):
         self.equipment.is_failed = True
@@ -390,6 +458,17 @@ class CalibrationEquipmentApiTests(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.equipment.refresh_from_db()
         self.assertEqual(self.equipment.last_calibration_date, date(2026, 1, 1))
+
+    def test_result_date_cannot_roll_equipment_history_backward(self):
+        response = self.client.post(
+            reverse('calibration-equipment-record-result', args=[self.equipment.pk]),
+            {'result': 'accepted', 'calibration_date': '2025-12-31'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('calibration_date', response.data)
+        self.assertFalse(CalibrationRecord.objects.filter(equipment=self.equipment).exists())
 
     def test_summary_counts_date_groups_and_failed_equipment(self):
         today = date(2026, 8, 27)

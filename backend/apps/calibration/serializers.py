@@ -19,6 +19,15 @@ class CalibrationEquipmentSerializer(serializers.ModelSerializer):
         actual = getattr(obj, 'latest_calibration_date', None)
         return bool(result == CalibrationRecord.Result.ACCEPTED and planned and actual and actual <= planned)
 
+    def validate_equipment_id(self, value):
+        value = value.strip()
+        existing = CalibrationEquipment.objects.filter(equipment_id__iexact=value)
+        if self.instance:
+            existing = existing.exclude(pk=self.instance.pk)
+        if existing.exists():
+            raise serializers.ValidationError('This equipment ID is already registered.')
+        return value
+
     class Meta:
         model = CalibrationEquipment
         fields = [
@@ -32,7 +41,7 @@ class CalibrationEquipmentSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'next_calibration_date', 'state', 'created_at', 'updated_at',
+            'history_card_number', 'next_calibration_date', 'state', 'created_at', 'updated_at',
         ]
 
     def validate(self, attrs):
@@ -41,8 +50,27 @@ class CalibrationEquipmentSerializer(serializers.ModelSerializer):
             'calibration_frequency_days',
             getattr(self.instance, 'calibration_frequency_days', None),
         )
+        if last_date:
+            if last_date > timezone.localdate():
+                raise serializers.ValidationError({
+                    'last_calibration_date': 'Last calibration date cannot be in the future.'
+                })
+            if not 2000 <= last_date.year <= 2100:
+                raise serializers.ValidationError({
+                    'last_calibration_date': 'Date must be between 2000 and 2100.'
+                })
         if last_date and frequency:
-            attrs['next_calibration_date'] = last_date + timedelta(days=frequency)
+            try:
+                next_date = last_date + timedelta(days=frequency)
+            except OverflowError:
+                raise serializers.ValidationError({
+                    'calibration_frequency_days': 'Frequency produces an unsupported due date.'
+                })
+            if next_date.year > 2100:
+                raise serializers.ValidationError({
+                    'calibration_frequency_days': 'Frequency produces a due date after 2100.'
+                })
+            attrs['next_calibration_date'] = next_date
         return attrs
 
 
