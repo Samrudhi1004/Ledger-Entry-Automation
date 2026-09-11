@@ -152,15 +152,28 @@ class PresenceConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_all_online_users(self):
-        """Get list of all currently online user IDs from cache."""
-        # Get all cache keys matching the presence pattern
-        keys = cache.keys(f'{PRESENCE_KEY_PREFIX}*')
+        """Get list of all currently online user IDs from cache.
+
+        cache.keys() is only supported by Redis-backed caches (django-redis).
+        LocMemCache does not support it, so we fall back to an empty list
+        rather than crashing — presence will populate as users connect.
+        """
+        try:
+            keys = cache.keys(f'{PRESENCE_KEY_PREFIX}*')
+        except AttributeError:
+            # LocMemCache (used when Redis is unavailable) has no .keys() method.
+            # Return empty; online status will fill in as clients reconnect.
+            return []
+
         online_users = []
         for key in keys:
             if cache.get(key) == 'online':
                 # Extract user_id from key (format: presence:user:123)
-                user_id = int(key.split(':')[-1])
-                online_users.append(user_id)
+                try:
+                    user_id = int(key.split(':')[-1])
+                    online_users.append(user_id)
+                except (ValueError, IndexError):
+                    pass
         return online_users
 
     @database_sync_to_async
