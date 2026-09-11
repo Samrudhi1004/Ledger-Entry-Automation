@@ -139,12 +139,14 @@ class MessagingConsumer(AsyncWebsocketConsumer):
             'data': message_data
         }))
 
-        # Broadcast to room group (for users viewing this conversation)
+        # Broadcast to room group (for OTHER users viewing this conversation)
+        # Note: Sender already received the message via 'message_sent' above
         await self.channel_layer.group_send(
             self.room_group_name,
             {
                 'type': 'new_message',
-                'message': message_data
+                'message': message_data,
+                'sender_id': self.user.id  # Pass sender ID to exclude them
             }
         )
 
@@ -215,7 +217,13 @@ class MessagingConsumer(AsyncWebsocketConsumer):
         )
 
     async def new_message(self, event):
-        """Send new message to WebSocket."""
+        """Send new message to WebSocket (exclude sender - they already got message_sent)."""
+        sender_id = event.get('sender_id')
+
+        # Don't send to the sender - they already received it via message_sent
+        if sender_id and sender_id == self.user.id:
+            return
+
         await self.send(text_data=json.dumps({
             'type': 'new_message',
             'data': event['message']

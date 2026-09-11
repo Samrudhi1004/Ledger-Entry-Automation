@@ -410,9 +410,10 @@ export const MessagingProvider = ({ children }) => {
           break;
 
         case 'new_message_notification':
-          // Update conversation list with new message
+          // Update conversation list sidebar only (message list is handled by the main WS).
+          // Do NOT add the message to messages[] here — the conversation WebSocket handles that
+          // via 'message_sent' (sender) and 'new_message' (others). Adding here causes duplicates.
           const { conversation_id, message } = data.data;
-          console.log('Received new_message_notification:', { conversation_id, message });
 
           setConversations(prev => {
             const updated = prev.map(conv =>
@@ -433,21 +434,8 @@ export const MessagingProvider = ({ children }) => {
                   }
                 : conv
             );
-            const sorted = updated.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-            console.log('Conversations after update and sort:', sorted.map(c => ({ id: c.id, updated_at: c.updated_at })));
-            return sorted;
+            return updated.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
           });
-
-          // If the message is for the active conversation, add it to messages
-          if (activeConversation?.id === conversation_id) {
-            setMessages(prev => {
-              // Check if message already exists (avoid duplicates)
-              if (prev.some(m => m.id === message.id)) {
-                return prev;
-              }
-              return [...prev, message];
-            });
-          }
           break;
 
         case 'pong':

@@ -21,6 +21,12 @@ from apps.messaging.serializers import (
 )
 
 try:
+    import cloudinary
+    import cloudinary.uploader
+except ImportError:
+    cloudinary = None
+
+try:
     import filetype
 except ImportError:
     filetype = None
@@ -618,6 +624,14 @@ class FileUploadView(generics.CreateAPIView):
         # Upload based on type
         try:
             if attachment_type == MessageAttachment.AttachmentType.IMAGE:
+                # Check if Cloudinary is available
+                if not cloudinary:
+                    attachment.delete()
+                    return Response(
+                        {'error': 'Image upload service not configured'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
                 # Upload to Cloudinary
                 upload_result = cloudinary.uploader.upload(
                     file,
@@ -626,11 +640,15 @@ class FileUploadView(generics.CreateAPIView):
                 )
                 attachment.cloudinary_url = upload_result['secure_url']
                 attachment.cloudinary_public_id = upload_result['public_id']
-                attachment.thumbnail_url = cloudinary.uploader.explicit(
+
+                # Generate thumbnail
+                thumbnail_result = cloudinary.uploader.explicit(
                     upload_result['public_id'],
                     type='upload',
                     eager=[{'width': 200, 'height': 200, 'crop': 'thumb'}]
-                )['eager'][0]['secure_url']
+                )
+                if thumbnail_result.get('eager'):
+                    attachment.thumbnail_url = thumbnail_result['eager'][0]['secure_url']
             else:
                 # Store in PostgreSQL
                 attachment.file_data = file.read()
