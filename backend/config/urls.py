@@ -21,7 +21,8 @@ urlpatterns = [
     path('api/dashboard/',   include('apps.dashboard.urls')),
     path('api/analytics/',   include('apps.analytics.urls')),
     path('api/calibration/', include('apps.calibration.urls')),
-    path('api/messaging/',   include('apps.messaging.urls')),
+    path('api/messaging/',        include('apps.messaging.urls')),
+    path('api/document-control/', include('apps.document_control.urls')),
     path('api/', include('apps.tasks.urls')),
 ]
 

@@ -33,6 +33,9 @@ import DrawingsPage from './pages/DrawingsPage';
 import ControlPlansPage from './pages/ControlPlansPage';
 import MarketingModulePage from './pages/MarketingModulePage';
 import MessagesPage from './pages/MessagesPage';
+import DocumentControlPage from './pages/DocumentControlPage';
+import DocumentControlDocumentsPage from './pages/DocumentControlDocumentsPage';
+import DocumentControlApprovalsPage from './pages/DocumentControlApprovalsPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
 
@@ -376,6 +379,31 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <MessagesPage />
+          </ProtectedLayout>
+        }
+      />
+
+      <Route
+        path="/document-control"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <DocumentControlPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/document-control/documents"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <DocumentControlDocumentsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/document-control/approvals"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
+            <DocumentControlApprovalsPage />
           </ProtectedLayout>
         }
       />

@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'apps.calibration',
     'apps.tasks',
     'apps.messaging',
+    'apps.document_control',
 ]
 
 # ─── Middleware ────────────────────────────────────────────────

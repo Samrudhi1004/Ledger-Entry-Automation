@@ -20,6 +20,7 @@ import {
   BarChart3,
   Store,
   MessageSquare,
+  FolderOpen,
 } from 'lucide-react';
 
 const MODULES = [
@@ -93,6 +94,13 @@ const MODULES = [
     label: 'Marketing',
     icon: TrendingUp,
     to: '/marketing',
+    items: [],
+  },
+  {
+    key: 'document_control',
+    label: 'Document Control',
+    icon: FolderOpen,
+    to: '/document-control',
     items: [],
   },
 ];
