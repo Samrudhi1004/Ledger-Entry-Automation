@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
 import { updateProfile, uploadProfilePhoto, changePassword, requestEmailVerification } from '../api/auth';
 import {
@@ -179,6 +180,7 @@ export default function ProfilePage() {
 
       <div className="page-content bg-gradient-animated">
         <div style={{ maxWidth: 1040, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <Breadcrumbs items={[{ label: 'My Profile' }]} />
 
           {/* ── Admin Sub-Navigation Tabs (Only visible to admin) ────────────── */}
           {user?.role === 'admin' && (

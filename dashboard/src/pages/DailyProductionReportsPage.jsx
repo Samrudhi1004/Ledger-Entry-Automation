@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import api, { BASE_URL } from '../api/axios';
 import { useCompany } from '../context/CompanyContext';
 import {
@@ -119,7 +120,7 @@ export default function DailyProductionReportsPage() {
       />
 
       <div className="page-content bg-gradient-animated" style={{ padding: '24px' }}>
-
+        <Breadcrumbs items={[{ label: 'Reports', to: '/reports' }, { label: 'Daily Production Reports' }]} />
 
         {/* FILTER TOOLBAR */}
         <div className="card" style={{ padding: '20px', borderRadius: '16px', marginBottom: '24px' }}>

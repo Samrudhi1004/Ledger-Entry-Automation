@@ -101,7 +101,11 @@ const MODULES = [
     label: 'Document Control',
     icon: FolderOpen,
     to: '/document-control',
-    items: [],
+    items: [
+      { label: 'Documents (L1–L4)', to: '/document-control/documents' },
+      { label: 'Change Requests (DCR)', to: '/document-control/dcr' },
+      { label: 'Approvals Queue', to: '/document-control/approvals' },
+    ],
   },
 ];
 
@@ -150,7 +154,7 @@ export default function Sidebar({ pendingCount = 0 }) {
     : '?';
   const isCalibrator = user?.role === 'calibrator';
 
-  // For calibrators, add Messages to their modules
+  // For calibrators, add Messages and Document Control to their modules
   const calibratorModules = [
     ...CALIBRATION_MODULES,
     {
@@ -159,7 +163,17 @@ export default function Sidebar({ pendingCount = 0 }) {
       icon: MessageSquare,
       to: '/messages',
       items: [],
-    }
+    },
+    {
+      key: 'document_control',
+      label: 'Document Control',
+      icon: FolderOpen,
+      to: '/document-control',
+      items: [
+        { label: 'Documents (L1–L4)', to: '/document-control/documents' },
+        { label: 'Change Requests (DCR)', to: '/document-control/dcr' },
+      ],
+    },
   ];
 
   const visibleModules = isCalibrator
@@ -167,7 +181,7 @@ export default function Sidebar({ pendingCount = 0 }) {
     : MODULES.filter((module) => {
         if (user?.role === 'admin') return true;
         if (user?.role === 'supervisor') {
-          return ['development', 'quality_analyzer', 'production_old', 'tasks', 'messages'].includes(module.key);
+          return ['development', 'quality_analyzer', 'production_old', 'tasks', 'messages', 'document_control'].includes(module.key);
         }
         if (user?.role === 'inspector') {
           // Inspector gets: quality_analyzer, production, tasks, and messages
@@ -180,6 +194,12 @@ export default function Sidebar({ pendingCount = 0 }) {
       }).map((m) => {
         if (user?.role === 'supervisor' && m.key === 'development') {
           return { ...m, label: 'Master Parameters', to: '/parameters' };
+        }
+        if (m.key === 'document_control' && user?.role !== 'admin') {
+          return {
+            ...m,
+            items: (m.items || []).filter((item) => item.to !== '/document-control/approvals'),
+          };
         }
         return m;
       });

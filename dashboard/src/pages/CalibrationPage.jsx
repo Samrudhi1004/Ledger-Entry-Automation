@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CircleCheckBig, CircleX } from 'lucide-react';
 
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Modal from '../components/common/Modal';
 import {
@@ -91,13 +92,11 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   const [registryOpen, setRegistryOpen] = useState(false);
 
   useEffect(() => {
-    const message = location.state?.success ?? '';
-    if (!message) {
-      setSuccessMessage('');
-      return;
+    const message = location.state?.success;
+    if (message) {
+      setSuccessMessage(message);
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
     }
-    setSuccessMessage(message);
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [location.key, location.pathname, location.search, location.state, navigate]);
 
   useEffect(() => {
@@ -500,11 +499,36 @@ export default function CalibrationPage({ view = 'dashboard' }) {
     }
   };
 
-  const copy = VIEW_COPY[view];
+  const copy = VIEW_COPY[view] || VIEW_COPY.dashboard;
+
+  const calibrationBreadcrumbs = useMemo(() => {
+    switch (view) {
+      case 'equipment':
+        return [{ label: 'Calibration', to: '/calibration' }, { label: 'Equipment Register' }];
+      case 'register':
+        return [
+          { label: 'Calibration', to: '/calibration' },
+          { label: 'Equipment Register', to: '/calibration/equipment' },
+          { label: 'Register New Instrument' },
+        ];
+      case 'plan':
+        return [{ label: 'Calibration', to: '/calibration' }, { label: 'Annual Calibration Plan' }];
+      case 'history':
+        return [
+          { label: 'Calibration', to: '/calibration' },
+          { label: 'Equipment Register', to: '/calibration/equipment' },
+          { label: 'Inspection History' },
+        ];
+      default:
+        return [{ label: 'Calibration Equipment' }];
+    }
+  }, [view]);
+
   return (
     <>
-      <Header title={copy.title} subtitle={copy.subtitle} showLiveStatus={false} />
+      <Header title={copy.title} subtitle={copy.subtitle} />
       <div className="page-content bg-gradient-animated calibration-page">
+        <Breadcrumbs items={calibrationBreadcrumbs} />
         <CalibrationNavigation />
         {loading ? <LoadingSpinner message="Loading calibration equipment..." /> : (
           <>

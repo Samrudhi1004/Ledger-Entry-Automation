@@ -36,6 +36,7 @@ import MessagesPage from './pages/MessagesPage';
 import DocumentControlPage from './pages/DocumentControlPage';
 import DocumentControlDocumentsPage from './pages/DocumentControlDocumentsPage';
 import DocumentControlApprovalsPage from './pages/DocumentControlApprovalsPage';
+import DocumentControlDCRPage from './pages/DocumentControlDCRPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
 
@@ -52,7 +53,6 @@ function ProtectedLayout({ children, pendingCount, allowedRoles }) {
   if (loading) return <LoadingSpinner message="Checking authentication..." />;
   if (!user) return <Navigate to="/login" replace />;
   if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
-  if (!allowedRoles && user.role === CALIBRATOR_ROLE) return <Navigate to="/calibration" replace />;
 
   const layout = (
     <div className="app-layout">
@@ -65,9 +65,7 @@ function ProtectedLayout({ children, pendingCount, allowedRoles }) {
     </div>
   );
 
-  return user.role === CALIBRATOR_ROLE
-    ? layout
-    : <WebSocketProvider plantId={PLANT_ID}>{layout}</WebSocketProvider>;
+  return <WebSocketProvider plantId={PLANT_ID}>{layout}</WebSocketProvider>;
 }
 
 function RootRedirect() {
@@ -98,6 +96,24 @@ export default function App() {
     updatePendingCount();
     const interval = setInterval(updatePendingCount, 30000);
     return () => clearInterval(interval);
+  }, [user]);
+
+  // Dynamically update browser tab title to "[ROLE] | Inspection Hub"
+  useEffect(() => {
+    if (!user) {
+      document.title = 'Inspection Hub';
+      return;
+    }
+    const roleLabels = {
+      admin: 'ADMIN',
+      supervisor: 'SUPERVISOR',
+      calibrator: 'CALIBRATOR',
+      operator: 'OPERATOR',
+      quality_engineer: 'INSPECTOR',
+      inspector: 'INSPECTOR',
+    };
+    const roleText = roleLabels[user.role] || (user.role || '').toUpperCase();
+    document.title = `${roleText} | Inspection Hub`;
   }, [user]);
 
   return (
@@ -377,7 +393,7 @@ export default function App() {
       <Route
         path="/messages"
         element={
-          <ProtectedLayout pendingCount={pendingCount}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={ALL_ROLES}>
             <MessagesPage />
           </ProtectedLayout>
         }
@@ -386,7 +402,7 @@ export default function App() {
       <Route
         path="/document-control"
         element={
-          <ProtectedLayout pendingCount={pendingCount}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor', 'calibrator']}>
             <DocumentControlPage />
           </ProtectedLayout>
         }
@@ -394,7 +410,7 @@ export default function App() {
       <Route
         path="/document-control/documents"
         element={
-          <ProtectedLayout pendingCount={pendingCount}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor', 'calibrator']}>
             <DocumentControlDocumentsPage />
           </ProtectedLayout>
         }
@@ -402,8 +418,16 @@ export default function App() {
       <Route
         path="/document-control/approvals"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
             <DocumentControlApprovalsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/document-control/dcr"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor', 'calibrator']}>
+            <DocumentControlDCRPage />
           </ProtectedLayout>
         }
       />

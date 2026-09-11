@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Badge from '../components/common/Badge';
 import LiveSheetViewer from '../components/inspection/LiveSheetViewer';
@@ -281,10 +282,7 @@ export default function MachineDetailPage() {
       />
 
       <div className="page-content bg-gradient-animated">
-        {/* Breadcrumb Navigation */}
-        <div className="page-breadcrumb mb-16">
-          <Link to="/machines">Machines</Link> / <span>{machine.machine_code}</span>
-        </div>
+        <Breadcrumbs items={[{ label: 'Machines', to: '/machines' }, { label: machine.machine_code }]} />
 
         {/* Station Profile Card */}
         <div className="card mb-20">

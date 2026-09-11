@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import Badge from '../components/common/Badge';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Modal from '../components/common/Modal';
@@ -71,6 +72,7 @@ export default function PendingReviewPage({ onPendingCountChange }) {
       <Header title="Pending Reviews" subtitle="Approve or reject completed piece-wise inspection sheets" />
 
       <div className="page-content bg-gradient-animated">
+        <Breadcrumbs items={[{ label: 'Reports', to: '/reports' }, { label: 'Pending Inspection Reviews' }]} />
         <div className="card">
           <div className="section-header">
             <h2 className="section-title">

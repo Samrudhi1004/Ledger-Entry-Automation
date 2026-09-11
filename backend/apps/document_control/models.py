@@ -10,6 +10,7 @@ Three models:
 import uuid
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class DocumentCategory(models.Model):
@@ -51,6 +52,12 @@ class Document(models.Model):
         REJECTED     = 'rejected',     'Rejected'
         OBSOLETE     = 'obsolete',     'Obsolete'
 
+    class Level(models.TextChoices):
+        L1 = 'L1', 'L1 — Quality Manual & Policies'
+        L2 = 'L2', 'L2 — Standard Operating Procedures (SOP)'
+        L3 = 'L3', 'L3 — Work Instructions & Standards'
+        L4 = 'L4', 'L4 — Forms, Formats & Checklists'
+
     # Primary key
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
@@ -64,6 +71,13 @@ class Document(models.Model):
         DocumentCategory,
         on_delete=models.PROTECT,
         related_name='documents'
+    )
+    doc_level   = models.CharField(
+        max_length=2,
+        choices=Level.choices,
+        default=Level.L2,
+        db_index=True,
+        help_text="IATF/ISO Document Hierarchy Tier"
     )
     status      = models.CharField(
         max_length=20,
@@ -193,3 +207,191 @@ class DocumentActivity(models.Model):
 
     def __str__(self):
         return f'{self.document.document_number} — {self.action} by {self.performed_by}'
+
+
+class DocumentChangeRequest(models.Model):
+    """
+    Formal Document Change Request (DCR) Note.
+    Corresponds to paper standard Form DKI/MR/F/05.
+    Manages multi-stage sequential review, approval, and revision implementation.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT             = 'draft',             'Draft'
+        SUBMITTED         = 'submitted',         'Submitted'
+        AWAITING_REVIEW   = 'awaiting_review',   'Awaiting Review'
+        REVIEWED          = 'reviewed',          'Reviewed'
+        AWAITING_APPROVAL = 'awaiting_approval', 'Awaiting Approval'
+        APPROVED          = 'approved',          'Approved'
+        REJECTED          = 'rejected',          'Rejected'
+        IMPLEMENTED       = 'implemented',       'Implemented'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dcr_number = models.CharField(max_length=50, unique=True, db_index=True)
+
+    # ── Section 0: Form Header Metadata (Form DKI/MR/F/05) ─────────────────────
+    form_doc_no   = models.CharField(max_length=50, default='DKI/MR/F/05', blank=True)
+    issue_no_date = models.CharField(max_length=50, default='01/01.04.2018', blank=True)
+    rev_no_date   = models.CharField(max_length=50, default='01/01.04.2018', blank=True)
+
+    # Linked original document
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name='change_requests'
+    )
+
+    # ── Section 1: Initiator / Raised By ──────────────────────────────────────
+    raised_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='raised_dcrs'
+    )
+    date_of_receipt = models.DateField(default=timezone.now)
+    document_description = models.TextField(help_text="What the document currently states")
+    basis_for_change = models.TextField(help_text="Reason / technical basis for change")
+
+    # ── Section 2: Named User Assignments ─────────────────────────────────────
+    assigned_cft_reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='dcr_cft_reviews',
+        help_text="Assigned Cross-Functional Team Reviewer"
+    )
+    assigned_calibrator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='dcr_calibrator_reviews',
+        help_text="Assigned Calibrator for verification"
+    )
+    assigned_approver = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='dcr_approvals',
+        help_text="Assigned Management Representative / Admin Approver"
+    )
+
+    # ── Section 3: Review Stage (CFT & Calibrator) ────────────────────────────
+    review_remark = models.TextField(blank=True, help_text="Change Review Remark")
+    implementation_date = models.DateField(null=True, blank=True, help_text="Change to be implemented from")
+    cft_remarks = models.TextField(blank=True, help_text="CFT Remarks")
+    calibrator_remarks = models.TextField(blank=True, help_text="Calibrator Remarks")
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reviewed_dcrs'
+    )
+    date_of_review = models.DateTimeField(null=True, blank=True)
+
+    # ── Section 4: Approval Stage (MR / Admin) ────────────────────────────────
+    mr_remarks = models.TextField(blank=True, help_text="Management Representative remarks")
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='approved_dcrs'
+    )
+    date_of_approval = models.DateTimeField(null=True, blank=True)
+
+    # ── Section 5: Rejection Details ─────────────────────────────────────────
+    rejection_stage = models.CharField(max_length=20, blank=True)  # 'review' or 'approval'
+    rejection_reason = models.TextField(blank=True)
+    rejected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rejected_dcrs'
+    )
+    date_of_rejection = models.DateTimeField(null=True, blank=True)
+
+    # ── Section 6: Implementation Stage ──────────────────────────────────────
+    implemented_revision = models.ForeignKey(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='implemented_from_dcr'
+    )
+    implemented_notes = models.TextField(blank=True, help_text="Change implemented with documents")
+    implemented_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='implemented_dcrs'
+    )
+    implemented_at = models.DateTimeField(null=True, blank=True)
+
+    # ── Status & Timestamps ───────────────────────────────────────────────────
+    status = models.CharField(
+        max_length=25,
+        choices=Status.choices,
+        default=Status.SUBMITTED,
+        db_index=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'document_change_requests'
+        ordering = ['-created_at']
+        verbose_name = 'Document Change Request'
+        verbose_name_plural = 'Document Change Requests'
+
+    def __str__(self):
+        return f'{self.dcr_number} — {self.document.document_number} ({self.status})'
+
+    def save(self, *args, **kwargs):
+        if not self.dcr_number:
+            year = timezone.now().year
+            count = DocumentChangeRequest.objects.filter(dcr_number__startswith=f'DCR-{year}-').count() + 1
+            self.dcr_number = f'DCR-{year}-{count:03d}'
+        super().save(*args, **kwargs)
+
+
+class DCRNotification(models.Model):
+    """
+    In-app notifications for DCR assignments, reviews, approvals, and rejections.
+    Drives the realtime badge counter and dropdown in the application header.
+    """
+
+    class ActionType(models.TextChoices):
+        REVIEW_REQUESTED   = 'review_requested',   'Review Requested'
+        APPROVAL_REQUESTED = 'approval_requested', 'Approval Requested'
+        DCR_APPROVED       = 'dcr_approved',       'DCR Approved'
+        DCR_REJECTED       = 'dcr_rejected',       'DCR Rejected'
+        DCR_IMPLEMENTED    = 'dcr_implemented',    'DCR Implemented'
+        GENERAL            = 'general',            'General'
+
+    dcr = models.ForeignKey(
+        DocumentChangeRequest,
+        on_delete=models.CASCADE,
+        related_name='notifications'
+    )
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='dcr_notifications'
+    )
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    action_type = models.CharField(
+        max_length=30,
+        choices=ActionType.choices,
+        default=ActionType.GENERAL
+    )
+    action_url = models.CharField(max_length=255, blank=True)
+    is_read = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'document_dcr_notifications'
+        ordering = ['-created_at']
+        verbose_name = 'DCR Notification'
+        verbose_name_plural = 'DCR Notifications'
+
+    def __str__(self):
+        return f'{self.recipient} — {self.title} ({self.created_at})'
+

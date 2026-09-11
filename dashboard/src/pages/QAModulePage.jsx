@@ -1,63 +1,73 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { ShieldCheck, FileText, CheckCircle2, AlertTriangle, Activity, BarChart3, ListFilter } from 'lucide-react';
+import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 
 export default function QAModulePage() {
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-      {/* Header Banner */}
-      <div style={{
-        background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
-        borderRadius: '16px',
-        padding: '28px 32px',
-        color: '#ffffff',
-        marginBottom: '28px',
-        boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.3)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '16px'
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <div style={{ background: 'rgba(255, 255, 255, 0.2)', padding: '10px', borderRadius: '12px', display: 'flex' }}>
-              <ShieldCheck size={32} color="#ffffff" />
-            </div>
-            <h1 style={{ fontSize: '28px', fontWeight: '800', margin: 0, letterSpacing: '-0.5px' }}>QA Module</h1>
-          </div>
-          <p style={{ margin: 0, opacity: 0.9, fontSize: '15px', maxWidth: '600px' }}>
-            Quality Assurance Hub — First Piece Setup Approvals, Form F02 Inspection Ledgers, Parameter Audits & Defect Analytics.
-          </p>
-        </div>
+    <>
+      <Header
+        title="QA Module"
+        subtitle="Quality Assurance Hub — First Piece Setup Approvals, Form F02 Inspection Ledgers & Defect Analytics"
+      />
 
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <NavLink to="/reports/setup-approval" style={{
-            background: '#ffffff',
-            color: '#1e3a8a',
-            padding: '10px 20px',
-            borderRadius: '10px',
-            fontWeight: '700',
-            textDecoration: 'none',
-            fontSize: '14px',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-          }}>
-            1st Piece Setup Reports
-          </NavLink>
-          <NavLink to="/reports" style={{
-            background: 'rgba(255, 255, 255, 0.15)',
-            color: '#ffffff',
-            border: '1px solid rgba(255, 255, 255, 0.3)',
-            padding: '10px 20px',
-            borderRadius: '10px',
-            fontWeight: '700',
-            textDecoration: 'none',
-            fontSize: '14px'
-          }}>
-            Reports Hub
-          </NavLink>
+      <div className="page-content bg-gradient-animated">
+        <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+          <Breadcrumbs items={[{ label: 'Quality Analyzer' }]} />
+          {/* Header Banner */}
+        <div style={{
+          background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+          borderRadius: '16px',
+          padding: '24px 28px',
+          color: '#ffffff',
+          marginBottom: '28px',
+          boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.25)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px'
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.2)', padding: '10px', borderRadius: '12px', display: 'flex' }}>
+                <ShieldCheck size={26} color="#ffffff" />
+              </div>
+              <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>Quality Assurance Center</h2>
+            </div>
+            <p style={{ margin: 0, opacity: 0.9, fontSize: '14px', maxWidth: '600px' }}>
+              First Piece Setup Approvals, Form F02 Inspection Ledgers, Parameter Audits & Defect Analytics.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <NavLink to="/reports/setup-approval" style={{
+              background: '#ffffff',
+              color: '#1e3a8a',
+              padding: '10px 20px',
+              borderRadius: '10px',
+              fontWeight: '700',
+              textDecoration: 'none',
+              fontSize: '13px',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+            }}>
+              1st Piece Setup Reports
+            </NavLink>
+            <NavLink to="/reports" style={{
+              background: 'rgba(255, 255, 255, 0.15)',
+              color: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+              padding: '10px 20px',
+              borderRadius: '10px',
+              fontWeight: '700',
+              textDecoration: 'none',
+              fontSize: '13px'
+            }}>
+              Reports Hub
+            </NavLink>
+          </div>
         </div>
-      </div>
 
       {/* KPI Cards Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '32px' }}>
@@ -170,6 +180,8 @@ export default function QAModulePage() {
           </div>
         </NavLink>
       </div>
-    </div>
+      </div>
+      </div>
+    </>
   );
 }

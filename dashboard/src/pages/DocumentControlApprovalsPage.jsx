@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import {
   ClipboardCheck, CheckCircle, XCircle, Download,
   Eye, RefreshCw, MessageSquare, AlertTriangle, X, FileText, Clock,
@@ -7,6 +8,8 @@ import { useAuth } from '../context/AuthContext';
 import {
   getDocuments, approveDocument, rejectDocument, getDocumentHistory, getCategories,
 } from '../api/documentControl';
+import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 
 // ── Reject Modal ──────────────────────────────────────────────────────────────
 function RejectModal({ doc, onClose, onSuccess }) {
@@ -168,6 +171,9 @@ function ApproveModal({ doc, onClose, onSuccess }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function DocumentControlApprovalsPage() {
   const { user } = useAuth();
+  if (user && user.role !== 'admin') {
+    return <Navigate to="/document-control" replace />;
+  }
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [approveTarget, setApproveTarget] = useState(null);
@@ -188,31 +194,25 @@ export default function DocumentControlApprovalsPage() {
     : '—';
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+    <>
+      <Header
+        title="Document Approvals"
+        subtitle={`${docs.length} document${docs.length !== 1 ? 's' : ''} awaiting quality review or management sign-off`}
+      />
 
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-            <div style={{ background: 'rgba(245,158,11,0.12)', borderRadius: '10px', padding: '8px', display: 'flex' }}>
-              <ClipboardCheck size={20} color="#d97706" />
-            </div>
-            <h1 style={{ fontSize: '20px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
-              Pending Approvals
-            </h1>
-          </div>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 0 42px' }}>
-            {docs.length} document{docs.length !== 1 ? 's' : ''} awaiting your review
-          </p>
+      <div className="page-content bg-gradient-animated">
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <Breadcrumbs items={[{ label: 'Document Control', to: '/document-control' }, { label: 'Direct Approvals Queue' }]} />
+        {/* Action Toolbar */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '20px' }}>
+          <button onClick={fetchPending} style={{
+            padding: '9px 14px', borderRadius: '10px', border: '1px solid #e2e8f0',
+            background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+            fontSize: '13px', fontWeight: '600', color: '#475569'
+          }}>
+            <RefreshCw size={14} /> Refresh
+          </button>
         </div>
-        <button onClick={fetchPending} style={{
-          padding: '9px 14px', borderRadius: '10px', border: '1px solid #e2e8f0',
-          background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-          fontSize: '13px', fontWeight: '600', color: '#475569'
-        }}>
-          <RefreshCw size={14} /> Refresh
-        </button>
-      </div>
 
       {/* Content */}
       {loading ? (
@@ -336,6 +336,8 @@ export default function DocumentControlApprovalsPage() {
           onSuccess={() => { setRejectTarget(null); fetchPending(); }}
         />
       )}
-    </div>
+      </div>
+      </div>
+    </>
   );
 }

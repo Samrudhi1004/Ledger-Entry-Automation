@@ -1,6 +1,6 @@
 /**
  * Document Control API wrapper.
- * Mirrors the pattern used in other api/ files in this project.
+ * Provides endpoints for Categories, Documents (L1-L4), DCR Workflow (DKI/MR/F/05), and Notifications.
  */
 
 import axios from 'axios';
@@ -53,3 +53,41 @@ export const getDownloadUrl = (id) =>
 
 export const markObsolete = (id, comment = '') =>
   api.post(`/documents/${id}/obsolete/`, { comment });
+
+// ── Document Change Requests (Form DKI/MR/F/05) ────────────────────────────
+export const getDCRs = (params = {}) => api.get('/change-requests/', { params });
+
+export const getDCRById = (id) => api.get(`/change-requests/${id}/`);
+
+export const submitDCR = (data) => api.post('/change-requests/', data);
+
+export const submitDCRReview = (id, data) =>
+  api.post(`/change-requests/${id}/submit-review/`, data);
+
+export const rejectDCRReview = (id, data) =>
+  api.post(`/change-requests/${id}/reject-review/`, data);
+
+export const approveDCR = (id, data = {}) =>
+  api.post(`/change-requests/${id}/approve/`, data);
+
+export const rejectDCRApproval = (id, data) =>
+  api.post(`/change-requests/${id}/reject-approval/`, data);
+
+export const getDCRPDFUrl = (id) =>
+  `${BASE}/api/document-control/change-requests/${id}/pdf/`;
+
+export const getAssignableUsers = () =>
+  api.get('/change-requests/assignable-users/');
+
+// ── Realtime DCR Notifications ─────────────────────────────────────────────
+export const getNotifications = () =>
+  api.get('/notifications/');
+
+export const getUnreadNotificationCount = () =>
+  api.get('/notifications/unread-count/');
+
+export const markNotificationRead = (id) =>
+  api.post(`/notifications/${id}/mark-read/`);
+
+export const markAllNotificationsRead = () =>
+  api.post('/notifications/mark-all-read/');
