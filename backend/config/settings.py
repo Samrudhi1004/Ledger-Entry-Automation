@@ -155,7 +155,10 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 
 USE_REDIS = os.getenv('USE_REDIS', 'false').lower() == 'true'
 
-if USE_REDIS:
+# When REDIS_URL is explicitly set (e.g. on Railway), trust it — no socket probe.
+# Only run the local connectivity check for dev environments that have no REDIS_URL,
+# so developers who haven't started Redis yet fall back gracefully to LocMemCache.
+if USE_REDIS and not os.getenv('REDIS_URL'):
     import socket
     try:
         s = socket.create_connection(('127.0.0.1', 6379), timeout=0.5)

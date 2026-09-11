@@ -13,6 +13,11 @@ User = get_user_model()
 PRESENCE_KEY_PREFIX = 'presence:user:'
 PRESENCE_TIMEOUT = 300  # 5 minutes
 
+# A single cache key that holds the set of all currently online user IDs.
+# This avoids calling cache.keys() which is specific to django-redis and
+# unavailable on both LocMemCache and Django's built-in RedisCache backend.
+PRESENCE_INDEX_KEY = 'presence:online_index'
+
 
 class PresenceConsumer(AsyncWebsocketConsumer):
     """
@@ -152,25 +157,38 @@ class PresenceConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_all_online_users(self):
-        """Get list of all currently online user IDs from cache."""
-        # Get all cache keys matching the presence pattern
-        keys = cache.keys(f'{PRESENCE_KEY_PREFIX}*')
-        online_users = []
-        for key in keys:
-            if cache.get(key) == 'online':
-                # Extract user_id from key (format: presence:user:123)
-                user_id = int(key.split(':')[-1])
-                online_users.append(user_id)
-        return online_users
+        """Return all currently online user IDs from the presence index.
+
+        Uses a single cache key (PRESENCE_INDEX_KEY) that stores a set of user
+        IDs rather than scanning all cache keys.  This is portable across every
+        Django cache backend — no cache.keys() needed.
+        """
+        online_ids = cache.get(PRESENCE_INDEX_KEY)
+        if not online_ids:
+            return []
+        return list(online_ids)
 
     @database_sync_to_async
     def mark_user_online(self, user_id):
-        """Mark user as online in cache."""
+        """Mark user as online in cache and add to the presence index."""
         cache_key = f'{PRESENCE_KEY_PREFIX}{user_id}'
         cache.set(cache_key, 'online', timeout=PRESENCE_TIMEOUT)
 
+        # Keep the shared index up-to-date
+        online_ids = cache.get(PRESENCE_INDEX_KEY) or set()
+        online_ids.add(user_id)
+        cache.set(PRESENCE_INDEX_KEY, online_ids, timeout=PRESENCE_TIMEOUT)
+
     @database_sync_to_async
     def mark_user_offline(self, user_id):
-        """Mark user as offline in cache."""
+        """Mark user as offline in cache and remove from the presence index."""
         cache_key = f'{PRESENCE_KEY_PREFIX}{user_id}'
         cache.delete(cache_key)
+
+        # Remove from the shared index
+        online_ids = cache.get(PRESENCE_INDEX_KEY) or set()
+        online_ids.discard(user_id)
+        if online_ids:
+            cache.set(PRESENCE_INDEX_KEY, online_ids, timeout=PRESENCE_TIMEOUT)
+        else:
+            cache.delete(PRESENCE_INDEX_KEY)
