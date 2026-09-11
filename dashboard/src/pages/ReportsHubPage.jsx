@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import { Cpu, FileText, ArrowRight, ShieldCheck, Activity, CheckCircle2, BarChart3, Clock } from 'lucide-react';
 
 export default function ReportsHubPage() {
@@ -63,6 +64,9 @@ export default function ReportsHubPage() {
       />
 
       <div className="page-content bg-gradient-animated" style={{ padding: '24px' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <Breadcrumbs items={[{ label: 'Reports' }]} />
+        </div>
         <div
           style={{
             display: 'grid',

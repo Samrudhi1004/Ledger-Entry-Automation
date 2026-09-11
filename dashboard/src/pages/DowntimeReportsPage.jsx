@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import api from '../api/axios';
 import {
   Calendar,
@@ -290,6 +291,7 @@ export default function DowntimeReportsPage() {
         />
 
         <div className="page-content" style={{ padding: '16px 20px', backgroundColor: '#F8FAFC', minHeight: '100vh' }}>
+          <Breadcrumbs items={[{ label: 'Reports', to: '/reports' }, { label: 'Downtime Analysis' }]} />
           
           <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '20px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
             
@@ -466,6 +468,7 @@ export default function DowntimeReportsPage() {
       />
 
       <div className="page-content" style={{ padding: '14px 16px', backgroundColor: '#F8FAFC', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>
+        <Breadcrumbs items={[{ label: 'Reports', to: '/reports' }, { label: 'Downtime Analysis' }]} />
         
         {/* Navigation Tabs */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', borderBottom: '2px solid #E2E8F0', paddingBottom: '6px' }}>

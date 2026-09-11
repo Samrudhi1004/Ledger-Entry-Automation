@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import StatCard from '../components/cards/StatCard';
 import OOCTrendChart from '../components/charts/OOCTrendChart';
 import ShiftDonutChart from '../components/charts/ShiftDonutChart';
@@ -119,6 +120,8 @@ export default function DashboardPage() {
       />
 
       <div className="page-content bg-gradient-animated">
+        <Breadcrumbs items={[{ label: 'Dashboard' }]} />
+
         {/* ── Supervisor Escalation Alert Banner ──────────────── */}
         {escalationAlert && (
           <div className="card mb-20" style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#f87171', animation: 'critical-pulse 2s infinite' }}>

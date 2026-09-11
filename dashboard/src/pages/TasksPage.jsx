@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
 import { getTasks, resolveIssue, acceptTask, completeTask, flagIssue } from '../api/tasks';
@@ -580,6 +581,7 @@ export default function TasksPage() {
       <Header title="Tasks Management" subtitle="Allocate and track operational tasks" />
       
       <div className="page-content" style={{ padding: '24px' }}>
+        <Breadcrumbs items={[{ label: 'Tasks' }]} />
         {user?.role === 'admin' ? (
           <AdminTasksView
             tasks={tasks}

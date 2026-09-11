@@ -15,6 +15,7 @@ class Factory(models.Model):
     phone         = models.CharField(max_length=30, blank=True, default='')
     address       = models.TextField(blank=True, default='')
     gstin         = models.CharField(max_length=30, blank=True, default='')
+    logo_url      = models.CharField(max_length=500, blank=True, default='')
     industry_type = models.CharField(max_length=100, blank=True, default='Precision Component Manufacturing')
     shift_hours   = models.IntegerField(default=8)
     total_shifts_per_day = models.IntegerField(default=3)

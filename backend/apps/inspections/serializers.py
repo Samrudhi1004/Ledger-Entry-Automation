@@ -117,22 +117,14 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
         return getattr(obj, 'template_id', None)
 
     def get_template_name(self, obj):
+        # Use prefetched template first
         if obj.template and obj.template.name and obj.template.name.strip():
             return obj.template.name.strip()
+        # Use annotated value from SessionListView queryset (no extra DB hit)
         val = getattr(obj, 'template_name', None)
         if val and str(val).strip():
             return str(val).strip()
-        try:
-            from apps.parts.models import InspectionTemplate
-            t = InspectionTemplate.objects.filter(
-                part=obj.part,
-                inspection_type=obj.inspection_type,
-                is_active=True,
-            ).order_by('-version').first()
-            if t and t.name and t.name.strip():
-                return t.name.strip()
-        except Exception:
-            pass
+        # Do NOT fire a new DB query here — return None instead
         return None
 
     def get_template_version(self, obj):
@@ -150,20 +142,19 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
         return 'Inspector'
 
     def get_rejected_parameters(self, obj):
+        # Read directly from document_payload JSONB — no extra DB query
         try:
-            from .services import inspection_service
-            doc = inspection_service.get_session_document(str(obj.session_id))
-            if doc:
-                rej = doc.get('rejected_parameters', [])
-                if rej and len(rej) > 0:
-                    return rej
-                measurements = doc.get('measurements', [])
-                if measurements:
-                    latest_trial = max(m.get('trial_number', 1) for m in measurements)
-                    return list(set([
-                        m['parameter_code'] for m in measurements
-                        if m.get('trial_number', 1) == latest_trial and m.get('status') == 'out_of_spec'
-                    ]))
+            doc = obj.document_payload or {}
+            rej = doc.get('rejected_parameters', [])
+            if rej:
+                return rej
+            measurements = doc.get('measurements', [])
+            if measurements:
+                latest_trial = max(m.get('trial_number', 1) for m in measurements)
+                return list(set([
+                    m['parameter_code'] for m in measurements
+                    if m.get('trial_number', 1) == latest_trial and m.get('status') == 'out_of_spec'
+                ]))
         except Exception:
             pass
         return []
