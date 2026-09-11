@@ -328,13 +328,14 @@ _cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in _cors_origins if origin.strip()]
 
 
-# ─── Email Settings (SMTP) ────────────────────────────────────
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'in-v3.mailjet.com')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+# ─── Email Settings (Mailjet API - bypasses SMTP port restrictions) ───
+# Use Mailjet REST API backend instead of SMTP for Railway compatibility
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'config.mailjet_backend.MailjetAPIBackend')
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'in-v3.mailjet.com')  # Not used by API backend, kept for reference
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))  # Not used by API backend
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'  # Not used by API backend
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')  # Mailjet API Key
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')  # Mailjet API Secret
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@example.com')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 

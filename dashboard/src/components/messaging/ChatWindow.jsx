@@ -7,7 +7,7 @@ import MessageInput from './MessageInput';
 import './ChatWindow.css';
 
 export default function ChatWindow() {
-  const { activeConversation, messages, typingUsers, onlineUsers, markAsRead, conversations, fetchConversations } = useMessaging();
+  const { activeConversation, messages, typingUsers, onlineUsers, markAsRead, conversations, fetchConversations, updateMessageReactions, pinMessage } = useMessaging();
   const { user } = useAuth();
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -21,7 +21,35 @@ export default function ChatWindow() {
   const [forwardSearchQuery, setForwardSearchQuery] = useState('');
   const [selectedConversations, setSelectedConversations] = useState([]);
   const [pinnedMessages, setPinnedMessages] = useState([]);
+  const [activePinIndex, setActivePinIndex] = useState(0);
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+  const [reactionModal, setReactionModal] = useState(null); // { message, reactions }
+  const messageRefs = useRef({});
   const previousMessageCountRef = useRef(0);
+
+  // Convert URLs in text to clickable links
+  const linkify = (text) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+
+    return parts.map((part, index) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a
+            key={index}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="message-link"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  };
 
   const scrollToBottom = (behavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -83,8 +111,16 @@ export default function ChatWindow() {
     if (activeConversation) {
       setUserIsScrolling(false);
       previousMessageCountRef.current = 0;
+      // Sync pinned messages from conversation object
+      setPinnedMessages(activeConversation.pinned_messages || []);
+      setActivePinIndex(0);
     }
   }, [activeConversation?.id]);
+
+  // Keep local pinnedMessages in sync when context updates pinned_messages (after pin/unpin)
+  useEffect(() => {
+    setPinnedMessages(activeConversation?.pinned_messages || []);
+  }, [activeConversation?.pinned_messages]);
 
   // Mark messages as read when they come into view
   useEffect(() => {
@@ -419,20 +455,36 @@ export default function ChatWindow() {
     }
   };
 
-  const handlePin = (message) => {
-    // Toggle pin status
+  const handlePin = async (message) => {
     const isCurrentlyPinned = pinnedMessages.some(m => m.id === message.id);
 
-    if (isCurrentlyPinned) {
-      setPinnedMessages(prev => prev.filter(m => m.id !== message.id));
-      alert('Message unpinned');
-    } else {
-      setPinnedMessages(prev => [...prev, message]);
-      alert('Message pinned to top');
+    // Enforce client-side max before hitting API
+    if (!isCurrentlyPinned && pinnedMessages.length >= 3) {
+      alert('You can only pin up to 3 messages. Unpin one first.');
+      closeContextMenu();
+      return;
     }
 
     closeContextMenu();
-    // TODO: Save to backend
+
+    try {
+      await pinMessage(activeConversation.id, message.id);
+      // activePinIndex stays valid; clamp if needed
+      setActivePinIndex(prev => Math.min(prev, Math.max(0, pinnedMessages.length - (isCurrentlyPinned ? 2 : 0))));
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleScrollToPin = (pinnedMsg) => {
+    // Find the DOM element for this message and scroll to it
+    const el = messageRefs.current[pinnedMsg.id];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Flash highlight
+      setHighlightedMessageId(pinnedMsg.id);
+      setTimeout(() => setHighlightedMessageId(null), 2000);
+    }
   };
 
   const handleReact = (message) => {
@@ -440,34 +492,131 @@ export default function ChatWindow() {
     closeContextMenu();
   };
 
-  const handleEmojiSelect = (emoji, message) => {
-    // TODO: Send reaction to backend
-    console.log('Reacted with', emoji, 'to message:', message.id);
+  const handleReactionBadgeClick = (message, emoji) => {
+    // Show modal with who reacted
+    const messageReactions = message.reactions || [];
+    const emojiReactions = messageReactions.filter(r => r.emoji === emoji);
 
-    // Update local state (optimistic update)
-    setMessages(prev => prev.map(msg => {
-      if (msg.id === message.id) {
-        const reactions = msg.reactions || {};
-        const userReactions = reactions[user.id] || [];
+    setReactionModal({
+      message,
+      emoji,
+      reactions: emojiReactions
+    });
+  };
 
-        // Toggle emoji
-        const hasReaction = userReactions.includes(emoji);
-        const newUserReactions = hasReaction
-          ? userReactions.filter(e => e !== emoji)
-          : [...userReactions, emoji];
+  const closeReactionModal = () => {
+    setReactionModal(null);
+  };
 
-        return {
-          ...msg,
-          reactions: {
-            ...reactions,
-            [user.id]: newUserReactions
-          }
-        };
+  const handleRemoveReaction = async (emoji, message) => {
+    // Optimistic update - remove reaction immediately
+    const currentReactions = message.reactions || [];
+    const optimisticReactions = currentReactions.filter(
+      r => !(r.user.id === user.id && r.emoji === emoji)
+    );
+
+    // Update UI immediately
+    updateMessageReactions(message.id, optimisticReactions);
+    closeReactionModal();
+
+    // Send to backend
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/messaging/conversations/${activeConversation.id}/messages/${message.id}/react/`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ emoji })
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        updateMessageReactions(message.id, data.reactions);
+        // Refresh conversation list to move this conversation to top
+        fetchConversations();
+      } else {
+        console.error('Failed to remove reaction:', response.status);
+        // Revert on error
+        updateMessageReactions(message.id, currentReactions);
       }
-      return msg;
-    }));
+    } catch (error) {
+      console.error('Error removing reaction:', error);
+      // Revert on error
+      updateMessageReactions(message.id, currentReactions);
+    }
+  };
 
+  const handleEmojiSelect = async (emoji, message) => {
+    // Optimistic update - update UI immediately
+    const currentReactions = message.reactions || [];
+    const existingReactionIndex = currentReactions.findIndex(
+      r => r.user.id === user.id && r.emoji === emoji
+    );
+
+    let optimisticReactions;
+    if (existingReactionIndex >= 0) {
+      // Remove reaction (toggle off)
+      optimisticReactions = currentReactions.filter((_, idx) => idx !== existingReactionIndex);
+    } else {
+      // Add reaction (toggle on)
+      optimisticReactions = [
+        ...currentReactions,
+        {
+          id: `temp-${Date.now()}`,
+          emoji,
+          user: {
+            id: user.id,
+            first_name: user.first_name,
+            last_name: user.last_name,
+            email: user.email
+          },
+          created_at: new Date().toISOString()
+        }
+      ];
+    }
+
+    // Update UI immediately (optimistic)
+    updateMessageReactions(message.id, optimisticReactions);
+
+    // Close emoji picker
     setEmojiPicker(null);
+
+    // Send to backend
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/messaging/conversations/${activeConversation.id}/messages/${message.id}/react/`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ emoji })
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        // Update with server response (in case of any differences)
+        updateMessageReactions(message.id, data.reactions);
+        // Refresh conversation list to move this conversation to top
+        fetchConversations();
+      } else {
+        console.error('Failed to add reaction:', response.status);
+        // Revert optimistic update on error
+        updateMessageReactions(message.id, currentReactions);
+      }
+    } catch (error) {
+      console.error('Error adding reaction:', error);
+      // Revert optimistic update on error
+      updateMessageReactions(message.id, currentReactions);
+    }
   };
 
   const closeEmojiPicker = () => {
@@ -494,6 +643,36 @@ export default function ChatWindow() {
         </div>
       </div>
 
+      {/* Pinned Messages Banner */}
+      {pinnedMessages.length > 0 && (
+        <div className="pinned-banner">
+          <div className="pinned-banner-icon">
+            <Pin size={14} />
+          </div>
+          <div
+            className="pinned-banner-content"
+            onClick={() => handleScrollToPin(pinnedMessages[activePinIndex])}
+          >
+            <span className="pinned-banner-label">Pinned Message</span>
+            <span className="pinned-banner-text">
+              {pinnedMessages[activePinIndex]?.content || '📎 Attachment'}
+            </span>
+          </div>
+          {pinnedMessages.length > 1 && (
+            <div className="pinned-dots">
+              {pinnedMessages.map((_, i) => (
+                <button
+                  key={i}
+                  className={`pinned-dot${i === activePinIndex ? ' active' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); setActivePinIndex(i); }}
+                  title={`Pinned message ${i + 1}`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
         {groupedMessages.map((group, groupIndex) => {
           const isSent = group.sender.id === user.id;
@@ -514,7 +693,11 @@ export default function ChatWindow() {
                 )}
 
                 {group.messages.map(message => (
-                  <div key={message.id}>
+                  <div
+                    key={message.id}
+                    ref={el => { if (el) messageRefs.current[message.id] = el; }}
+                    className={highlightedMessageId === message.id ? 'message-highlight-flash' : ''}
+                  >
                     <div
                       className="message-bubble"
                       onContextMenu={(e) => handleMessageContextMenu(e, message)}
@@ -533,7 +716,7 @@ export default function ChatWindow() {
                         </div>
                       )}
 
-                      <p className="message-text">{message.content}</p>
+                      <p className="message-text">{linkify(message.content)}</p>
 
                       {message.attachments?.length > 0 && (
                         <div className="message-attachment">
@@ -557,6 +740,30 @@ export default function ChatWindow() {
                                 </div>
                               )}
                             </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Reactions - displayed inside message bubble */}
+                      {message.reactions && message.reactions.length > 0 && (
+                        <div className="message-reactions-inline">
+                          {Object.entries(
+                            message.reactions.reduce((acc, reaction) => {
+                              if (!acc[reaction.emoji]) {
+                                acc[reaction.emoji] = [];
+                              }
+                              acc[reaction.emoji].push(reaction.user);
+                              return acc;
+                            }, {})
+                          ).map(([emoji, users]) => (
+                            <button
+                              key={emoji}
+                              className={`reaction-badge ${users.some(u => u.id === user.id) ? 'user-reacted' : ''}`}
+                              onClick={() => handleReactionBadgeClick(message, emoji)}
+                              title={users.map(u => `${u.first_name} ${u.last_name}`).join(', ')}
+                            >
+                              {emoji} {users.length > 1 ? users.length : ''}
+                            </button>
                           ))}
                         </div>
                       )}
@@ -629,7 +836,7 @@ export default function ChatWindow() {
           </div>
           <div className="context-menu-item" onClick={() => handlePin(contextMenu.message)}>
             <Pin size={18} />
-            <span>Pin</span>
+            <span>{pinnedMessages.some(m => m.id === contextMenu.message?.id) ? 'Unpin' : 'Pin'}</span>
           </div>
           <div className="context-menu-item" onClick={() => handleReact(contextMenu.message)}>
             <Smile size={18} />
@@ -748,6 +955,47 @@ export default function ChatWindow() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Reaction Details Modal - WhatsApp Style */}
+      {reactionModal && (
+        <div className="modal-overlay" onClick={closeReactionModal}>
+          <div className="reaction-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="reaction-modal-header">
+              <div className="reaction-modal-emoji">{reactionModal.emoji}</div>
+              <span className="reaction-count">{reactionModal.reactions.length} {reactionModal.reactions.length === 1 ? 'reaction' : 'reactions'}</span>
+              <button className="modal-close-button" onClick={closeReactionModal}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="reaction-list">
+              {reactionModal.reactions.map((reaction) => {
+                const isCurrentUser = reaction.user.id === user.id;
+                return (
+                  <div key={reaction.id} className="reaction-item">
+                    <div className="reaction-user-info">
+                      <div className="reaction-user-avatar">
+                        {reaction.user.first_name?.charAt(0) || reaction.user.email.charAt(0)}
+                      </div>
+                      <div className="reaction-user-details">
+                        <div className="reaction-user-name">
+                          {isCurrentUser ? 'You' : `${reaction.user.first_name} ${reaction.user.last_name}`.trim() || reaction.user.email}
+                        </div>
+                        {isCurrentUser && (
+                          <div className="reaction-user-action" onClick={() => handleRemoveReaction(reactionModal.emoji, reactionModal.message)}>
+                            Click to remove
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="reaction-emoji-display">{reactionModal.emoji}</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

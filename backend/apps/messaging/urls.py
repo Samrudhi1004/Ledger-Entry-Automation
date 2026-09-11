@@ -34,6 +34,9 @@ urlpatterns = [
     path('conversations/<uuid:conversation_pk>/messages/<uuid:pk>/forward/',
          MessageViewSet.as_view({'post': 'forward'}),
          name='message-forward'),
+    path('conversations/<uuid:conversation_pk>/messages/<uuid:pk>/react/',
+         MessageViewSet.as_view({'post': 'react', 'delete': 'react'}),
+         name='message-react'),
 
     # File upload
     path('upload/', FileUploadView.as_view(), name='file-upload'),

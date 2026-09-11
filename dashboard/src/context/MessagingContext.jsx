@@ -177,6 +177,17 @@ export const MessagingProvider = ({ children }) => {
           }
           break;
 
+        case 'message_reaction':
+          // Update message reactions in real-time
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === data.data.message_id
+                ? { ...msg, reactions: data.data.reactions }
+                : msg
+            )
+          );
+          break;
+
         case 'error':
           console.error('WebSocket error:', data.message);
           break;
@@ -335,6 +346,47 @@ export const MessagingProvider = ({ children }) => {
     }
   }, [fetchMessages, connectWebSocket]);
 
+  // Update message reactions (for optimistic updates)
+  const updateMessageReactions = useCallback((messageId, reactions) => {
+    setMessages(prev =>
+      prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, reactions }
+          : msg
+      )
+    );
+  }, []);
+
+  // Pin / unpin a message in the active conversation (max 3)
+  const pinMessage = useCallback(async (conversationId, messageId) => {
+    try {
+      const response = await api.post(
+        `${API_BASE}/messaging/conversations/${conversationId}/pin-message/`,
+        { message_id: messageId }
+      );
+      const { pinned_messages } = response.data;
+      // Update the conversation in state with the new pinned list
+      setActiveConversation(prev =>
+        prev && prev.id === conversationId
+          ? { ...prev, pinned_messages }
+          : prev
+      );
+      setConversations(prev =>
+        prev.map(conv =>
+          conv.id === conversationId
+            ? { ...conv, pinned_messages }
+            : conv
+        )
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Failed to pin message:', error);
+      // Surface error message to caller
+      const msg = error?.response?.data?.error || 'Failed to pin message';
+      throw new Error(msg);
+    }
+  }, [API_BASE]);
+
   // Connect to user notification WebSocket for real-time updates across all conversations
   useEffect(() => {
     if (!user) return;
@@ -358,9 +410,10 @@ export const MessagingProvider = ({ children }) => {
           break;
 
         case 'new_message_notification':
-          // Update conversation list with new message
+          // Update conversation list sidebar only (message list is handled by the main WS).
+          // Do NOT add the message to messages[] here — the conversation WebSocket handles that
+          // via 'message_sent' (sender) and 'new_message' (others). Adding here causes duplicates.
           const { conversation_id, message } = data.data;
-          console.log('Received new_message_notification:', { conversation_id, message });
 
           setConversations(prev => {
             const updated = prev.map(conv =>
@@ -381,21 +434,8 @@ export const MessagingProvider = ({ children }) => {
                   }
                 : conv
             );
-            const sorted = updated.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-            console.log('Conversations after update and sort:', sorted.map(c => ({ id: c.id, updated_at: c.updated_at })));
-            return sorted;
+            return updated.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
           });
-
-          // If the message is for the active conversation, add it to messages
-          if (activeConversation?.id === conversation_id) {
-            setMessages(prev => {
-              // Check if message already exists (avoid duplicates)
-              if (prev.some(m => m.id === message.id)) {
-                return prev;
-              }
-              return [...prev, message];
-            });
-          }
           break;
 
         case 'pong':
@@ -571,6 +611,8 @@ export const MessagingProvider = ({ children }) => {
     uploadFile,
     selectConversation,
     setActiveConversation,
+    updateMessageReactions,
+    pinMessage,
   };
 
   return (

@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMessaging } from '../../context/MessagingContext';
 import { Paperclip, Send, Smile, X } from 'lucide-react';
+import EmojiPicker from 'emoji-picker-react';
 import './MessageInput.css';
 
 export default function MessageInput({ replyingTo, onCancelReply }) {
@@ -9,7 +10,24 @@ export default function MessageInput({ replyingTo, onCancelReply }) {
   const [isTyping, setIsTyping] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const fileInputRef = useRef(null);
+  const emojiPickerRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    if (showEmojiPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showEmojiPicker]);
 
   const handleInputChange = (e) => {
     const value = e.target.value;
@@ -23,6 +41,28 @@ export default function MessageInput({ replyingTo, onCancelReply }) {
       setIsTyping(false);
       sendTypingIndicator(false);
     }
+  };
+
+  const handleEmojiClick = (emojiData) => {
+    const cursorPosition = textareaRef.current?.selectionStart || message.length;
+    const textBeforeCursor = message.slice(0, cursorPosition);
+    const textAfterCursor = message.slice(cursorPosition);
+
+    const newMessage = textBeforeCursor + emojiData.emoji + textAfterCursor;
+    setMessage(newMessage);
+
+    // Focus back on textarea and set cursor position after emoji
+    setTimeout(() => {
+      textareaRef.current?.focus();
+      const newCursorPosition = cursorPosition + emojiData.emoji.length;
+      textareaRef.current?.setSelectionRange(newCursorPosition, newCursorPosition);
+    }, 0);
+
+    setShowEmojiPicker(false);
+  };
+
+  const toggleEmojiPicker = () => {
+    setShowEmojiPicker(prev => !prev);
   };
 
   const handleSubmit = async (e) => {
@@ -158,6 +198,7 @@ export default function MessageInput({ replyingTo, onCancelReply }) {
         </button>
 
         <textarea
+          ref={textareaRef}
           value={message}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
@@ -167,14 +208,30 @@ export default function MessageInput({ replyingTo, onCancelReply }) {
           disabled={uploading}
         />
 
-        <button
-          type="button"
-          className="input-action-button"
-          title="Add emoji"
-          disabled={uploading}
-        >
-          <Smile size={20} />
-        </button>
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            className="input-action-button"
+            onClick={toggleEmojiPicker}
+            title="Add emoji"
+            disabled={uploading}
+          >
+            <Smile size={20} />
+          </button>
+
+          {showEmojiPicker && (
+            <div ref={emojiPickerRef} style={{ position: 'absolute', bottom: '50px', right: '0', zIndex: 1000 }}>
+              <EmojiPicker
+                onEmojiClick={handleEmojiClick}
+                width={350}
+                height={450}
+                searchDisabled={false}
+                skinTonesDisabled={false}
+                previewConfig={{ showPreview: false }}
+              />
+            </div>
+          )}
+        </div>
 
         <button
           type="submit"
