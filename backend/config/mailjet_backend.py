@@ -3,6 +3,7 @@ Custom Django email backend using Mailjet REST API.
 This bypasses SMTP port restrictions on Railway by using HTTPS.
 """
 import os
+import base64
 from django.core.mail.backends.base import BaseEmailBackend
 from django.core.mail import EmailMultiAlternatives
 from mailjet_rest import Client
@@ -12,6 +13,10 @@ class MailjetAPIBackend(BaseEmailBackend):
     """
     Email backend that uses Mailjet's REST API instead of SMTP.
     Works on platforms that block outbound SMTP ports (like Railway).
+
+    Environment variables:
+        EMAIL_HOST_USER     — Mailjet API Key
+        EMAIL_HOST_PASSWORD — Mailjet API Secret
     """
 
     def __init__(self, fail_silently=False, **kwargs):
@@ -47,43 +52,66 @@ class MailjetAPIBackend(BaseEmailBackend):
         if not message.recipients():
             return False
 
-        # Build the recipient list
-        recipients = [{'Email': recipient} for recipient in message.recipients()]
+        # Build To / Cc / Bcc separately to avoid exposing BCC addresses.
+        # message.recipients() merges all three — we must NOT use it for Mailjet's
+        # 'To' field, as every address in 'To' is visible to all recipients.
+        to_list  = [{'Email': addr} for addr in (message.to or [])]
+        cc_list  = [{'Email': addr} for addr in (message.cc or [])]
+        bcc_list = [{'Email': addr} for addr in (message.bcc or [])]
+
+        if not to_list and not cc_list and not bcc_list:
+            return False
 
         # Prepare the email data for Mailjet API
-        data = {
-            'Messages': [
-                {
-                    'From': {
-                        'Email': message.from_email,
-                        'Name': message.from_email.split('@')[0].title()
-                    },
-                    'To': recipients,
-                    'Subject': message.subject,
-                }
-            ]
+        msg_payload = {
+            'From': {
+                'Email': message.from_email,
+                'Name': message.from_email.split('@')[0].title()
+            },
+            'Subject': message.subject,
         }
+
+        if to_list:
+            msg_payload['To'] = to_list
+        if cc_list:
+            msg_payload['Cc'] = cc_list
+        if bcc_list:
+            msg_payload['Bcc'] = bcc_list
 
         # Handle plain text and HTML content
         if isinstance(message, EmailMultiAlternatives) and message.alternatives:
             # If there are alternatives (HTML), use the first one
             for content, mimetype in message.alternatives:
                 if mimetype == 'text/html':
-                    data['Messages'][0]['HTMLPart'] = content
+                    msg_payload['HTMLPart'] = content
                     # Include plain text version if available
                     if message.body:
-                        data['Messages'][0]['TextPart'] = message.body
+                        msg_payload['TextPart'] = message.body
                     break
             # If no HTML alternative was found, use plain text
-            if 'HTMLPart' not in data['Messages'][0] and message.body:
-                data['Messages'][0]['TextPart'] = message.body
+            if 'HTMLPart' not in msg_payload and message.body:
+                msg_payload['TextPart'] = message.body
         else:
             # Plain text only - ensure body is not empty
-            if message.body:
-                data['Messages'][0]['TextPart'] = message.body
-            else:
-                # Mailjet requires at least TextPart or HTMLPart
-                data['Messages'][0]['TextPart'] = ' '
+            msg_payload['TextPart'] = message.body if message.body else ' '
+
+        # Translate Django attachments into Mailjet's Attachments format.
+        # Each Django attachment is a tuple of (filename, content, mimetype).
+        if message.attachments:
+            mailjet_attachments = []
+            for attachment in message.attachments:
+                filename, content, mimetype = attachment
+                if isinstance(content, str):
+                    content = content.encode('utf-8')
+                mailjet_attachments.append({
+                    'Filename': filename or 'attachment',
+                    'ContentType': mimetype or 'application/octet-stream',
+                    'Base64Content': base64.b64encode(content).decode('utf-8'),
+                })
+            if mailjet_attachments:
+                msg_payload['Attachments'] = mailjet_attachments
+
+        data = {'Messages': [msg_payload]}
 
         # Send via Mailjet API
         try:

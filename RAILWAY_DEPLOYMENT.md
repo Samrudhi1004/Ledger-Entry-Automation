@@ -81,12 +81,14 @@ CORS_ALLOWED_ORIGINS=https://your-dashboard.vercel.app,http://localhost:3000
 JWT_ACCESS_TOKEN_LIFETIME=60
 JWT_REFRESH_TOKEN_LIFETIME=90
 
-# Email (Optional - use your SMTP)
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USE_TLS=True
-EMAIL_HOST_USER=your-email@gmail.com
-EMAIL_HOST_PASSWORD=your-app-password
+# Email (Mailjet REST API — Railway blocks SMTP ports 587/465)
+# Sign up at https://app.mailjet.com, then use your API Key and Secret Key.
+# EMAIL_HOST_USER  = Mailjet API Key
+# EMAIL_HOST_PASSWORD = Mailjet API Secret Key
+# DEFAULT_FROM_EMAIL must match a verified Mailjet sender address/domain.
+EMAIL_HOST_USER=your-mailjet-api-key
+EMAIL_HOST_PASSWORD=your-mailjet-api-secret
+DEFAULT_FROM_EMAIL=your-verified-sender@example.com
 
 # Cloudinary (for media files)
 CLOUDINARY_CLOUD_NAME=your-cloud-name
