@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import { BarChart3, ArrowRight, Layers, CheckCircle2, Factory, Clock, ClipboardCheck } from 'lucide-react';
 
 export default function ProductionModulePage() {
@@ -65,8 +66,7 @@ export default function ProductionModulePage() {
       />
 
       <div className="page-content bg-gradient-animated" style={{ padding: '28px', background: '#F8FAFC', minHeight: '100vh' }}>
-        
-
+        <Breadcrumbs items={[{ label: 'Production' }]} />
 
         {/* Feature Cards Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '24px' }}>

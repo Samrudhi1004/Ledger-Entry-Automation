@@ -14,6 +14,7 @@ import 'setup_approval_report_screen.dart';
 import 'report_sheet_screen.dart';
 import 'tasks_screen.dart';
 import 'jh_inspection_screen.dart';
+import 'document_control_screen.dart';
 
 class AppHomeScreen extends StatefulWidget {
   const AppHomeScreen({super.key});
@@ -732,6 +733,22 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                           );
                         },
                       ),
+
+                      // Operator Card 5: Document Control
+                      _buildSoftPastelCard(
+                        title: 'Document Control',
+                        description: 'View & download approved SOPs, work instructions and quality documents',
+                        icon: Icons.folder_open_rounded,
+                        bgColor: const Color(0xFFF5F3FF),
+                        borderColor: const Color(0xFFEDE9FE),
+                        iconColor: const Color(0xFF7C3AED),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const DocumentControlScreen()),
+                          );
+                        },
+                      ),
                     ]
                   : [
                       // Inspector / Supervisor Card 1: Machine
@@ -793,6 +810,22 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         borderColor: hasActiveSession ? const Color(0xFFA7F3D0) : const Color(0xFFE2E8F0),
                         iconColor: hasActiveSession ? const Color(0xFF059669) : const Color(0xFF64748B),
                         onTap: () => _resumeActiveSessionDirectly(context),
+                      ),
+
+                      // Inspector / Supervisor Card 5: Document Control
+                      _buildSoftPastelCard(
+                        title: 'Document Control',
+                        description: 'View & download approved SOPs, work instructions and quality documents',
+                        icon: Icons.folder_open_rounded,
+                        bgColor: const Color(0xFFF5F3FF),
+                        borderColor: const Color(0xFFEDE9FE),
+                        iconColor: const Color(0xFF7C3AED),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const DocumentControlScreen()),
+                          );
+                        },
                       ),
                     ],
             ),

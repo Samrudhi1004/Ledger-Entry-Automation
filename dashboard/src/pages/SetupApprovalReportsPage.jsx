@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import OfficialFormF02Modal from '../components/reports/OfficialFormF02Modal';
 import { getSessions, getSessionDetail, openInspectionPDF, downloadInspectionPDF } from '../api/inspections';
@@ -95,8 +96,7 @@ export default function SetupApprovalReportsPage() {
       />
 
       <div className="page-content bg-gradient-animated" style={{ padding: '24px', background: '#F1F5F9', minHeight: '100vh' }}>
-        
-
+        <Breadcrumbs items={[{ label: 'Reports', to: '/reports' }, { label: 'Setup Approval Reports' }]} />
 
         {/* FILTER BAR */}
         <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '18px 24px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>

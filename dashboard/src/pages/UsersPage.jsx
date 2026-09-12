@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Modal from '../components/common/Modal';
 import Badge from '../components/common/Badge';
@@ -266,6 +267,7 @@ export default function UsersPage() {
       />
 
       <div className="page-content bg-gradient-animated">
+        <Breadcrumbs items={[{ label: 'User Management' }]} />
         <div className="card">
           {successBannerMsg && (
             <div className="badge badge-ok mb-16" style={{ width: '100%', padding: '12px 16px', borderRadius: 8, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -5,6 +5,8 @@ import ChatWindow from '../components/messaging/ChatWindow';
 import UserSearch from '../components/messaging/UserSearch';
 import GroupCreation from '../components/messaging/GroupCreation';
 import { Plus, MessageCircle, Users, ChevronDown } from 'lucide-react';
+import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import './MessagesPage.css';
 
 export default function MessagesPage() {
@@ -39,9 +41,17 @@ export default function MessagesPage() {
 
   return (
     <MessagingProvider>
-      <div className="messages-page">
+      <Header
+        title="Messages"
+        subtitle="Internal Team Communication & Real-time Direct Messaging"
+        showLiveStatus={false}
+      />
+      <div className="messages-page" style={{ paddingTop: 'var(--header-height)', height: '100vh', boxSizing: 'border-box' }}>
         <div className="messages-layout">
           <div className="conversations-panel">
+            <div style={{ padding: '12px 16px 4px' }}>
+              <Breadcrumbs items={[{ label: 'Messages' }]} className="mb-0" />
+            </div>
             <ConversationList />
 
             <div className="new-action-container" ref={dropdownRef}>

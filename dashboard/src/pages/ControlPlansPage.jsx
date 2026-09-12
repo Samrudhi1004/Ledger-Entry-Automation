@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { getControlPlans, createControlPlan, uploadControlPlanVersion, getControlPlanHistory, deleteControlPlan, getParts } from '../api/parts';
 import { useAuth } from '../context/AuthContext';
+import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 
 export default function ControlPlansPage() {
   const { user } = useAuth();
@@ -201,62 +203,60 @@ export default function ControlPlansPage() {
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-      {/* Back button & Breadcrumb */}
-      <div style={{ marginBottom: '16px' }}>
-        <NavLink 
-          to="/development" 
-          style={{ 
-            display: 'inline-flex', 
-            alignItems: 'center', 
-            gap: '6px', 
-            color: '#6d28d9', 
-            fontWeight: '600', 
-            textDecoration: 'none',
-            fontSize: '14px' 
-          }}
-        >
-          <ArrowLeft size={16} /> Back to Development Module
-        </NavLink>
-      </div>
+    <>
+      <Header
+        title="Control Plans"
+        subtitle="Upload inspection control plan documents, link plans to part numbers or general files, and manage version history"
+      />
 
-      {/* Header Strip with Action */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '20px',
-        flexWrap: 'wrap',
-        gap: '16px'
-      }}>
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', margin: 0 }}>Process Control Plans Repository</h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#64748b' }}>
-            Upload inspection control plan documents, link plans to part numbers or general files, and manage complete version histories.
-          </p>
+      <div className="page-content bg-gradient-animated">
+        <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+          <Breadcrumbs items={[{ label: 'Development', to: '/development' }, { label: 'Control Plan Management' }]} />
+        {/* Back button & Action Toolbar */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '20px',
+          flexWrap: 'wrap',
+          gap: '16px'
+        }}>
+          <NavLink 
+            to="/development" 
+            style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              color: '#059669', 
+              fontWeight: '600', 
+              textDecoration: 'none',
+              fontSize: '14px' 
+            }}
+          >
+            <ArrowLeft size={16} /> Back to Development Module
+          </NavLink>
+
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            style={{
+              background: '#059669',
+              color: '#ffffff',
+              padding: '10px 20px',
+              borderRadius: '10px',
+              fontWeight: '700',
+              border: 'none',
+              fontSize: '14px',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <Upload size={18} />
+            <span>Upload New Control Plan</span>
+          </button>
         </div>
-
-        <button
-          onClick={() => setIsUploadModalOpen(true)}
-          style={{
-            background: '#059669',
-            color: '#ffffff',
-            padding: '10px 20px',
-            borderRadius: '10px',
-            fontWeight: '700',
-            border: 'none',
-            fontSize: '14px',
-            cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Upload size={18} />
-          <span>Upload New Control Plan</span>
-        </button>
-      </div>
 
       {/* Notifications */}
       {successMsg && (
@@ -887,6 +887,8 @@ export default function ControlPlansPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+      </div>
+    </>
   );
 }

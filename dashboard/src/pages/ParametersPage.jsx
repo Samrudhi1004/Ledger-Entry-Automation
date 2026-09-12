@@ -23,6 +23,7 @@ import {
 import api from '../api/axios';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 
 const extractErrorMessage = (err, fallback) => {
   if (!err.response?.data) return fallback;
@@ -719,6 +720,7 @@ export default function ParametersPage() {
       />
 
       <div className="page-content bg-gradient-animated" style={{ padding: '24px', background: '#F1F5F9', minHeight: '100vh' }}>
+        <Breadcrumbs items={user?.role === 'supervisor' ? [{ label: 'Development', to: '/development' }, { label: 'Master Parameters' }] : [{ label: 'Master Parameters' }]} />
 
         {/* ── TOP PAGE HEADER BAR ─────────────────────────────── */}
         <div style={{

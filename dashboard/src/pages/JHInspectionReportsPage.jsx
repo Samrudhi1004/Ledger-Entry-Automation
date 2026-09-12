@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import api, { BASE_URL } from '../api/axios';
 import { useCompany } from '../context/CompanyContext';
 import {
@@ -379,6 +380,7 @@ export default function JHInspectionReportsPage() {
       />
 
       <div className="page-content" style={{ padding: '24px', background: '#F8FAFC', minHeight: '100vh' }}>
+        <Breadcrumbs items={[{ label: 'Production', to: '/production' }, { label: 'JH Inspection Reports' }]} />
 
         {/* Tab Selection Bar & Global Actions */}
         <div

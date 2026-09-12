@@ -7,6 +7,8 @@ import {
   Sliders
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 
 export default function DevelopmentModulePage() {
   const { user } = useAuth();
@@ -63,19 +65,30 @@ export default function DevelopmentModulePage() {
   const cards = isAdmin ? adminCards : supervisorCards;
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-      {/* Main Card Grid Heading */}
-      <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
-          {isAdmin ? 'Engineering Repository & Control Plan Grid' : 'Development Tools & Master Parameter Grid'}
-        </h2>
-        <p style={{ fontSize: '14px', color: '#64748b', margin: '4px 0 20px 0' }}>
-          {isAdmin 
-            ? 'Select an engineering module card below to manage drawings, process control plans, or inspect revision histories.'
-            : 'Select a master module card below to configure engineering specs, master parameter sheets, or trial inspection plans.'
-          }
-        </p>
-      </div>
+    <>
+      <Header
+        title="Development"
+        subtitle={isAdmin 
+          ? 'Engineering Repository, CAD Drawings & Process Control Plans' 
+          : 'Development Tools & Master Parameter Grid'
+        }
+      />
+
+      <div className="page-content bg-gradient-animated">
+        <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+          <Breadcrumbs items={[{ label: 'Development' }]} />
+        {/* Main Card Grid Heading */}
+        <div style={{ marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
+            {isAdmin ? 'Engineering Repository & Control Plan Grid' : 'Development Tools & Master Parameter Grid'}
+          </h2>
+          <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 20px 0' }}>
+            {isAdmin 
+              ? 'Select an engineering module card below to manage drawings, process control plans, or inspect revision histories.'
+              : 'Select a master module card below to configure engineering specs, master parameter sheets, or trial inspection plans.'
+            }
+          </p>
+        </div>
 
       {/* Card Grid */}
       <div style={{ 
@@ -186,6 +199,8 @@ export default function DevelopmentModulePage() {
           );
         })}
       </div>
-    </div>
+      </div>
+      </div>
+    </>
   );
 }

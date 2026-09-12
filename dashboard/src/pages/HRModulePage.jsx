@@ -1,6 +1,8 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Users, Calendar, ArrowRight, UserCheck, Shield, Award } from 'lucide-react';
+import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 
 export default function HRModulePage() {
   const cards = [
@@ -20,55 +22,60 @@ export default function HRModulePage() {
   ];
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-      {/* Header Banner */}
-      <div style={{
-        background: 'linear-gradient(135deg, #4338ca 0%, #4f46e5 50%, #6366f1 100%)',
-        borderRadius: '16px',
-        padding: '32px',
-        color: '#ffffff',
-        marginBottom: '28px',
-        boxShadow: '0 12px 28px -6px rgba(79, 70, 229, 0.35)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '20px'
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '10px' }}>
-            <div style={{ background: 'rgba(255, 255, 255, 0.22)', padding: '12px', borderRadius: '14px', backdropFilter: 'blur(8px)' }}>
-              <Users size={32} color="#ffffff" />
-            </div>
-            <div>
-              <h1 style={{ fontSize: '28px', fontWeight: '800', margin: 0, letterSpacing: '-0.5px' }}>HR & Personnel Module</h1>
-              <span style={{ fontSize: '13px', opacity: 0.85, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Human Resources Management</span>
-            </div>
-          </div>
-          <p style={{ margin: 0, opacity: 0.92, fontSize: '15px', maxWidth: '680px', lineHeight: '1.5' }}>
-            Central Human Resources Portal — Manage User Accounts, Operator Rosters, Employee Credentials, and Factory Shift Timings.
-          </p>
-        </div>
+    <>
+      <Header
+        title="HR & Personnel"
+        subtitle="Human Resources Portal — Manage User Accounts, Operator Rosters, and Credentials"
+      />
 
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <NavLink to="/users" style={{
-            background: '#ffffff',
-            color: '#4f46e5',
-            padding: '12px 24px',
-            borderRadius: '12px',
-            fontWeight: '700',
-            textDecoration: 'none',
-            fontSize: '14px',
-            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <Users size={18} />
-            <span>Users Registry</span>
-          </NavLink>
+      <div className="page-content bg-gradient-animated">
+        <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+          <Breadcrumbs items={[{ label: 'HR Management' }]} />
+          {/* Header Banner */}
+        <div style={{
+          background: 'linear-gradient(135deg, #4338ca 0%, #4f46e5 50%, #6366f1 100%)',
+          borderRadius: '16px',
+          padding: '24px 28px',
+          color: '#ffffff',
+          marginBottom: '28px',
+          boxShadow: '0 10px 25px -5px rgba(79, 70, 229, 0.25)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px'
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.2)', padding: '10px', borderRadius: '12px', display: 'flex' }}>
+                <Users size={24} color="#ffffff" />
+              </div>
+              <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>Human Resources Directory</h2>
+            </div>
+            <p style={{ margin: 0, opacity: 0.92, fontSize: '14px', maxWidth: '640px', lineHeight: '1.4' }}>
+              Manage accounts for Supervisors, Quality Inspectors, Gauge Calibrators, and Machine Operators.
+            </p>
+          </div>
+
+          <div>
+            <NavLink to="/users" style={{
+              background: '#ffffff',
+              color: '#4f46e5',
+              padding: '10px 20px',
+              borderRadius: '10px',
+              fontWeight: '700',
+              textDecoration: 'none',
+              fontSize: '13px',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <Users size={16} />
+              <span>Users Registry</span>
+            </NavLink>
+          </div>
         </div>
-      </div>
 
       {/* KPI Cards Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '32px' }}>
@@ -222,6 +229,8 @@ export default function HRModulePage() {
           );
         })}
       </div>
-    </div>
+      </div>
+      </div>
+    </>
   );
 }

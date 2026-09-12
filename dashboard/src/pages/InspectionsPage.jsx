@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import Badge from '../components/common/Badge';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { getSessions } from '../api/inspections';
@@ -219,6 +220,7 @@ export default function InspectionsPage() {
       />
 
       <div style={pageStyle}>
+        <Breadcrumbs items={[{ label: 'Inspections' }]} />
 
         {/* ── Summary Cards ─────────────────────────────────────────────── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 22 }}>

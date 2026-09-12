@@ -54,7 +54,7 @@ export default function ConversationList() {
   return (
     <div className="conversation-list">
       <div className="conversation-list-header">
-        <h2>Messages</h2>
+        <h2>Chats</h2>
       </div>
 
       <div className="conversation-search">

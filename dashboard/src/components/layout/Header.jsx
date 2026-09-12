@@ -1,10 +1,31 @@
 import { useWebSocket } from '../../context/WebSocketContext';
+import { useAuth } from '../../context/AuthContext';
+import NotificationBell from '../document_control/NotificationBell';
 
 const SHIFTS = ['A', 'B', 'C'];
 
-export default function Header({ title, subtitle, shift, onShiftChange, showLiveStatus = true }) {
+export default function Header({
+  title,
+  subtitle,
+  shift,
+  onShiftChange,
+  showLiveStatus = true,
+  showNotifications = true,
+  actions,
+}) {
   const ws = useWebSocket();
   const connected = ws?.connected ?? false;
+  const { user } = useAuth();
+
+  const roleLabels = {
+    admin: 'ADMIN',
+    supervisor: 'SUPERVISOR',
+    calibrator: 'CALIBRATOR',
+    operator: 'OPERATOR',
+    quality_engineer: 'INSPECTOR',
+    inspector: 'INSPECTOR',
+  };
+  const roleText = user ? (roleLabels[user.role] || user.role?.toUpperCase()) : '';
 
   return (
     <header className="header">
@@ -14,6 +35,8 @@ export default function Header({ title, subtitle, shift, onShiftChange, showLive
       </div>
 
       <div className="header-right">
+        {actions}
+
         {/* Shift selector */}
         {onShiftChange && (
           <div className="shift-tabs" role="group" aria-label="Shift selector">
@@ -30,6 +53,13 @@ export default function Header({ title, subtitle, shift, onShiftChange, showLive
           </div>
         )}
 
+        {/* Active User Role Badge */}
+        {roleText && (
+          <div className={`header-role-pill role-${user?.role || 'default'}`} title={`Logged in as ${roleText}`}>
+            {roleText}
+          </div>
+        )}
+
         {/* WebSocket status */}
         {showLiveStatus && (
           <div className="ws-indicator" title={connected ? 'Live feed connected' : 'Reconnecting...'}>
@@ -37,6 +67,9 @@ export default function Header({ title, subtitle, shift, onShiftChange, showLive
             {connected ? 'Live' : 'Offline'}
           </div>
         )}
+
+        {/* Universal Notification Bell */}
+        {showNotifications && <NotificationBell />}
 
         {/* Current time */}
         <span className="text-xs text-muted">
