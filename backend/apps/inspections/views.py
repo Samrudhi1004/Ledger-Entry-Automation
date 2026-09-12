@@ -284,11 +284,12 @@ class BatchMeasureView(APIView):
                 pass  # may already be completed; ignore
         else:
             try:
-                _service.collection.update_one(
-                    {'_id': str(session_id)},
-                    {'$set': {'rejected_parameters': failed_codes}}
-                )
-                InspectionSession.objects.filter(session_id=session_id).update(has_ooc=True)
+                from apps.inspections import document_utils as doc_utils
+                session_obj = InspectionSession.objects.filter(session_id=session_id).first()
+                if session_obj:
+                    session_obj.has_ooc = True
+                    session_obj.save(update_fields=['has_ooc'])
+                    doc_utils.update_document(session_obj, {'rejected_parameters': failed_codes}, save=True)
             except Exception as e:
                 logger.warning("Could not update rejected_parameters on session %s: %s", session_id, e)
 
