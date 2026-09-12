@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
 import { useCompany } from '../context/CompanyContext';
 import { getCompanyDetails, updateCompanyDetails, getCompanyPlants } from '../api/company';
@@ -25,6 +26,7 @@ export default function CompanyDetailsPage() {
     phone: '',
     address: '',
     gstin: '',
+    logo_url: '',
     industry_type: '',
     shift_hours: 8,
     total_shifts_per_day: 3,
@@ -69,6 +71,7 @@ export default function CompanyDetailsPage() {
           phone: primary.phone || '',
           address: primary.address || '',
           gstin: primary.gstin || '',
+          logo_url: primary.logo_url || '',
           industry_type: primary.industry_type || '',
           shift_hours: shiftHrs,
           total_shifts_per_day: shiftsPerDay,
@@ -151,6 +154,7 @@ export default function CompanyDetailsPage() {
 
       <div className="page-content bg-gradient-animated">
         <div style={{ maxWidth: 980, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <Breadcrumbs items={[{ label: 'Company Details & Profile' }]} />
 
           {/* ── Sub-Navigation Tabs ────────────────────────────────────────────── */}
           <div
@@ -308,6 +312,45 @@ export default function CompanyDetailsPage() {
                     placeholder="27AAAAA0000A1Z5"
                   />
                 </div>
+              </div>
+
+              {/* Row: Company Logo URL */}
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Company Logo URL (Used in Form DKI/MR/F/05 Headers & PDFs)</label>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <input
+                    className="form-input"
+                    name="logo_url"
+                    value={company.logo_url || ''}
+                    onChange={handleChange}
+                    placeholder="https://example.com/logo.png or /assets/logo.png"
+                    style={{ flex: 1 }}
+                  />
+                  {company.logo_url && (
+                    <div style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                      backgroundColor: '#ffffff',
+                      padding: 2,
+                    }}>
+                      <img
+                        src={company.logo_url}
+                        alt="Logo"
+                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, display: 'block' }}>
+                  Auto-rendered into DCR Note (Form DKI/MR/F/05) headers and official quality PDF exports.
+                </span>
               </div>
 
               {/* Row 4: Registered Address */}

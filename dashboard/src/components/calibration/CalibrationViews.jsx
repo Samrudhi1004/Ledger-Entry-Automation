@@ -313,7 +313,7 @@ export function CalibrationDashboard({ summary, equipment, selectedFilter, onFil
     <>
       <div className="calibration-notification-toolbar">
         <span className="text-xs text-muted">{summary.total_equipment} registered equipment · {summary.repair_equipment} awaiting recalibration</span>
-        <button type="button" className="calibration-notification-button" onClick={() => setNotificationOpen(true)} aria-label={`Open ${notifications.length} calibration notifications`}><BellRing size={18} aria-hidden="true" /><span>Notifications</span><strong>{notifications.length}</strong></button>
+        <button type="button" className="calibration-notification-button" onClick={() => setNotificationOpen(true)} aria-label={`Open ${notifications.length} calibration notifications`}><BellRing size={18} aria-hidden="true" /><span>Notifications</span><strong className={notifications.length === 0 ? 'zero' : ''}>{notifications.length}</strong></button>
       </div>
 
       <div className="stat-grid calibration-stat-grid" aria-label="Calibration summary filters">

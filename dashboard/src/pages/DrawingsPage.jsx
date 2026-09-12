@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { getDrawings, createDrawing, uploadDrawingVersion, getDrawingHistory, deleteDrawing, getParts } from '../api/parts';
 import { useAuth } from '../context/AuthContext';
+import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 
 export default function DrawingsPage() {
   const { user } = useAuth();
@@ -201,62 +203,60 @@ export default function DrawingsPage() {
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-      {/* Back button & Breadcrumb */}
-      <div style={{ marginBottom: '16px' }}>
-        <NavLink 
-          to="/development" 
-          style={{ 
-            display: 'inline-flex', 
-            alignItems: 'center', 
-            gap: '6px', 
-            color: '#6d28d9', 
-            fontWeight: '600', 
-            textDecoration: 'none',
-            fontSize: '14px' 
-          }}
-        >
-          <ArrowLeft size={16} /> Back to Development Module
-        </NavLink>
-      </div>
+    <>
+      <Header
+        title="Engineering Drawings"
+        subtitle="Upload CAD/PDF drawings, link drawings to part numbers or general files, and inspect revision history"
+      />
 
-      {/* Header Strip with Action */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '20px',
-        flexWrap: 'wrap',
-        gap: '16px'
-      }}>
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', margin: 0 }}>Engineering Drawings Repository</h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#64748b' }}>
-            Upload CAD/PDF drawings, link drawings to part numbers or general files, and inspect complete revision histories.
-          </p>
+      <div className="page-content bg-gradient-animated">
+        <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+          <Breadcrumbs items={[{ label: 'Development', to: '/development' }, { label: 'Drawing Management' }]} />
+        {/* Back button & Action Toolbar */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '20px',
+          flexWrap: 'wrap',
+          gap: '16px'
+        }}>
+          <NavLink 
+            to="/development" 
+            style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              color: '#4f46e5', 
+              fontWeight: '600', 
+              textDecoration: 'none',
+              fontSize: '14px' 
+            }}
+          >
+            <ArrowLeft size={16} /> Back to Development Module
+          </NavLink>
+
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            style={{
+              background: '#4f46e5',
+              color: '#ffffff',
+              padding: '10px 20px',
+              borderRadius: '10px',
+              fontWeight: '700',
+              border: 'none',
+              fontSize: '14px',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <Upload size={18} />
+            <span>Upload New Drawing</span>
+          </button>
         </div>
-
-        <button
-          onClick={() => setIsUploadModalOpen(true)}
-          style={{
-            background: '#4f46e5',
-            color: '#ffffff',
-            padding: '10px 20px',
-            borderRadius: '10px',
-            fontWeight: '700',
-            border: 'none',
-            fontSize: '14px',
-            cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Upload size={18} />
-          <span>Upload New Drawing</span>
-        </button>
-      </div>
 
       {/* Notifications */}
       {successMsg && (
@@ -887,6 +887,8 @@ export default function DrawingsPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+      </div>
+    </>
   );
 }

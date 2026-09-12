@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import { Cpu, FileText, ArrowRight, ShieldCheck, Clock, Gauge } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -86,15 +87,15 @@ export default function QualityAnalyzerPage() {
       />
 
       <div className="page-content bg-gradient-animated" style={{ padding: '24px' }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-            gap: '24px',
-            maxWidth: '1200px',
-            margin: '0 auto',
-          }}
-        >
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <Breadcrumbs items={[{ label: 'Quality Analyzer' }]} />
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+              gap: '24px',
+            }}
+          >
           {reportCards.map((card) => {
             const CardIcon = card.icon;
             const isDisabled = card.disabled || !card.link;
@@ -214,6 +215,7 @@ export default function QualityAnalyzerPage() {
               </div>
             );
           })}
+          </div>
         </div>
       </div>
     </>

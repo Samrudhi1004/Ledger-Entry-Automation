@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import Badge from '../components/common/Badge';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Modal from '../components/common/Modal';
@@ -145,9 +146,7 @@ export default function SessionDetailPage() {
       <div className="page-content bg-gradient-animated">
         {/* Breadcrumb & Action Button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div className="page-breadcrumb">
-            <Link to="/">Dashboard</Link> / <span>Session {sessionId.slice(-8).toUpperCase()}</span>
-          </div>
+          <Breadcrumbs items={[{ label: 'Inspections', to: '/inspections' }, { label: `Session ${sessionId.slice(-8).toUpperCase()}` }]} className="mb-0" />
 
           <button
             id="print-official-report-btn"

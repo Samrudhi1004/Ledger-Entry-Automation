@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Badge from '../components/common/Badge';
 import LiveSheetViewer from '../components/inspection/LiveSheetViewer';
@@ -94,6 +95,7 @@ export default function MachinesPage() {
       />
 
       <div className="page-content bg-gradient-animated">
+        <Breadcrumbs items={[{ label: 'Machines' }]} />
         {/* Machine Table with Live Status */}
         <div className="card">
           <h3 className="section-title mb-16">

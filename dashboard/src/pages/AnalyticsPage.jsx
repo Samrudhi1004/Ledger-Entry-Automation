@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Header from '../components/layout/Header';
+import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { getReport, getDailyCompletedReports } from '../api/analytics';
 import { getSessionDetail } from '../api/inspections';
@@ -139,6 +140,7 @@ export default function AnalyticsPage() {
       <Header title="First PC Inspection & In process Reports" subtitle="Historical archive of 100% completed daily inspection reports" />
 
       <div className="page-content bg-gradient-animated">
+        <Breadcrumbs items={[{ label: 'Reports', to: '/reports' }, { label: 'First PC & In-Process Reports' }]} />
         {/* Filter Card */}
         <div className="card mb-20">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>

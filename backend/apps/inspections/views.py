@@ -347,7 +347,14 @@ class PendingReviewView(generics.ListAPIView):
 
     def get_queryset(self):
         qs = InspectionSession.objects.select_related(
-            'part', 'machine', 'operator', 'supervisor'
+            'part',
+            'machine',
+            'machine__plant',
+            'machine__plant__factory',
+            'operator',
+            'supervisor',
+            'finalized_by',
+            'template',
         ).filter(status=InspectionSession.Status.PENDING_REVIEW)
 
         plant_id = self.request.query_params.get('plant')
@@ -413,7 +420,14 @@ class SessionListView(generics.ListAPIView):
         )
 
         qs = InspectionSession.objects.select_related(
-            'part', 'machine', 'operator', 'supervisor', 'finalized_by', 'template'
+            'part',
+            'machine',
+            'machine__plant',
+            'machine__plant__factory',
+            'operator',
+            'supervisor',
+            'finalized_by',
+            'template',
         ).annotate(template_name=template_name_subquery)
 
         status_filter   = self.request.query_params.get('status')
@@ -485,7 +499,14 @@ class RejectionsListView(generics.ListAPIView):
 
     def get_queryset(self):
         qs = InspectionSession.objects.select_related(
-            'part', 'machine', 'operator', 'supervisor'
+            'part',
+            'machine',
+            'machine__plant',
+            'machine__plant__factory',
+            'operator',
+            'supervisor',
+            'finalized_by',
+            'template',
         ).filter(
             status=InspectionSession.Status.REJECTED,
             trial_number__lt=3,
