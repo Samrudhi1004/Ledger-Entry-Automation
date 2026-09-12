@@ -47,6 +47,17 @@ EQUIPMENT = [
     ('Digital Force Gauge', 'Force', 'Mark-10', 'M5-500', '0-500 N', '0.1 N', '±0.2%', 'Quality', 'Material Lab'),
 ]
 
+DEMO_WORKFLOW_CASES = (
+    ('DEMO-DUE-01', 'Thread Ring Gauge', 1, CalibrationEquipment.State.ACTIVE, '', 'Due tomorrow'),
+    ('DEMO-DUE-03', 'Infrared Thermometer', 3, CalibrationEquipment.State.ACTIVE, '', 'Due within 3 days'),
+    ('DEMO-DUE-07', 'Digital Pressure Calibrator', 7, CalibrationEquipment.State.ACTIVE, '', 'Due within 7 days'),
+    ('DEMO-DUE-10', 'Master Setting Ring', 10, CalibrationEquipment.State.ACTIVE, '', 'Due within 15 days'),
+    ('DEMO-DUE-15', 'Depth Micrometer', 15, CalibrationEquipment.State.ACTIVE, '', 'Due within 15 days'),
+    ('DEMO-DUE-21', 'Slip Gauge Set', 21, CalibrationEquipment.State.ACTIVE, '', 'Due within 30 days'),
+    ('DEMO-DUE-30', 'Dial Test Indicator', 30, CalibrationEquipment.State.ACTIVE, '', 'Due within 30 days'),
+    ('DEMO-REJECTED', 'Bimetal Thermometer', -4, CalibrationEquipment.State.REJECTED, '', 'Rejected — select a disposition'),
+)
+
 
 class Command(BaseCommand):
     help = 'Create or refresh a complete calibration demo data set.'
@@ -66,7 +77,7 @@ class Command(BaseCommand):
             previous_plan = date(previous_year, month, day)
             current_plan = date(current_year, month, day)
             previous_actual = previous_plan + timedelta(days=(index - 1) % 3)
-            current_actual = current_plan + timedelta(days=(index - 1) % 3)
+            current_actual = current_plan + timedelta(days=1 if index % 3 == 0 else 0)
             current_is_complete = current_actual <= today
             latest_calibration = current_actual if current_is_complete else previous_actual
             next_calibration = latest_calibration + timedelta(days=365) if current_is_complete else current_plan
@@ -125,11 +136,111 @@ class Command(BaseCommand):
                     defaults={'remarks': f'Next calibration due after {current_year} completion'},
                 )
 
+        self._create_workflow_samples(today, calibrator)
+
         self.stdout.write(self.style.SUCCESS(
-            f'Calibration demo data is ready: {len(EQUIPMENT)} equipment, '
+            f'Calibration demo data is ready: {len(EQUIPMENT) + len(DEMO_WORKFLOW_CASES)} equipment, '
             f'{len(EQUIPMENT)} accepted histories for {previous_year}, '
-            f'{accepted_this_year} accepted histories through {today:%d %b %Y}, and no rejections.'
+            f'{accepted_this_year} accepted histories through {today:%d %b %Y}, '
+            f'plus {len(DEMO_WORKFLOW_CASES)} workflow cases.'
         ))
+
+    @staticmethod
+    def _create_workflow_samples(today, calibrator):
+        samples = (
+            ('CAL-033', today - timedelta(days=10), CalibrationEquipment.State.ACTIVE, ''),
+            ('CAL-034', today, CalibrationEquipment.State.ACTIVE, ''),
+            ('CAL-035', today - timedelta(days=5), CalibrationEquipment.State.REPAIR, CalibrationRecord.Disposition.REPAIR),
+            ('CAL-036', today - timedelta(days=7), CalibrationEquipment.State.SCRAPPED, CalibrationRecord.Disposition.SCRAPPED),
+        )
+        for equipment_id, planned_date, state, disposition in samples:
+            equipment = CalibrationEquipment.objects.get(equipment_id=equipment_id)
+            accepted_dates = equipment.calibration_records.filter(
+                result=CalibrationRecord.Result.ACCEPTED,
+            ).values('planned_date')
+            equipment.calibration_plan_entries.exclude(
+                planned_date__in=accepted_dates,
+            ).delete()
+            CalibrationPlanEntry.objects.update_or_create(
+                equipment=equipment,
+                planned_date=planned_date,
+                defaults={'remarks': f'Demo {state} workflow sample'},
+            )
+            equipment.next_calibration_date = planned_date
+            equipment.state = state
+            equipment.is_failed = state in {
+                CalibrationEquipment.State.REPAIR,
+                CalibrationEquipment.State.SCRAPPED,
+            }
+            equipment.failed_date = planned_date if equipment.is_failed else None
+            equipment.failure_remark = 'Demo rejected calibration' if equipment.is_failed else ''
+            equipment.save(update_fields=[
+                'next_calibration_date', 'state', 'is_failed', 'failed_date',
+                'failure_remark', 'updated_at',
+            ])
+            if disposition:
+                CalibrationRecord.objects.update_or_create(
+                    equipment=equipment,
+                    planned_date=planned_date,
+                    defaults={
+                        'calibration_date': planned_date,
+                        'result': CalibrationRecord.Result.REJECTED,
+                        'disposition': disposition,
+                        'calibration_agency': 'Demo Calibration Lab',
+                        'remarks': 'Rejected during demo calibration.',
+                        'recorded_by': calibrator,
+                    },
+                )
+
+        for index, (equipment_id, name, due_offset, state, disposition, remarks) in enumerate(DEMO_WORKFLOW_CASES, start=1):
+            planned_date = today + timedelta(days=due_offset)
+            previous_plan = planned_date - timedelta(days=365)
+            previous_actual = previous_plan + timedelta(days=1)
+            equipment, _ = CalibrationEquipment.objects.update_or_create(
+                equipment_id=equipment_id,
+                defaults={
+                    'equipment_name': name,
+                    'equipment_type': 'Demo Calibration',
+                    'serial_number': f'DEMO-WF-{index:03d}',
+                    'manufacturer': 'Demo Instruments',
+                    'model_number': f'WF-{index:02d}',
+                    'range_size': 'Demo range',
+                    'least_count': 'Demo resolution',
+                    'acceptable_error': 'Within stated tolerance',
+                    'acceptance_criteria': 'Demonstration instrument for calibration workflow testing.',
+                    'history_card_number': f'HC-{equipment_id}',
+                    'department': 'Quality',
+                    'location': 'Demo Lab',
+                    'calibration_frequency_days': 365,
+                    'last_calibration_date': previous_actual,
+                    'next_calibration_date': planned_date,
+                    'remarks': remarks,
+                    'state': state,
+                    'is_failed': state != CalibrationEquipment.State.ACTIVE,
+                    'failed_date': planned_date if state != CalibrationEquipment.State.ACTIVE else None,
+                    'failure_remark': remarks if state != CalibrationEquipment.State.ACTIVE else '',
+                },
+            )
+            equipment.calibration_records.all().delete()
+            equipment.calibration_plan_entries.all().delete()
+            CalibrationPlanEntry.objects.create(equipment=equipment, planned_date=previous_plan, remarks='Demo historical calibration')
+            CalibrationPlanEntry.objects.create(equipment=equipment, planned_date=planned_date, remarks=remarks)
+            Command._save_accepted_record(
+                equipment, 100 + index, previous_plan, previous_actual, planned_date,
+                previous_plan.year, calibrator,
+            )
+            if state != CalibrationEquipment.State.ACTIVE:
+                CalibrationRecord.objects.create(
+                    equipment=equipment,
+                    planned_date=planned_date,
+                    calibration_date=planned_date,
+                    result=CalibrationRecord.Result.REJECTED,
+                    disposition=disposition,
+                    calibration_agency='Demo Calibration Lab',
+                    certificate_number=f'DEMO-REJECT-{index:03d}',
+                    remarks=remarks,
+                    recorded_by=calibrator,
+                )
 
     @staticmethod
     def _save_accepted_record(equipment, index, planned_date, actual_date, next_due_date, year, calibrator):

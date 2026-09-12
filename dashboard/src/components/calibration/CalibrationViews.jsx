@@ -20,6 +20,7 @@ import {
 } from '../../utils/calibrationData';
 
 const PAGE_SIZE = 20;
+const SEEN_NOTIFICATION_STORAGE_KEY = 'calibration-seen-notifications';
 
 function CompanyReportHeader({ company, title, format }) {
   const address = [company?.address, company?.location].filter(Boolean).join(', ');
@@ -199,7 +200,7 @@ function DashboardEquipmentModal({ equipment, filter, onClose, openStatus }) {
                 <td><span className={`badge ${STATUS_BADGES[item.status] ?? 'badge-manual'}`}>{item.status}</span></td>
                 <td><div className="calibration-actions">
                   {item.state !== 'scrapped' && <button type="button" className="btn btn-primary btn-sm" onClick={() => { onClose(); openStatus(item); }}>{item.state === 'rejected' ? 'Choose Action' : item.state === 'repair' ? 'Recalibrate' : 'Record Result'}</button>}
-                  <Link className="btn btn-ghost btn-sm" to={`/calibration/equipment/${item.id}/history`}><FileClock size={14} aria-hidden="true" /> History</Link>
+                  <Link className="btn btn-ghost btn-sm" to={`/calibration/equipment/${item.id}/history`} state={{ calibrationPath: [{ label: 'Calibration Dashboard', to: '/calibration' }] }}><FileClock size={14} aria-hidden="true" /> History</Link>
                 </div></td>
               </tr>
             ))}</tbody>
@@ -260,7 +261,7 @@ function DashboardEquipmentList({ equipment, openStatus }) {
       </div>
       <div className="table-wrapper"><table className="calibration-report-table calibration-dashboard-table"><thead><tr><th>Equipment</th><th>History Card No.</th><th>Department / Location</th><th>Next Calibration</th><th>Status</th><th>Actions</th></tr></thead><tbody>
         {visible.length === 0 ? <tr><td colSpan="6">No equipment matches the current filters.</td></tr> : visible.map((item) => <tr key={item.id}>
-          <td><strong>{item.equipment_id}</strong><br /><span className="text-xs text-muted">{item.equipment_name}</span></td><td>{item.history_card_number || '—'}</td><td>{[item.department, item.location].filter(Boolean).join(' / ') || '—'}</td><td>{formatDate(item.next_calibration_date)}</td><td><span className={`badge ${STATUS_BADGES[item.status] ?? 'badge-manual'}`}>{item.status}</span></td><td><div className="calibration-actions">{item.state !== 'scrapped' && <button type="button" className="btn btn-ghost btn-sm" onClick={() => openStatus(item)}>{item.state === 'rejected' ? 'Choose Action' : item.state === 'repair' ? 'Recalibrate' : 'Record Result'}</button>}<Link className="btn btn-ghost btn-sm" to={`/calibration/equipment/${item.id}/history`}><FileClock size={14} aria-hidden="true" /> History</Link></div></td>
+          <td><strong>{item.equipment_id}</strong><br /><span className="text-xs text-muted">{item.equipment_name}</span></td><td>{item.history_card_number || '—'}</td><td>{[item.department, item.location].filter(Boolean).join(' / ') || '—'}</td><td>{formatDate(item.next_calibration_date)}</td><td><span className={`badge ${STATUS_BADGES[item.status] ?? 'badge-manual'}`}>{item.status}</span></td><td><div className="calibration-actions">{item.state !== 'scrapped' && <button type="button" className="btn btn-ghost btn-sm" onClick={() => openStatus(item)}>{item.state === 'rejected' ? 'Choose Action' : item.state === 'repair' ? 'Recalibrate' : 'Record Result'}</button>}<Link className="btn btn-ghost btn-sm" to={`/calibration/equipment/${item.id}/history`} state={{ calibrationPath: [{ label: 'Calibration Dashboard', to: '/calibration' }] }}><FileClock size={14} aria-hidden="true" /> History</Link></div></td>
         </tr>)}
       </tbody></table></div>
       {filtered.length > PAGE_SIZE && <div className="calibration-pagination" aria-label="Dashboard equipment pages"><button className="btn btn-ghost btn-sm" type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1}>Previous</button><span>Page {page} of {pages}</span><button className="btn btn-ghost btn-sm" type="button" onClick={() => setPage((value) => Math.min(pages, value + 1))} disabled={page === pages}>Next</button></div>}
@@ -270,11 +271,11 @@ function DashboardEquipmentList({ equipment, openStatus }) {
 
 function NotificationModal({ notifications, onClose }) {
   return (
-    <Modal title={`Calibration Notifications (${notifications.length})`} size="lg" onClose={onClose}>
+    <Modal title={`Calibration Alerts (${notifications.length})`} size="lg" onClose={onClose}>
       <p className="calibration-status-help">Review these calibration items and take action before the next due date.</p>
       <div className="calibration-notification-list">
-        {notifications.length === 0 ? <div className="empty-state calibration-detail-empty"><CircleCheckBig className="empty-state-icon" aria-hidden="true" /><div className="empty-state-text">No active calibration notifications.</div></div> : notifications.map((item) => (
-          <Link key={item.notificationId} className={`calibration-notification-item ${item.notificationType}`} to={`/calibration/equipment/${item.id}/history`} onClick={onClose}>
+        {notifications.length === 0 ? <div className="empty-state calibration-detail-empty"><CircleCheckBig className="empty-state-icon" aria-hidden="true" /><div className="empty-state-text">No active calibration alerts.</div></div> : notifications.map((item) => (
+          <Link key={item.notificationId} className={`calibration-notification-item ${item.notificationType}`} to={`/calibration/equipment/${item.id}/history`} state={{ calibrationPath: [{ label: 'Calibration Dashboard', to: '/calibration' }] }} onClick={onClose}>
             <BellRing size={18} aria-hidden="true" /><span><strong>{item.title}</strong><small>{item.message}</small></span><ChevronRight size={16} aria-hidden="true" />
           </Link>
         ))}
@@ -293,15 +294,21 @@ export function CalibrationDashboard({ summary, equipment, selectedFilter, onFil
   const [modalFilter, setModalFilter] = useState(null);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const notifications = useMemo(() => calibrationNotifications(equipment).sort((a, b) => (a.daysRemaining ?? -1) - (b.daysRemaining ?? -1)), [equipment]);
-  const notificationFingerprint = notifications.map((item) => item.notificationId).join('|');
 
   useEffect(() => {
-    if (!notificationFingerprint) return;
-    if (sessionStorage.getItem('calibration-notifications-seen') !== notificationFingerprint) {
-      sessionStorage.setItem('calibration-notifications-seen', notificationFingerprint);
+    if (!equipment.length) return;
+    const notificationKeys = notifications.map((item) => `${item.notificationId}:${item.next_calibration_date ?? ''}`);
+    let seenKeys = [];
+    try {
+      seenKeys = JSON.parse(sessionStorage.getItem(SEEN_NOTIFICATION_STORAGE_KEY) ?? '[]');
+    } catch {
+      // Ignore an invalid old browser value and replace it below.
+    }
+    if (notificationKeys.some((key) => !seenKeys.includes(key))) {
       setNotificationOpen(true);
     }
-  }, [notificationFingerprint]);
+    sessionStorage.setItem(SEEN_NOTIFICATION_STORAGE_KEY, JSON.stringify(notificationKeys));
+  }, [equipment.length, notifications]);
 
   const showFilteredList = (filter) => {
     if (!filter) return;
@@ -313,7 +320,7 @@ export function CalibrationDashboard({ summary, equipment, selectedFilter, onFil
     <>
       <div className="calibration-notification-toolbar">
         <span className="text-xs text-muted">{summary.total_equipment} registered equipment · {summary.repair_equipment} awaiting recalibration</span>
-        <button type="button" className="calibration-notification-button" onClick={() => setNotificationOpen(true)} aria-label={`Open ${notifications.length} calibration notifications`}><BellRing size={18} aria-hidden="true" /><span>Notifications</span><strong className={notifications.length === 0 ? 'zero' : ''}>{notifications.length}</strong></button>
+        <button type="button" className="calibration-notification-button" onClick={() => setNotificationOpen(true)} aria-label={`Open ${notifications.length} calibration alerts`}><BellRing size={18} aria-hidden="true" /><span>Calibration Alerts</span><strong className={notifications.length === 0 ? 'zero' : ''}>{notifications.length}</strong></button>
       </div>
 
       <div className="stat-grid calibration-stat-grid" aria-label="Calibration summary filters">
@@ -350,7 +357,7 @@ export function EquipmentManagement({ equipment, filteredEquipment, search, stat
     <section className="card" aria-labelledby="equipment-registry-title">
       <div className="section-header calibration-section-header">
         <h2 className="section-title" id="equipment-registry-title"><span className="dot" /> Equipment Registry ({filteredEquipment.length})</h2>
-        <button className="btn btn-primary" type="button" onClick={onRegister}><Plus size={16} aria-hidden="true" /> Register Equipment</button>
+        <button className="btn btn-primary calibration-register-button" type="button" onClick={onRegister}><Plus size={16} aria-hidden="true" /> Register Equipment</button>
       </div>
       <div className="filter-bar calibration-toolbar">
         <label className="calibration-search">
@@ -383,7 +390,7 @@ function EquipmentTable({ equipment, openEdit, openStatus }) {
             <td><div className="calibration-actions">
               <button className="btn btn-ghost btn-sm" onClick={() => openEdit(item)} aria-label={`Edit ${item.equipment_id}`}><Pencil size={14} aria-hidden="true" /> Edit</button>
               {item.state !== 'scrapped' && <button className="btn btn-ghost btn-sm" onClick={() => openStatus(item)} aria-label={`Record calibration action for ${item.equipment_id}`}><ClipboardCheck size={14} aria-hidden="true" /> {item.state === 'rejected' ? 'Repair / Scrap' : item.state === 'repair' ? 'Recalibrate' : 'Record Result'}</button>}
-              <Link className="btn btn-ghost btn-sm" to={`/calibration/equipment/${item.id}/history`} aria-label={`View history card for ${item.equipment_id}`}><FileClock size={14} aria-hidden="true" /> History</Link>
+              <Link className="btn btn-ghost btn-sm" to={`/calibration/equipment/${item.id}/history`} state={{ calibrationPath: [{ label: 'Equipment Management', to: '/calibration/equipment' }] }} aria-label={`View history card for ${item.equipment_id}`}><FileClock size={14} aria-hidden="true" /> History</Link>
             </div></td>
           </tr>
         ))}</tbody>
@@ -412,6 +419,7 @@ export function EquipmentRegistryForm({ formData, formError, submitting, onChang
         title="Register Equipment"
         size="lg"
         onClose={onCancel}
+        closeOnBackdrop={false}
         footer={(
           <>
             <button className="btn btn-ghost" type="button" onClick={onCancel} disabled={submitting}>Cancel</button>
@@ -445,12 +453,25 @@ function planRemarks(row) {
   return [row.plan_remarks, row.record_remarks].filter(Boolean).join(' · ');
 }
 
-export function CalibrationPlanReport({ year, setYear, rows, company, openEditor, removeEntry, downloadPdf, downloadingPdf }) {
+function planResultLabel(row) {
+  if (row.equipment_state === 'scrapped' || row.disposition === 'scrapped') return 'Scrapped';
+  if (row.equipment_state === 'repair' || row.disposition === 'repair') return 'Under Repair';
+  return row.result;
+}
+
+function planResultClass(row) {
+  if (row.equipment_state === 'scrapped' || row.disposition === 'scrapped') return 'scrapped';
+  if (row.equipment_state === 'repair' || row.disposition === 'repair') return 'repair';
+  return row.result === 'Rejected' ? 'failed' : 'actual';
+}
+
+export function CalibrationPlanReport({ year, setYear, rows, company, equipment, openEditor, removeEntry, downloadPdf, downloadingPdf }) {
   const [search, setSearch] = useState('');
   const [resultFilter, setResultFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [dueFilter, setDueFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [detailsTarget, setDetailsTarget] = useState(null);
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
     const today = new Date();
@@ -473,8 +494,14 @@ export function CalibrationPlanReport({ year, setYear, rows, company, openEditor
   const visibleRows = filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   useEffect(() => setPage(1), [dueFilter, monthFilter, resultFilter, rows.length, search, year]);
+  useEffect(() => setPage((current) => Math.min(current, pages)), [pages]);
+
+  const openDetails = (row) => setDetailsTarget(
+    equipment.find((item) => item.id === row.equipment_pk) ?? null,
+  );
 
   return (
+    <>
     <section className="card calibration-report-card">
       <div className="section-header calibration-report-toolbar">
         <div><h2 className="section-title"><CalendarDays size={16} aria-hidden="true" /> Annual Calibration Plan</h2><p className="text-xs text-muted mt-4">Planned dates and recorded results for {year}.</p></div>
@@ -486,7 +513,7 @@ export function CalibrationPlanReport({ year, setYear, rows, company, openEditor
           </div>
           <button type="button" className="btn btn-primary" onClick={() => window.print()}><Printer size={16} aria-hidden="true" /> Print</button>
           <button type="button" className="btn btn-primary" onClick={() => downloadPdf({ search: search.trim(), result: resultFilter, month: monthFilter, due: dueFilter })} disabled={downloadingPdf}><Download size={16} aria-hidden="true" /> {downloadingPdf ? 'Generating PDF...' : 'Download PDF'}</button>
-          <button type="button" className="btn btn-primary" onClick={() => openEditor()}><Plus size={16} aria-hidden="true" /> Add Plan Entry</button>
+          <button type="button" className="btn btn-primary" onClick={() => openEditor()}><Plus size={16} aria-hidden="true" /> Change Plan</button>
         </div>
       </div>
       <div className="filter-bar calibration-toolbar calibration-plan-filters">
@@ -500,12 +527,13 @@ export function CalibrationPlanReport({ year, setYear, rows, company, openEditor
         <table className="calibration-report-table">
           <thead><tr><th>Equipment</th><th>Equipment ID</th><th>Planned Date</th><th>Actual Date</th><th>Result</th><th>Remarks</th><th>Controls</th></tr></thead>
           <tbody>{filteredRows.length === 0 ? <tr><td colSpan="7">No equipment matches the selected plan filters for {year}.</td></tr> : visibleRows.map((row) => (
-            <tr key={row.key}><td>{row.equipment_name}</td><td>{row.equipment_id}</td><td>{formatDate(row.planned_date)}</td><td>{formatDate(row.actual_date)}</td><td>{row.result}</td><td>{planRemarks(row) || '—'}</td><td><div className="calibration-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditor(row)}><Pencil size={14} aria-hidden="true" /> Edit</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEntry(row)}><Trash2 size={14} aria-hidden="true" /> Remove</button></div></td></tr>
+            <tr key={row.key}><td>{row.equipment_name}</td><td>{row.equipment_id}</td><td>{formatDate(row.planned_date)}</td><td>{formatDate(row.actual_date)}</td><td><span className={`calibration-plan-result ${planResultClass(row)}`}>{planResultLabel(row)}</span></td><td>{planRemarks(row) || '—'}</td><td><div className="calibration-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={() => openDetails(row)}><Eye size={14} aria-hidden="true" /> Details</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditor(row)}><Pencil size={14} aria-hidden="true" /> Edit</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEntry(row)}><Trash2 size={14} aria-hidden="true" /> Remove</button></div></td></tr>
           ))}</tbody>
         </table>
       </div>
       {filteredRows.length > PAGE_SIZE && <div className="calibration-pagination"><button className="btn btn-ghost btn-sm" type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1}>Previous</button><span>Page {page} of {pages}</span><button className="btn btn-ghost btn-sm" type="button" onClick={() => setPage((value) => Math.min(pages, value + 1))} disabled={page === pages}>Next</button></div>}
       <div className="calibration-print-sheet">
+        <div className="text-xs text-muted calibration-screen-only" style={{ marginBottom: 10 }}>Print preview · {filteredRows.length} matching entries</div>
         <CompanyReportHeader company={company} title={`Measuring Instrument Calibration Plan ${year}`} format={<>FORMAT NO: QA/FR/54<br />REV: 00</>} />
         <div className="table-wrapper">
           <table className="calibration-plan-template">
@@ -514,13 +542,13 @@ export function CalibrationPlanReport({ year, setYear, rows, company, openEditor
               <tr>{MONTHS.map((month) => <th key={month}>{month.slice(0, 3)}<br />'{String(year).slice(-2)}</th>)}</tr>
             </thead>
            <tbody>{filteredRows.length === 0 ? <tr><td colSpan="17">No equipment matches the selected plan filters.</td></tr> : filteredRows.map((row, index) => (
-              <Fragment key={row.key}>
-                <tr>
+               <Fragment key={row.key}>
+                 <tr>
                    <td rowSpan="2">{index + 1}</td><td rowSpan="2">{row.equipment_name}</td><td rowSpan="2">{row.equipment_id}</td><td>Plan</td>
                   {MONTHS.map((month, monthIndex) => { const day = planDateCell(row.planned_date, year, monthIndex); return <td key={month} className={day ? 'calibration-plan-mark planned' : ''}>{day || ''}</td>; })}
                   <td rowSpan="2">{planRemarks(row)}</td>
                 </tr>
-                <tr><td>Actual</td>{MONTHS.map((month, monthIndex) => { const day = planDateCell(row.actual_date, year, monthIndex); return <td key={month} className={day ? `calibration-plan-mark ${row.result === 'Rejected' ? 'failed' : 'actual'}` : ''}>{day || ''}</td>; })}</tr>
+                <tr><td>Actual</td>{MONTHS.map((month, monthIndex) => { const day = planDateCell(row.actual_date, year, monthIndex); return <td key={month} className={day ? `calibration-plan-mark ${planResultClass(row)}` : ''}>{day || ''}</td>; })}</tr>
               </Fragment>
             ))}</tbody>
           </table>
@@ -528,6 +556,19 @@ export function CalibrationPlanReport({ year, setYear, rows, company, openEditor
         <div className="calibration-plan-signatures"><span>Prepared By</span><span>Verified By</span></div>
       </div>
     </section>
+      {detailsTarget && <Modal title={`Equipment Details · ${detailsTarget.equipment_id}`} size="lg" onClose={() => setDetailsTarget(null)} footer={<button type="button" className="btn btn-ghost" onClick={() => setDetailsTarget(null)}>Close</button>}>
+        <div className="calibration-equipment-details">
+          <EquipmentDetail label="Equipment" value={detailsTarget.equipment_name} /><EquipmentDetail label="Equipment ID" value={detailsTarget.equipment_id} />
+          <EquipmentDetail label="Type" value={detailsTarget.equipment_type} /><EquipmentDetail label="History Card No." value={detailsTarget.history_card_number} />
+          <EquipmentDetail label="Manufacturer / Make" value={detailsTarget.manufacturer} /><EquipmentDetail label="Model" value={detailsTarget.model_number} />
+          <EquipmentDetail label="Range / Size" value={detailsTarget.range_size} /><EquipmentDetail label="Least Count" value={detailsTarget.least_count} />
+          <EquipmentDetail label="Frequency" value={`${detailsTarget.calibration_frequency_days} days`} /><EquipmentDetail label="Acceptance Criteria" value={detailsTarget.acceptance_criteria} />
+          <EquipmentDetail label="Department" value={detailsTarget.department} /><EquipmentDetail label="Location" value={detailsTarget.location} />
+          <EquipmentDetail label="Last Calibration" value={formatDate(detailsTarget.last_calibration_date)} /><EquipmentDetail label="Next Due" value={formatDate(detailsTarget.next_calibration_date)} />
+          <EquipmentDetail label="Equipment State" value={detailsTarget.status} />
+        </div>
+      </Modal>}
+    </>
   );
 }
 
@@ -543,14 +584,14 @@ export function CalibrationHistoryCard({ data, onViewReport, downloadPdf, downlo
   return (
     <section className="card calibration-report-card">
       <div className="section-header calibration-report-toolbar">
-        <div><h2 className="section-title"><FileClock size={16} aria-hidden="true" /> Equipment History Card</h2><p className="text-xs text-muted mt-4">Permanent calibration record for {equipment.equipment_id}.</p></div>
+        <div><h2 className="section-title"><FileClock size={16} aria-hidden="true" /> Instrument History Card</h2><p className="text-xs text-muted mt-4">Permanent calibration record for {equipment.equipment_id}.</p></div>
         <div className="calibration-report-actions">
           <button type="button" className="btn btn-primary" onClick={() => window.print()}><Printer size={16} aria-hidden="true" /> Print</button>
           <button type="button" className="btn btn-primary" onClick={downloadPdf} disabled={downloadingPdf}><Download size={16} aria-hidden="true" /> {downloadingPdf ? 'Generating PDF...' : 'Download PDF'}</button>
         </div>
       </div>
       <div className="calibration-print-sheet">
-        <CompanyReportHeader company={company} title="INSTRUMENT / GAUGE HISTORY CARD" format={<>FORMAT NO: QA/FR/10<br />REV: 00</>} />
+        <CompanyReportHeader company={company} title="INSTRUMENT HISTORY CARD" format={<>FORMAT NO: QA/FR/10<br />REV: 00</>} />
         <div className="calibration-equipment-details">
           <EquipmentDetail label="Equipment" value={equipment.equipment_name} /><EquipmentDetail label="Equipment ID" value={equipment.equipment_id} />
           <EquipmentDetail label="Type" value={equipment.equipment_type} /><EquipmentDetail label="History Card No." value={equipment.history_card_number} />

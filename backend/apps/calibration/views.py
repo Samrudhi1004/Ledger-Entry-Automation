@@ -1,14 +1,17 @@
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlencode
 
-from django.conf import settings
+from django.core import signing
 from django.db import transaction
 from django.http import HttpResponse
 from django.db.models import Count, F, OuterRef, Q, Subquery
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import content_disposition_header
 from rest_framework import generics, status
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -110,6 +113,8 @@ def _calibration_plan_rows(year, search='', result='', month='', due=''):
             'planned_date': entry.planned_date,
             'actual_date': record.calibration_date if record else None,
             'result': record.get_result_display() if record else 'Planned',
+            'disposition': record.disposition if record else '',
+            'equipment_state': entry.equipment.state,
             'certificate_number': record.certificate_number if record else '',
             'plan_remarks': entry.remarks,
             'record_remarks': record.remarks if record else '',
@@ -131,6 +136,49 @@ def _calibration_plan_rows(year, search='', result='', month='', due=''):
             }.get(due, True)
         rows = [row for row in rows if matches_due_window(row)]
     return rows
+
+
+def _unresolved_plan_entries(equipment):
+    accepted_dates = equipment.calibration_records.filter(
+        result=CalibrationRecord.Result.ACCEPTED,
+    ).values('planned_date')
+    return equipment.calibration_plan_entries.exclude(
+        planned_date__in=accepted_dates,
+    ).order_by('planned_date', 'pk')
+
+
+def _sync_equipment_next_calibration_date(equipment):
+    """Keep the dashboard date aligned with the active plan."""
+    if equipment.state == CalibrationEquipment.State.SCRAPPED:
+        return
+
+    next_planned_date = _unresolved_plan_entries(equipment).values_list(
+        'planned_date', flat=True,
+    ).first()
+    calculated_date = equipment.last_calibration_date + timedelta(days=equipment.calibration_frequency_days)
+    next_date = next_planned_date or calculated_date
+
+    if equipment.next_calibration_date != next_date:
+        equipment.next_calibration_date = next_date
+        equipment.save(update_fields=['next_calibration_date', 'updated_at'])
+
+
+def _set_unresolved_plan(equipment, planned_date, remarks=''):
+    """Create or replace the single active plan entry for an instrument."""
+    entries = _unresolved_plan_entries(equipment).select_for_update()
+    entry = entries.filter(planned_date=planned_date).first() or entries.first()
+    if entry:
+        if entry.planned_date != planned_date or entry.remarks != remarks:
+            entry.planned_date = planned_date
+            entry.remarks = remarks
+            entry.save(update_fields=['planned_date', 'remarks', 'updated_at'])
+        entries.exclude(pk=entry.pk).delete()
+    else:
+        entry = CalibrationPlanEntry.objects.create(
+            equipment=equipment, planned_date=planned_date, remarks=remarks,
+        )
+    _sync_equipment_next_calibration_date(equipment)
+    return entry
 
 
 class EquipmentListCreateView(generics.ListCreateAPIView):
@@ -155,6 +203,15 @@ class EquipmentDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = CalibrationEquipmentSerializer
     permission_classes = [IsCalibratorOrAdmin]
 
+    @transaction.atomic
+    def perform_update(self, serializer):
+        equipment = serializer.save()
+        _set_unresolved_plan(
+            equipment,
+            equipment.next_calibration_date,
+            'Updated from equipment calibration schedule',
+        )
+
 
 class RecordCalibrationResultView(APIView):
     permission_classes = [IsCalibratorOrAdmin]
@@ -173,6 +230,17 @@ class RecordCalibrationResultView(APIView):
             )
         report_file = data.pop('report_file', None)
         accepted = data['result'] == CalibrationRecord.Result.ACCEPTED
+        missing = {}
+        if not data['calibration_agency'].strip():
+            missing['calibration_agency'] = ['Calibration agency is required.']
+        if not data['certificate_number'].strip():
+            missing['certificate_number'] = ['Certificate number is required.']
+        if not report_file:
+            missing['report_file'] = ['Certificate/evidence is required.']
+        if not accepted and not data['remarks'].strip():
+            missing['remarks'] = ['Rejection reason is required.']
+        if missing:
+            return Response(missing, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             equipment = CalibrationEquipment.objects.select_for_update().get(pk=pk)
             if equipment.state == CalibrationEquipment.State.SCRAPPED:
@@ -193,7 +261,8 @@ class RecordCalibrationResultView(APIView):
                     {'calibration_date': ['Calibration result produces a due date after 2100.']},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            planned_date = equipment.next_calibration_date
+            planned_entry = _unresolved_plan_entries(equipment).first()
+            planned_date = planned_entry.planned_date if planned_entry else equipment.next_calibration_date
             if equipment.state == CalibrationEquipment.State.REPAIR:
                 rejected_record = equipment.calibration_records.filter(
                     result=CalibrationRecord.Result.REJECTED,
@@ -243,9 +312,13 @@ class RecordCalibrationResultView(APIView):
                 'updated_at',
             ])
             if accepted:
-                CalibrationPlanEntry.objects.get_or_create(
+                CalibrationPlanEntry.objects.filter(
                     equipment=equipment,
-                    planned_date=next_due_date,
+                    planned_date=planned_date,
+                ).delete()
+                _set_unresolved_plan(
+                    equipment, next_due_date,
+                    'Next calibration due after accepted result',
                 )
 
         equipment = _equipment_queryset().get(pk=equipment.pk)
@@ -304,15 +377,23 @@ class CalibrationHistoryPdfView(APIView):
         records = list(
             equipment.calibration_records.select_related('recorded_by').defer('report_file')
         )
+        report_links = {}
+        for record in records:
+            if not record.report_file_name:
+                continue
+            token = signing.dumps(record.pk, salt='calibration-report')
+            report_links[record.pk] = request.build_absolute_uri(
+                reverse('calibration-report-download', args=[record.pk])
+            ) + '?' + urlencode({'token': token})
         response = HttpResponse(
             generate_history_card_pdf(
-                equipment, records, _company_details(), settings.FRONTEND_URL,
+                equipment, records, _company_details(), report_links,
             ),
             content_type='application/pdf',
         )
         filename = equipment.equipment_id.replace('/', '-')
         response['Content-Disposition'] = content_disposition_header(
-            True, f'Gauge_History_Card_{filename}.pdf'
+            True, f'Instrument_History_Card_{filename}.pdf'
         )
         return response
 
@@ -320,7 +401,20 @@ class CalibrationHistoryPdfView(APIView):
 class CalibrationReportDownloadView(APIView):
     permission_classes = [IsCalibratorOrAdmin]
 
+    def get_permissions(self):
+        if self.request.query_params.get('token'):
+            return [AllowAny()]
+        return super().get_permissions()
+
     def get(self, request, pk):
+        token = request.query_params.get('token')
+        if token:
+            try:
+                signed_pk = signing.loads(token, salt='calibration-report')
+            except signing.BadSignature:
+                return Response({'detail': 'Invalid evidence link.'}, status=status.HTTP_403_FORBIDDEN)
+            if signed_pk != pk:
+                return Response({'detail': 'Invalid evidence link.'}, status=status.HTTP_403_FORBIDDEN)
         record = get_object_or_404(CalibrationRecord, pk=pk)
         if not record.report_file:
             return Response({'detail': 'No certificate or evidence is attached.'}, status=status.HTTP_404_NOT_FOUND)
@@ -351,17 +445,30 @@ class CalibrationPlanView(APIView):
         })
 
     def post(self, request):
-        serializer = CalibrationPlanEntrySerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            equipment_pk = int(request.data.get('equipment'))
+        except (TypeError, ValueError):
+            return Response(
+                {'equipment': ['Select valid equipment.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         with transaction.atomic():
+            equipment = get_object_or_404(
+                CalibrationEquipment.objects.select_for_update(),
+                pk=equipment_pk,
+            )
+            unresolved = _unresolved_plan_entries(equipment).select_for_update()
+            current = unresolved.filter(
+                planned_date=request.data.get('planned_date'),
+            ).first() or unresolved.first()
+            serializer = CalibrationPlanEntrySerializer(current, data=request.data)
+            serializer.is_valid(raise_exception=True)
             entry = serializer.save()
-            equipment = CalibrationEquipment.objects.select_for_update().get(pk=entry.equipment_id)
-            if equipment.state == CalibrationEquipment.State.ACTIVE and entry.planned_date < equipment.next_calibration_date:
-                equipment.next_calibration_date = entry.planned_date
-                equipment.save(update_fields=['next_calibration_date', 'updated_at'])
+            unresolved.exclude(pk=entry.pk).delete()
+            _sync_equipment_next_calibration_date(equipment)
         return Response(
             CalibrationPlanEntrySerializer(entry).data,
-            status=status.HTTP_201_CREATED,
+            status=status.HTTP_200_OK if current else status.HTTP_201_CREATED,
         )
 
 
@@ -399,25 +506,21 @@ class CalibrationPlanEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     @transaction.atomic
     def perform_update(self, serializer):
-        previous_date = serializer.instance.planned_date
+        previous_equipment_id = serializer.instance.equipment_id
         entry = serializer.save()
-        equipment = CalibrationEquipment.objects.select_for_update().get(pk=entry.equipment_id)
-        if previous_date == equipment.next_calibration_date:
-            equipment.next_calibration_date = entry.planned_date
-            equipment.save(update_fields=['next_calibration_date', 'updated_at'])
+        equipment_ids = sorted({previous_equipment_id, entry.equipment_id})
+        equipment_by_id = {
+            equipment.pk: equipment
+            for equipment in CalibrationEquipment.objects.select_for_update().filter(pk__in=equipment_ids)
+        }
+        for equipment_id in equipment_ids:
+            _sync_equipment_next_calibration_date(equipment_by_id[equipment_id])
 
     @transaction.atomic
     def perform_destroy(self, instance):
         equipment = CalibrationEquipment.objects.select_for_update().get(pk=instance.equipment_id)
-        was_current = instance.planned_date == equipment.next_calibration_date
         instance.delete()
-        if was_current:
-            replacement = equipment.calibration_plan_entries.filter(
-                planned_date__gte=timezone.localdate(),
-            ).order_by('planned_date').first()
-            if replacement:
-                equipment.next_calibration_date = replacement.planned_date
-                equipment.save(update_fields=['next_calibration_date', 'updated_at'])
+        _sync_equipment_next_calibration_date(equipment)
 
 
 class CalibrationSummaryView(APIView):
