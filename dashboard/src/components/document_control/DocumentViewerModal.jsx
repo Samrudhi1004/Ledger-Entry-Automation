@@ -100,8 +100,6 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px', fontSize: '12px', color: '#64748b' }}>
                 <span><strong>Code:</strong> {doc.document_number}</span>
                 <span>•</span>
-                <span><strong>Category:</strong> {doc.category_name || 'General'}</span>
-                <span>•</span>
                 <span><strong>Uploaded by:</strong> {doc.uploaded_by_name || 'System'}</span>
                 {doc.file_size_display && (
                   <>

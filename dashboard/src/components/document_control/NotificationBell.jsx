@@ -73,7 +73,7 @@ export default function NotificationBell() {
       console.error("Failed to mark notification read", e);
     }
     setIsOpen(false);
-    navigate('/document-control/dcr');
+    navigate('/document-control/dcr?tab=action_required');
   };
 
   const handleMarkAllRead = async () => {

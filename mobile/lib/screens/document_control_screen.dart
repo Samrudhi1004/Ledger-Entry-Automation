@@ -254,7 +254,7 @@ class _DocumentControlScreenState extends State<DocumentControlScreen>
                 controller: _searchCtrl,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
-                  hintText: 'Search title, doc number, category...',
+                  hintText: 'Search title, doc number...',
                   hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
                   prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF94A3B8), size: 20),
                   filled: true,
@@ -424,10 +424,6 @@ class _DocumentControlScreenState extends State<DocumentControlScreen>
                     doc.revision,
                     style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
                   ),
-                  if (doc.categoryName != null) ...[
-                    const SizedBox(width: 6),
-                    Text('• ${doc.categoryName}', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                  ],
                 ],
               ),
               const SizedBox(height: 12),
