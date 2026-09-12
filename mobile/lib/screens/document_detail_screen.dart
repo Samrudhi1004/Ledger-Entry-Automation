@@ -397,7 +397,6 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
-                borderLeft: const Border(left: BorderSide(color: Color(0xFF6366F1), width: 3)),
               ),
               padding: const EdgeInsets.all(14),
               child: Row(
