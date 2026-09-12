@@ -321,7 +321,7 @@
 }
 
 /* Modal Actions */
-.modal-actions {
+.group-creation-modal .modal-actions {
   display: flex;
   gap: 0.75rem;
   padding: 1rem 1.5rem;
@@ -329,7 +329,7 @@
   background: #f9fafb;
 }
 
-.btn-cancel {
+.group-creation-modal .btn-cancel {
   flex: 1;
   padding: 0.75rem;
   border: 1px solid #d1d5db;
@@ -341,11 +341,11 @@
   transition: all 0.2s;
 }
 
-.btn-cancel:hover {
+.group-creation-modal .btn-cancel:hover {
   background: #f9fafb;
 }
 
-.btn-primary {
+.group-creation-modal .btn-primary {
   flex: 1;
   padding: 0.75rem;
   border: none;
@@ -357,11 +357,11 @@
   transition: all 0.2s;
 }
 
-.btn-primary:hover:not(:disabled) {
+.group-creation-modal .btn-primary:hover:not(:disabled) {
   background: #2563eb;
 }
 
-.btn-primary:disabled {
+.group-creation-modal .btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

@@ -103,7 +103,7 @@ export default function NotificationBell() {
       {/* Bell Trigger Button */}
       <button
         onClick={handleToggle}
-        title="DCR Notifications"
+        title="Global Notifications"
         style={{
           position: 'relative',
           width: '36px',
@@ -187,7 +187,7 @@ export default function NotificationBell() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
-                DCR Notifications
+                Global Notifications
               </span>
               {unreadCount > 0 && (
                 <span style={{
