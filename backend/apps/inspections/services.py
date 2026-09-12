@@ -1014,12 +1014,13 @@ class InspectionService:
                 doc['process_param_entries'] = setup_approval.process_param_entries
 
         # Merge measurements from related sessions (parent/child trials and hourly slots)
-        root_session_id = str(session_obj.parent_session_id) if session_obj.parent_session_id else str(session_obj.session_id)
+        root_session = session_obj.parent_session if session_obj.parent_session else session_obj
+        root_session_id = str(root_session.session_id)
 
         # Find all related sessions
         related_sessions = InspectionSession.objects.filter(
-            Q(session_id=root_session_id) |
-            Q(parent_session_id=root_session_id) |
+            Q(session_id=root_session.session_id) |
+            Q(parent_session=root_session) |
             Q(session_id=session_obj.session_id)
         ).select_related('operator', 'finalized_by')
 
@@ -1114,7 +1115,7 @@ class InspectionService:
                 'type':              'inspection.event',
                 'event':             'measurement_recorded',
                 'session_id':        str(session.session_id),
-                'parent_session_id': str(session.parent_session_id) if session.parent_session_id else '',
+                'parent_session_id': str(session.parent_session.session_id) if session.parent_session else '',
                 'machine_code':      session.machine.machine_code,
                 'part_number':       session.part.part_number,
                 'part_name':         session.part.part_name,
@@ -1149,7 +1150,7 @@ class InspectionService:
                 'type':              'inspection.event',
                 'event':             'measurement_recorded',
                 'session_id':        str(session.session_id),
-                'parent_session_id': str(session.parent_session_id) if session.parent_session_id else '',
+                'parent_session_id': str(session.parent_session.session_id) if session.parent_session else '',
                 'machine_code':      session.machine.machine_code,
                 'part_number':       session.part.part_number,
                 'part_name':         session.part.part_name,
