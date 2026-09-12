@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Optional
 
 from django.core.cache import cache
-from django.db.models import F
+from django.db.models import F, Q
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
@@ -1018,9 +1018,9 @@ class InspectionService:
 
         # Find all related sessions
         related_sessions = InspectionSession.objects.filter(
-            models.Q(session_id=root_session_id) |
-            models.Q(parent_session_id=root_session_id) |
-            models.Q(session_id=session_obj.session_id)
+            Q(session_id=root_session_id) |
+            Q(parent_session_id=root_session_id) |
+            Q(session_id=session_obj.session_id)
         ).select_related('operator', 'finalized_by')
 
         # Collect and deduplicate measurements
