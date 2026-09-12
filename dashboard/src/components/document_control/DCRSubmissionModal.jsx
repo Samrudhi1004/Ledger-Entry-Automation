@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Send, AlertCircle, CheckCircle, FileText, UserCheck, Shield } from 'lucide-react';
+import Select from 'react-select';
 import { submitDCR, getAssignableUsers, getDocuments } from '../../api/documentControl';
 import { useAuth } from '../../context/AuthContext';
 
@@ -21,13 +22,12 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
     document_description: '',
     basis_for_change: '',
     assigned_cft_reviewer: '',
-    assigned_calibrator: '',
     assigned_approver: '',
   });
 
   useEffect(() => {
     if (!doc) {
-      getDocuments({ status: 'approved' })
+      getDocuments()
         .then(res => {
           const list = res.data?.results || res.data || [];
           setDocsList(list);
@@ -87,7 +87,6 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
         document_description: form.document_description,
         basis_for_change: form.basis_for_change,
         assigned_cft_reviewer: form.assigned_cft_reviewer,
-        assigned_calibrator: form.assigned_calibrator || null,
         assigned_approver: form.assigned_approver,
       });
       setSuccessDcr(res.data);
@@ -99,14 +98,11 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
     }
   };
 
-  const adminUsers = users.filter(u => u.role === 'admin');
-  const reviewUsers = users.filter(u =>
-    u.role !== 'operator' &&
-    u.role !== 'quality_engineer' &&
-    u.role !== 'inspector' &&
-    u.id !== currentUser?.id
-  );
-
+  // Backend now handles exclusion of operator and currentUser
+  const selectOptions = users.map(u => ({
+    value: u.id,
+    label: `${u.name} (${u.role})`
+  }));
   return (
     <div style={{
       position: 'fixed',
@@ -409,59 +405,27 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
                   <UserCheck size={16} /> Assign Reviewers & Approver (Form Sign-Off)
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '14px', marginBottom: '14px' }}>
                   {/* CFT Reviewer */}
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#4b5563', marginBottom: '4px' }}>
                       CFT Reviewer <span style={{ color: '#ef4444' }}>*</span>
                     </label>
-                    <select
-                      value={form.assigned_cft_reviewer}
-                      onChange={e => setForm({ ...form, assigned_cft_reviewer: e.target.value })}
-                      disabled={loadingUsers}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '13px',
-                        backgroundColor: '#ffffff',
+                    <Select
+                      value={selectOptions.find(opt => opt.value === form.assigned_cft_reviewer) || null}
+                      onChange={selected => setForm({ ...form, assigned_cft_reviewer: selected?.value || '' })}
+                      options={selectOptions}
+                      isDisabled={loadingUsers}
+                      placeholder="-- Search / Select CFT Reviewer --"
+                      styles={{
+                        control: (base) => ({
+                          ...base,
+                          borderColor: '#cbd5e1',
+                          fontSize: '13px',
+                          borderRadius: '6px',
+                        }),
                       }}
-                    >
-                      <option value="">-- Select CFT Reviewer --</option>
-                      {reviewUsers.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {u.name} ({u.role})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Calibrator */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#4b5563', marginBottom: '4px' }}>
-                      Calibrator (Optional)
-                    </label>
-                    <select
-                      value={form.assigned_calibrator}
-                      onChange={e => setForm({ ...form, assigned_calibrator: e.target.value })}
-                      disabled={loadingUsers}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '13px',
-                        backgroundColor: '#ffffff',
-                      }}
-                    >
-                      <option value="">-- None / Select Calibrator --</option>
-                      {reviewUsers.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {u.name} ({u.role})
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
                 </div>
 
@@ -470,26 +434,21 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#4b5563', marginBottom: '4px' }}>
                     Management Representative / Admin Approver <span style={{ color: '#ef4444' }}>*</span>
                   </label>
-                  <select
-                    value={form.assigned_approver}
-                    onChange={e => setForm({ ...form, assigned_approver: e.target.value })}
-                    disabled={loadingUsers}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '13px',
-                      backgroundColor: '#ffffff',
+                  <Select
+                    value={selectOptions.find(opt => opt.value === form.assigned_approver) || null}
+                    onChange={selected => setForm({ ...form, assigned_approver: selected?.value || '' })}
+                    options={selectOptions}
+                    isDisabled={loadingUsers}
+                    placeholder="-- Search / Select Admin Approver --"
+                    styles={{
+                      control: (base) => ({
+                        ...base,
+                        borderColor: '#cbd5e1',
+                        fontSize: '13px',
+                        borderRadius: '6px',
+                      }),
                     }}
-                  >
-                    <option value="">-- Select Admin Approver --</option>
-                    {adminUsers.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} (Admin / MR)
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
 

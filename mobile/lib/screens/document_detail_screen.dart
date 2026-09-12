@@ -214,12 +214,6 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
               Container(width: 4, height: 4, decoration: const BoxDecoration(color: Color(0xFFCBD5E1), shape: BoxShape.circle)),
               const SizedBox(width: 8),
               Text(doc.revision, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-              if (doc.categoryName != null) ...[
-                const SizedBox(width: 8),
-                Container(width: 4, height: 4, decoration: const BoxDecoration(color: Color(0xFFCBD5E1), shape: BoxShape.circle)),
-                const SizedBox(width: 8),
-                Text(doc.categoryName!, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-              ],
             ],
           ),
           if (doc.description.isNotEmpty) ...[

@@ -44,7 +44,6 @@ class _DCRSubmissionSheetState extends State<DCRSubmissionSheet> {
   String _changeType = 'modification';
   Map<String, List<DCRUser>> _assignable = {};
   int? _selectedReviewerId;
-  int? _selectedCalibratorId;
   int? _selectedApproverId;
 
   bool _loadingUsers = true;
@@ -145,7 +144,6 @@ class _DCRSubmissionSheetState extends State<DCRSubmissionSheet> {
         existingRevision: _existingRevCtrl.text.trim(),
         proposedRevision: _proposedRevCtrl.text.trim(),
         reviewerId: _selectedReviewerId!,
-        calibratorId: _selectedCalibratorId,
         approverId: _selectedApproverId!,
       );
 
@@ -519,40 +517,6 @@ class _DCRSubmissionSheetState extends State<DCRSubmissionSheet> {
                       ),
                       const SizedBox(height: 14),
 
-                      // Optional Calibrator Dropdown
-                      const Text(
-                        'Calibrator (Optional for gauge / tool changes)',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF334155)),
-                      ),
-                      const SizedBox(height: 6),
-                      DropdownButtonFormField<int>(
-                        value: _selectedCalibratorId,
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                          ),
-                        ),
-                        items: [
-                          const DropdownMenuItem<int>(
-                            value: null,
-                            child: Text('None (Not calibration related)', style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8))),
-                          ),
-                          ...(_assignable['calibrators'] ?? []).map((u) {
-                            return DropdownMenuItem<int>(
-                              value: u.id,
-                              child: Text(
-                                '${u.fullName} (${u.role.replaceAll('_', ' ')})',
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                            );
-                          }),
-                        ],
-                        onChanged: (v) => setState(() => _selectedCalibratorId = v),
-                      ),
                       const SizedBox(height: 14),
 
                       // Approver Dropdown (MR / Admin)
