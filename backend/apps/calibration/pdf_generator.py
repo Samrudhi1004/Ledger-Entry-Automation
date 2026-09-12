@@ -153,7 +153,7 @@ def generate_calibration_plan_pdf(year, rows, company=None):
     return output.getvalue()
 
 
-def generate_history_card_pdf(equipment, records, company=None, frontend_url=''):
+def generate_history_card_pdf(equipment, records, company=None, report_links=None):
     output = BytesIO()
     page_width, _ = landscape(A4)
     usable_width = page_width - 12 * mm
@@ -185,9 +185,9 @@ def generate_history_card_pdf(equipment, records, company=None, frontend_url='')
     story = []
     document_header = Table([[
         Paragraph(_company_block(company), body),
-        Paragraph('INSTRUMENT / GAUGE HISTORY CARD', heading),
+        Paragraph('INSTRUMENT HISTORY CARD', heading),
         Paragraph('<b>FORMAT NO: QA/FR/10<br/>REV: 00</b>', body),
-    ]], colWidths=[usable_width * 0.2, usable_width * 0.6, usable_width * 0.2], rowHeights=[17 * mm])
+    ]], colWidths=[usable_width * 0.2, usable_width * 0.6, usable_width * 0.2], rowHeights=[13 * mm])
     document_header.setStyle(TableStyle([
         ('BOX', (0, 0), (-1, -1), 0.8, colors.black),
         ('INNERGRID', (0, 0), (-1, -1), 0.8, colors.black),
@@ -231,10 +231,10 @@ def generate_history_card_pdf(equipment, records, company=None, frontend_url='')
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 4),
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
-    story.extend([details, Spacer(1, 3 * mm)])
+    story.extend([details, Spacer(1, 1 * mm)])
 
     history_data = [[
         Paragraph('DATE', column_header), Paragraph('CALIBRATION AGENCY', column_header),
@@ -247,8 +247,8 @@ def generate_history_card_pdf(equipment, records, company=None, frontend_url='')
     else:
         for record in records:
             certificate_parts = [_text(record.certificate_number)] if record.certificate_number else []
-            if record.report_file_name and frontend_url:
-                link = f"{frontend_url.rstrip('/')}/calibration/equipment/{equipment.pk}/history?certificate={record.pk}"
+            link = (report_links or {}).get(record.pk)
+            if record.report_file_name and link:
                 certificate_parts.append(f'<link href="{_text(link)}" color="#0B57D0"><u>View Certificate</u></link>')
             detail_parts = [
                 record.calibration_details,

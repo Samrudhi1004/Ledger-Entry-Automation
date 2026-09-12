@@ -4,6 +4,7 @@ import re
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core import signing
 from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
@@ -27,7 +28,9 @@ class CalibrationDemoDataTests(TestCase):
 
         demo = CalibrationEquipment.objects.filter(equipment_id__startswith='CAL-')
         self.assertEqual(demo.count(), 36)
-        self.assertEqual(demo.filter(is_failed=True).count(), 0)
+        self.assertEqual(demo.filter(is_failed=True).count(), 2)
+        self.assertEqual(demo.filter(state='repair').count(), 1)
+        self.assertEqual(demo.filter(state='scrapped').count(), 1)
         self.assertEqual(CalibrationPlanEntry.objects.filter(
             equipment__in=demo, planned_date__year=2025,
         ).count(), 36)
@@ -40,6 +43,18 @@ class CalibrationDemoDataTests(TestCase):
         self.assertEqual(CalibrationRecord.objects.filter(
             equipment__in=demo, calibration_date__year=2026, result='accepted',
         ).count(), 24)
+        self.assertEqual(CalibrationRecord.objects.filter(
+            equipment__in=demo, calibration_date__year=2026, result='rejected',
+        ).count(), 2)
+        workflow = CalibrationEquipment.objects.filter(equipment_id__startswith='DEMO-')
+        self.assertEqual(workflow.count(), 8)
+        self.assertEqual(workflow.filter(state='active').count(), 7)
+        self.assertEqual(workflow.filter(state='rejected').count(), 1)
+        self.assertEqual(workflow.filter(state='repair').count(), 0)
+        self.assertEqual(workflow.filter(state='scrapped').count(), 0)
+        self.assertEqual(CalibrationRecord.objects.filter(
+            equipment__in=workflow, result='rejected',
+        ).count(), 1)
 
 
 def equipment_data(**overrides):
@@ -150,8 +165,12 @@ class CalibrationEquipmentApiTests(APITestCase):
                 'calibration_date': '2026-08-27',
                 'remarks': 'Damaged measuring jaw',
                 'calibration_agency': 'ABC Labs',
+                'certificate_number': 'REJ-101',
+                'report_file': SimpleUploadedFile(
+                    'rejection-evidence.pdf', b'%PDF-1.4 rejection evidence', content_type='application/pdf'
+                ),
             },
-            format='json',
+            format='multipart',
         )
 
         self.assertEqual(response.status_code, 200)
@@ -244,12 +263,17 @@ class CalibrationEquipmentApiTests(APITestCase):
         self.equipment.failure_remark = 'Temporary failure'
         self.equipment.calibration_frequency_days = 30
         self.equipment.save()
+        old_plan = CalibrationPlanEntry.objects.create(
+            equipment=self.equipment,
+            planned_date=self.equipment.next_calibration_date,
+        )
 
         response = self.client.post(
             reverse('calibration-equipment-record-result', args=[self.equipment.pk]),
             {
                 'result': 'accepted',
                 'calibration_date': '2026-08-27',
+                'calibration_agency': 'ABC Labs',
                 'certificate_number': 'CERT-101',
                 'report_file': SimpleUploadedFile(
                     'calibration-report.pdf', b'%PDF-1.4 test report', content_type='application/pdf'
@@ -276,6 +300,7 @@ class CalibrationEquipmentApiTests(APITestCase):
             equipment=self.equipment,
             planned_date=date(2026, 9, 26),
         ).exists())
+        self.assertFalse(CalibrationPlanEntry.objects.filter(pk=old_plan.pk).exists())
 
         preview = self.client.get(reverse('calibration-report-download', args=[record.pk]))
         self.assertEqual(preview.status_code, 200)
@@ -288,6 +313,14 @@ class CalibrationEquipmentApiTests(APITestCase):
         )
         self.assertEqual(download.status_code, 200)
         self.assertIn('attachment;', download['Content-Disposition'])
+
+        self.client.force_authenticate(None)
+        signed_preview = self.client.get(
+            reverse('calibration-report-download', args=[record.pk]),
+            {'token': signing.dumps(record.pk, salt='calibration-report')},
+        )
+        self.assertEqual(signed_preview.status_code, 200)
+        self.assertEqual(signed_preview.content, b'%PDF-1.4 test report')
 
     def test_result_rejects_unsupported_evidence_file(self):
         response = self.client.post(
@@ -304,6 +337,32 @@ class CalibrationEquipmentApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(CalibrationRecord.objects.filter(equipment=self.equipment).exists())
+
+    def test_accepted_result_requires_agency_certificate_and_evidence(self):
+        response = self.client.post(
+            reverse('calibration-equipment-record-result', args=[self.equipment.pk]),
+            {'result': 'accepted', 'calibration_date': '2026-08-27'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            set(response.data),
+            {'calibration_agency', 'certificate_number', 'report_file'},
+        )
+
+    def test_rejected_result_requires_evidence_and_reason(self):
+        response = self.client.post(
+            reverse('calibration-equipment-record-result', args=[self.equipment.pk]),
+            {'result': 'rejected', 'calibration_date': '2026-08-27'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            set(response.data),
+            {'calibration_agency', 'certificate_number', 'report_file', 'remarks'},
+        )
 
     def test_history_and_plan_return_permanent_records(self):
         CalibrationPlanEntry.objects.create(
@@ -399,12 +458,17 @@ class CalibrationEquipmentApiTests(APITestCase):
         )
         self.assertEqual(update_response.status_code, 200)
         self.assertEqual(update_response.data['planned_date'], '2027-04-10')
+        self.equipment.refresh_from_db()
+        self.assertEqual(self.equipment.next_calibration_date, date(2027, 4, 10))
 
         duplicate_response = self.client.post(reverse('calibration-plan'), {
             'equipment': self.equipment.pk,
             'planned_date': '2027-04-10',
         }, format='json')
-        self.assertEqual(duplicate_response.status_code, 400)
+        self.assertEqual(duplicate_response.status_code, 200)
+        self.assertEqual(
+            CalibrationPlanEntry.objects.filter(equipment=self.equipment).count(), 1,
+        )
 
         delete_response = self.client.delete(
             reverse('calibration-plan-detail', args=[entry_id])
@@ -412,6 +476,29 @@ class CalibrationEquipmentApiTests(APITestCase):
         self.assertEqual(delete_response.status_code, 204)
         self.assertFalse(CalibrationPlanEntry.objects.filter(pk=entry_id).exists())
         self.assertTrue(CalibrationEquipment.objects.filter(pk=self.equipment.pk).exists())
+
+    def test_editing_current_plan_uses_earliest_remaining_due_date(self):
+        self.equipment.last_calibration_date = date(2027, 1, 1)
+        self.equipment.next_calibration_date = date(2027, 3, 15)
+        self.equipment.save(update_fields=['last_calibration_date', 'next_calibration_date'])
+        current_entry = CalibrationPlanEntry.objects.create(
+            equipment=self.equipment,
+            planned_date=date(2027, 3, 15),
+        )
+        remaining_entry = CalibrationPlanEntry.objects.create(
+            equipment=self.equipment,
+            planned_date=date(2027, 3, 20),
+        )
+
+        response = self.client.patch(
+            reverse('calibration-plan-detail', args=[current_entry.pk]),
+            {'planned_date': '2027-12-15'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.equipment.refresh_from_db()
+        self.assertEqual(self.equipment.next_calibration_date, remaining_entry.planned_date)
 
     def test_equipment_detail_does_not_allow_delete(self):
         response = self.client.delete(
