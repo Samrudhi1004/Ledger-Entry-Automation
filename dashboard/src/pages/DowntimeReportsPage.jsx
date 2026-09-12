@@ -156,7 +156,7 @@ export default function DowntimeReportsPage() {
     const accounted = getAccountedTotal(r);
     if (expected === accounted) return "All OK";
     const diff = accounted - expected;
-    return diff > 0 ? `${diff} min more` : `${Math.abs(diff)} min less`;
+    return diff > 0 ? `Excess ${diff} mins` : `Missing ${Math.abs(diff)} mins`;
   };
 
   // SUBMIT & Save Date-Wise Downtime Report
@@ -168,6 +168,22 @@ export default function DowntimeReportsPage() {
     setSaving(true);
     setError(null);
     setSuccessMsg(null);
+
+    // Validation Check for mismatches
+    const mismatches = [];
+    reports.forEach((r, idx) => {
+      const expected = getExpectedTotal(r);
+      const accounted = getAccountedTotal(r);
+      if (expected !== accounted) {
+        mismatches.push(`Row ${idx + 1} (${r.machine_code || r.machine}): Total Down Time is ${expected} mins, but justified reasons sum to ${accounted} mins.`);
+      }
+    });
+
+    if (mismatches.length > 0) {
+      setSaving(false);
+      alert(`Mismatch Detected:\n\n${mismatches.join('\n')}\n\nPlease adjust to match.`);
+      return;
+    }
 
     try {
       const payload = reports.map((r) => ({
@@ -668,10 +684,7 @@ export default function DowntimeReportsPage() {
                         </th>
 
                         <th rowSpan={2} style={{ padding: '5px 2px', border: '1px solid #94A3B8', width: '65px', backgroundColor: '#E0F2FE', color: '#0369A1' }}>
-                          EXPECTED<br/>(MATH)
-                        </th>
-                        <th rowSpan={2} style={{ padding: '5px 2px', border: '1px solid #94A3B8', width: '65px', backgroundColor: '#E0F2FE', color: '#0369A1' }}>
-                          ACCOUNTED<br/>(SUM)
+                          TOTAL<br/>DOWN TIME
                         </th>
                         <th rowSpan={2} style={{ padding: '5px 2px', border: '1px solid #94A3B8', width: '80px' }}>
                           REMARKS
@@ -772,17 +785,10 @@ export default function DowntimeReportsPage() {
                               <input type="number" min="0" value={r.tool_problem ?? 0} onChange={(e) => handleCellChange(idx, 'tool_problem', e.target.value)} disabled={isSubmitted} style={inputStyle} />
                             </td>
 
-                            {/* EXPECTED DOWNTIME */}
+                            {/* TOTAL DOWN TIME */}
                             <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1', backgroundColor: getExpectedTotal(r) === getAccountedTotal(r) ? '#DCFCE7' : '#FEE2E2' }}>
                               <div style={{ textAlign: 'center', fontWeight: '800', color: getExpectedTotal(r) === getAccountedTotal(r) ? '#166534' : '#991B1B', fontSize: '12px' }}>
                                 {getExpectedTotal(r)}
-                              </div>
-                            </td>
-
-                            {/* ACCOUNTED DOWNTIME */}
-                            <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1', backgroundColor: '#EFF6FF' }}>
-                              <div style={{ textAlign: 'center', fontWeight: '800', color: '#0369A1', fontSize: '12px' }}>
-                                {getAccountedTotal(r)}
                               </div>
                             </td>
 

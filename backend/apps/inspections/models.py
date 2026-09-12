@@ -166,6 +166,21 @@ class DailyProductionReport(models.Model):
         ordering = ['-date', '-created_at']
 
     def save(self, *args, **kwargs):
+        # Auto-calculate target
+        if self.machine and self.machine.plant:
+            plant = self.machine.plant
+            available_time = (plant.shift_duration_hours * 60) - plant.total_break_mins
+            
+            from apps.parts.models import InspectionTemplate
+            template = InspectionTemplate.objects.filter(
+                part=self.part, name=self.operation
+            ).first()
+            if not template:
+                template = InspectionTemplate.objects.filter(part=self.part).first()
+            
+            if template and getattr(template, 'cycle_time_mins', 0) > 0:
+                self.production_target = int(available_time / template.cycle_time_mins)
+
         if self.production_target > 0:
             self.achievement_percentage = round((self.jobs_completed / self.production_target) * 100, 2)
         else:
@@ -238,6 +253,24 @@ class DowntimeReport(models.Model):
     def save(self, *args, **kwargs):
         # L5 FIX: Removed self.full_clean() here. Validation should be handled by 
         # the serializer or forms before save() is called.
+        
+        # Calculate expected downtime (Total Down Time)
+        prod = self.production_report
+        target = prod.production_target
+        produced = prod.jobs_completed
+        cycle_time = 0.0
+        
+        from apps.parts.models import InspectionTemplate
+        template = InspectionTemplate.objects.filter(
+            part=prod.part, name=prod.operation
+        ).first()
+        if not template:
+            template = InspectionTemplate.objects.filter(part=prod.part).first()
+        if template and getattr(template, 'cycle_time_mins', 0) > 0:
+            cycle_time = template.cycle_time_mins
+        
+        self.expected_downtime = max(0, int((target - produced) * cycle_time))
+
         self.total_downtime = (
             (self.no_load or 0) +
             (self.no_operator or 0) +
