@@ -50,3 +50,6 @@ Thumbs.db
 
 # Local scripts
 start.bat
+
+# Railway CLI
+.railway/

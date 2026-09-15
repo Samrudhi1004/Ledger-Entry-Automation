@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
-  getDocuments, approveDocument, rejectDocument, getDocumentHistory, getCategories,
+  getDocuments, approveDocument, rejectDocument, getDocumentHistory,
 } from '../api/documentControl';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
@@ -265,7 +265,6 @@ export default function DocumentControlApprovalsPage() {
 
                   <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                     {[
-                      { icon: '🏷️', label: doc.category_name || '—' },
                       { icon: '👤', label: `Uploaded by ${doc.uploaded_by_name}` },
                       { icon: '📅', label: formatDate(doc.created_at) },
                       { icon: '📎', label: doc.file_name || 'No file' },

@@ -1,17 +1,11 @@
 from django.contrib import admin
-from .models import Document, DocumentCategory, DocumentActivity, DocumentChangeRequest, DCRNotification
-
-
-@admin.register(DocumentCategory)
-class DocumentCategoryAdmin(admin.ModelAdmin):
-    list_display  = ['name', 'color_hex', 'created_at']
-    search_fields = ['name']
+from .models import Document, DocumentActivity, DocumentChangeRequest, DCRNotification
 
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
-    list_display   = ['document_number', 'title', 'doc_level', 'category', 'status', 'revision', 'uploaded_by', 'created_at']
-    list_filter    = ['doc_level', 'status', 'category', 'is_latest_revision']
+    list_display   = ['document_number', 'title', 'doc_level', 'status', 'revision', 'uploaded_by', 'created_at']
+    list_filter    = ['doc_level', 'status', 'is_latest_revision']
     search_fields  = ['document_number', 'title']
     readonly_fields = ['id', 'document_number', 'cloudinary_url', 'cloudinary_public_id',
                        'file_name', 'file_size', 'file_type', 'created_at', 'updated_at']

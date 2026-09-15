@@ -1,8 +1,7 @@
 """
 Document Control Models.
 
-Three models:
-  - DocumentCategory  : category/type of document (SOP, Work Instruction, etc.)
+Two models:
   - Document          : the actual document record with Cloudinary file storage
   - DocumentActivity  : immutable audit log for every action on a document
 """
@@ -11,30 +10,6 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
-
-
-class DocumentCategory(models.Model):
-    """
-    Category / type of document.
-    Examples: SOP, Work Instruction, Quality Standard, Form, Policy, ECN
-    """
-    name        = models.CharField(max_length=100, unique=True)
-    description = models.TextField(blank=True)
-    color_hex   = models.CharField(
-        max_length=7,
-        default='#6366f1',
-        help_text='Hex color code for UI badge, e.g. #6366f1'
-    )
-    created_at  = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = 'document_categories'
-        ordering = ['name']
-        verbose_name = 'Document Category'
-        verbose_name_plural = 'Document Categories'
-
-    def __str__(self):
-        return self.name
 
 
 class Document(models.Model):
@@ -67,11 +42,6 @@ class Document(models.Model):
     # Core fields
     title       = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    category    = models.ForeignKey(
-        DocumentCategory,
-        on_delete=models.PROTECT,
-        related_name='documents'
-    )
     doc_level   = models.CharField(
         max_length=2,
         choices=Level.choices,

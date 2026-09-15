@@ -2,7 +2,7 @@ import io
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
-from apps.document_control.models import Document, DocumentCategory, DocumentChangeRequest, DCRNotification
+from apps.document_control.models import Document, DocumentChangeRequest, DCRNotification
 
 User = get_user_model()
 
@@ -52,17 +52,12 @@ class DocumentControlSystemTests(TestCase):
             email='inspector@example.com'
         )
 
-        # Categories
-        self.cat_sop = DocumentCategory.objects.create(name='Standard Operating Procedures', color_hex='#0284c7')
-
-        # Documents across L1 - L4
         self.doc_l1 = Document.objects.create(
-            document_number='QM-001',
+            document_number='MANUAL-01',
             title='Quality Manual',
             doc_level='L1',
             revision='Rev A',
             status='approved',
-            category=self.cat_sop,
             uploaded_by=self.admin
         )
         self.doc_l2 = Document.objects.create(
@@ -71,7 +66,6 @@ class DocumentControlSystemTests(TestCase):
             doc_level='L2',
             revision='Rev A',
             status='approved',
-            category=self.cat_sop,
             uploaded_by=self.supervisor
         )
         self.doc_l3 = Document.objects.create(
@@ -80,7 +74,6 @@ class DocumentControlSystemTests(TestCase):
             doc_level='L3',
             revision='Rev B',
             status='approved',
-            category=self.cat_sop,
             uploaded_by=self.calibrator
         )
         self.doc_l4 = Document.objects.create(
@@ -89,7 +82,6 @@ class DocumentControlSystemTests(TestCase):
             doc_level='L4',
             revision='Rev 01',
             status='approved',
-            category=self.cat_sop,
             uploaded_by=self.admin
         )
 

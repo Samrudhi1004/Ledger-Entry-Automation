@@ -6,28 +6,6 @@ import 'api_service.dart';
 // DATA MODELS
 // ─────────────────────────────────────────────────────────────────────────────
 
-class DocumentCategory {
-  final int id;
-  final String name;
-  final String colorHex;
-  final String description;
-
-  DocumentCategory({
-    required this.id,
-    required this.name,
-    required this.colorHex,
-    required this.description,
-  });
-
-  factory DocumentCategory.fromJson(Map<String, dynamic> json) =>
-      DocumentCategory(
-        id: json['id'] as int,
-        name: json['name'] as String? ?? '',
-        colorHex: json['color_hex'] as String? ?? '#6366f1',
-        description: json['description'] as String? ?? '',
-      );
-}
-
 class Document {
   final String id;
   final String documentNumber;
@@ -36,8 +14,6 @@ class Document {
   final String status;
   final String revision;
   final String docLevel; // 'L1', 'L2', 'L3', 'L4'
-  final String? categoryName;
-  final String? categoryColor;
   final String? cloudinaryUrl;
   final String? fileName;
   final int? fileSize;
@@ -54,8 +30,6 @@ class Document {
     required this.status,
     required this.revision,
     this.docLevel = 'L2',
-    this.categoryName,
-    this.categoryColor,
     this.cloudinaryUrl,
     this.fileName,
     this.fileSize,
@@ -73,8 +47,6 @@ class Document {
         status: json['status'] as String? ?? 'draft',
         revision: json['revision'] as String? ?? 'Rev A',
         docLevel: json['doc_level'] as String? ?? 'L2',
-        categoryName: json['category_name'] as String?,
-        categoryColor: json['category_color'] as String?,
         cloudinaryUrl: json['cloudinary_url'] as String?,
         fileName: json['file_name'] as String?,
         fileSize: json['file_size'] as int?,
@@ -286,13 +258,11 @@ class DocumentControlService {
   /// Fetch list of documents. Optionally filter by [search], [category], [status], [level].
   Future<List<Document>> getDocuments({
     String? search,
-    String? category,
     String? status,
     String? level,
   }) async {
     final queryParams = <String, String>{};
     if (search != null && search.isNotEmpty) queryParams['search'] = search;
-    if (category != null && category.isNotEmpty) queryParams['category'] = category;
     if (status != null && status.isNotEmpty) queryParams['status'] = status;
     if (level != null && level.isNotEmpty) queryParams['level'] = level;
 
@@ -329,18 +299,6 @@ class DocumentControlService {
     throw Exception('Failed to load history: ${response.statusCode}');
   }
 
-  /// Fetch all categories.
-  Future<List<DocumentCategory>> getCategories() async {
-    final uri = Uri.parse('$_baseUrl/categories/');
-    final response = await http.get(uri, headers: await _headers());
-    if (response.statusCode == 200) {
-      final list = json.decode(response.body) as List;
-      return list
-          .map((e) => DocumentCategory.fromJson(e as Map<String, dynamic>))
-          .toList();
-    }
-    throw Exception('Failed to load categories: ${response.statusCode}');
-  }
 
   // ── Document Change Requests (Form DKI/MR/F/05) ────────────────────────────
 
@@ -380,25 +338,16 @@ class DocumentControlService {
     throw Exception('Failed to load DCR: ${response.statusCode}');
   }
 
-  /// Fetch assignable users (reviewers, calibrators, approvers).
+  /// Fetch assignable users (reviewers, approvers).
   Future<Map<String, List<DCRUser>>> getAssignableUsers() async {
     final uri = Uri.parse('$_baseUrl/change-requests/assignable_users/');
     final response = await http.get(uri, headers: await _headers());
     if (response.statusCode == 200) {
-      final data = json.decode(response.body) as Map<String, dynamic>;
-      final reviewers = (data['reviewers'] as List? ?? [])
-          .map((e) => DCRUser.fromJson(e as Map<String, dynamic>))
-          .toList();
-      final calibrators = (data['calibrators'] as List? ?? [])
-          .map((e) => DCRUser.fromJson(e as Map<String, dynamic>))
-          .toList();
-      final approvers = (data['approvers'] as List? ?? [])
-          .map((e) => DCRUser.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final data = json.decode(response.body) as List<dynamic>;
+      final allUsers = data.map((e) => DCRUser.fromJson(e as Map<String, dynamic>)).toList();
       return {
-        'reviewers': reviewers,
-        'calibrators': calibrators,
-        'approvers': approvers,
+        'reviewers': allUsers,
+        'approvers': allUsers,
       };
     }
     throw Exception('Failed to load assignable users: ${response.statusCode}');

@@ -3,10 +3,17 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'api_service.dart';
 
 class MessagingService {
-  static const String baseUrl = 'http://10.0.2.2:8000/api'; // Android emulator
-  static const String wsUrl = 'ws://10.0.2.2:8000'; // WebSocket URL
+  static String get baseUrl => ApiService.baseUrl;
+  static String get wsUrl {
+    if (ApiService.baseUrl.startsWith('https://')) {
+      return ApiService.baseUrl.replaceFirst('https://', 'wss://').replaceFirst('/api', '');
+    } else {
+      return ApiService.baseUrl.replaceFirst('http://', 'ws://').replaceFirst('/api', '');
+    }
+  }
 
   final _storage = const FlutterSecureStorage();
   WebSocketChannel? _channel;

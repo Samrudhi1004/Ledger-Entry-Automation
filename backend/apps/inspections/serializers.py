@@ -14,7 +14,7 @@ class StartInspectionSerializer(serializers.Serializer):
     machine_id        = serializers.IntegerField()
     template_id       = serializers.IntegerField(required=False)
     inspection_type   = serializers.CharField(required=False, default='first_piece')
-    shift             = serializers.ChoiceField(choices=['A', 'B', 'C'], default='A')
+    shift             = serializers.ChoiceField(choices=['A', 'B', 'C', 'I', 'II', 'III'], default='A')
     trial_number      = serializers.IntegerField(required=False, default=1)
     hourly_slot       = serializers.IntegerField(required=False, default=1)
     parent_session_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)

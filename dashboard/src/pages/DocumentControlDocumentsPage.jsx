@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
-  getDocuments, getCategories, uploadDocument,
+  getDocuments, uploadDocument,
   approveDocument, rejectDocument, submitForReview,
   getDocumentHistory, getDownloadUrl,
 } from '../api/documentControl';
@@ -64,9 +64,9 @@ function StatusBadge({ status }) {
 }
 
 // ── Upload Modal ──────────────────────────────────────────────────────────────
-function UploadModal({ categories, onClose, onSuccess }) {
+function UploadModal({ onClose, onSuccess }) {
   const [form, setForm] = useState({
-    title: '', description: '', category: '', doc_level: 'L2', effective_date: ''
+    title: '', description: '', doc_level: 'L2', effective_date: ''
   });
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -83,14 +83,13 @@ function UploadModal({ categories, onClose, onSuccess }) {
     e.preventDefault();
     if (!file) return setError('Please select a file.');
     if (!form.title) return setError('Title is required.');
-    if (!form.category) return setError('Category is required.');
     setLoading(true); setError('');
     try {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('title', form.title);
       fd.append('description', form.description);
-      fd.append('category', form.category);
+      fd.append('description', form.description);
       fd.append('doc_level', form.doc_level);
       if (form.effective_date) fd.append('effective_date', form.effective_date);
       await uploadDocument(fd);
@@ -171,9 +170,7 @@ function UploadModal({ categories, onClose, onSuccess }) {
             </div>
           )}
 
-          {/* Document Level & Category in 2 columns */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-            <div>
+          <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
                 Document Level (Hierarchy) *
               </label>
@@ -190,24 +187,6 @@ function UploadModal({ categories, onClose, onSuccess }) {
                 <option value="L3">L3 — Work Instruction (WI)</option>
                 <option value="L4">L4 — Form / Format / Checklist</option>
               </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
-                Category *
-              </label>
-              <select
-                value={form.category}
-                onChange={(e) => setForm(p => ({ ...p, category: e.target.value }))}
-                style={{
-                  width: '100%', padding: '9px 12px', borderRadius: '8px',
-                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: '#fff'
-                }}
-              >
-                <option value="">Select Category</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
           </div>
 
           {/* Title */}
@@ -294,10 +273,9 @@ function UploadModal({ categories, onClose, onSuccess }) {
 export default function DocumentControlDocumentsPage() {
   const { user } = useAuth();
   const [docs, setDocs] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedLevel, setSelectedLevel] = useState('ALL');
-  const [filters, setFilters] = useState({ category: '', status: '', search: '' });
+  const [filters, setFilters] = useState({ status: '', search: '' });
 
   // Modals state
   const [showUpload, setShowUpload] = useState(false);
@@ -316,7 +294,6 @@ export default function DocumentControlDocumentsPage() {
     try {
       const params = {};
       if (selectedLevel !== 'ALL') params.level = selectedLevel;
-      if (filters.category) params.category = filters.category;
       if (filters.status) params.status = filters.status;
       if (filters.search) params.search = filters.search;
 
@@ -330,12 +307,8 @@ export default function DocumentControlDocumentsPage() {
   };
 
   useEffect(() => {
-    getCategories().then(res => setCategories(res.data?.results || res.data || []));
-  }, []);
-
-  useEffect(() => {
     fetchDocs();
-  }, [selectedLevel, filters.category, filters.status, filters.search]);
+  }, [selectedLevel, filters.status, filters.search]);
 
   const openHistory = async (doc, e) => {
     e.stopPropagation();
@@ -468,17 +441,6 @@ export default function DocumentControlDocumentsPage() {
           />
         </div>
 
-        <select
-          value={filters.category}
-          onChange={(e) => setFilters(p => ({ ...p, category: e.target.value }))}
-          style={{
-            padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0',
-            fontSize: '13px', outline: 'none', background: '#fff', minWidth: '160px'
-          }}
-        >
-          <option value="">All Categories</option>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
 
         <select
           value={filters.status}
@@ -521,7 +483,7 @@ export default function DocumentControlDocumentsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-                {['Document', 'Level', 'Category', 'Rev', 'Status', 'Author', 'Effective', 'Size', 'Actions'].map(h => (
+                {['Document', 'Level', 'Rev', 'Status', 'Author', 'Effective', 'Size', 'Actions'].map(h => (
                   <th key={h} style={{
                     padding: '12px 16px', textAlign: 'left', fontSize: '11px',
                     fontWeight: '700', color: '#64748b', letterSpacing: '0.5px',
@@ -565,17 +527,6 @@ export default function DocumentControlDocumentsPage() {
                     <LevelBadge level={doc.doc_level} />
                   </td>
 
-                  {/* Category */}
-                  <td style={{ padding: '14px 16px' }}>
-                    {doc.category_name && (
-                      <span style={{
-                        background: `${doc.category_color || '#6366f1'}15`, color: doc.category_color || '#6366f1',
-                        fontSize: '12px', fontWeight: '600', padding: '3px 8px', borderRadius: '12px'
-                      }}>
-                        {doc.category_name}
-                      </span>
-                    )}
-                  </td>
 
                   {/* Revision */}
                   <td style={{ padding: '14px 16px', fontSize: '13px', color: '#334155', fontWeight: '700' }}>
@@ -656,7 +607,6 @@ export default function DocumentControlDocumentsPage() {
       {/* Upload Modal */}
       {showUpload && (
         <UploadModal
-          categories={categories}
           onClose={() => setShowUpload(false)}
           onSuccess={() => { setShowUpload(false); fetchDocs(); }}
         />

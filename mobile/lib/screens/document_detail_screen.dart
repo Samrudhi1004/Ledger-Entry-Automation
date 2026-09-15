@@ -214,12 +214,6 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
               Container(width: 4, height: 4, decoration: const BoxDecoration(color: Color(0xFFCBD5E1), shape: BoxShape.circle)),
               const SizedBox(width: 8),
               Text(doc.revision, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-              if (doc.categoryName != null) ...[
-                const SizedBox(width: 8),
-                Container(width: 4, height: 4, decoration: const BoxDecoration(color: Color(0xFFCBD5E1), shape: BoxShape.circle)),
-                const SizedBox(width: 8),
-                Text(doc.categoryName!, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-              ],
             ],
           ),
           if (doc.description.isNotEmpty) ...[
@@ -397,7 +391,6 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
-                borderLeft: const Border(left: BorderSide(color: Color(0xFF6366F1), width: 3)),
               ),
               padding: const EdgeInsets.all(14),
               child: Row(

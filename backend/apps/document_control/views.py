@@ -2,10 +2,9 @@
 Views for the Document Control module.
 
 Handles:
-  1. DocumentCategoryViewSet (CRUD for categories)
-  2. DocumentViewSet (Upload, revisions, in-app viewer metadata, levels L1-L4)
-  3. DocumentChangeRequestViewSet (Form DKI/MR/F/05 DCR workflow, reviews, approvals, rejection, PDF)
-  4. DCRNotificationViewSet (Realtime notifications, unread counts, mark as read)
+  1. DocumentViewSet (Upload, revisions, in-app viewer metadata, levels L1-L4)
+  2. DocumentChangeRequestViewSet (Form DKI/MR/F/05 DCR workflow, reviews, approvals, rejection, PDF)
+  3. DCRNotificationViewSet (Realtime notifications, unread counts, mark as read)
 """
 
 import mimetypes
@@ -38,9 +37,8 @@ try:
 except ImportError:
     FILETYPE_AVAILABLE = False
 
-from .models import Document, DocumentCategory, DocumentActivity, DocumentChangeRequest, DCRNotification
+from .models import Document, DocumentActivity, DocumentChangeRequest, DCRNotification
 from .serializers import (
-    DocumentCategorySerializer,
     DocumentListSerializer,
     DocumentDetailSerializer,
     DocumentCreateSerializer,
@@ -102,14 +100,14 @@ def _detect_mime(file):
     return mime or 'application/octet-stream'
 
 
-def _upload_to_cloudinary(file, file_type, category_name='general'):
+def _upload_to_cloudinary(file, file_type):
     """Upload document file to Cloudinary."""
     if not CLOUDINARY_AVAILABLE:
         raise RuntimeError('Cloudinary is not configured.')
 
     year = datetime.now().year
     resource_type = 'image' if file_type.startswith('image/') else 'raw'
-    folder = f'document_control/{category_name}/{year}'
+    folder = f'document_control/{year}'
 
     result = cloudinary.uploader.upload(
         file,
@@ -122,46 +120,20 @@ def _upload_to_cloudinary(file, file_type, category_name='general'):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. DocumentCategory ViewSet
-# ─────────────────────────────────────────────────────────────────────────────
-
-class DocumentCategoryViewSet(viewsets.ModelViewSet):
-    """CRUD for document categories. Read: authenticated, Write: admin only."""
-    queryset = DocumentCategory.objects.all().order_by('name')
-    serializer_class = DocumentCategorySerializer
-    permission_classes = [IsAuthenticated]
-
-    def create(self, request, *args, **kwargs):
-        if getattr(request.user, 'role', '') != 'admin':
-            return Response({'error': 'Only admins can create categories.'}, status=403)
-        return super().create(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        if getattr(request.user, 'role', '') != 'admin':
-            return Response({'error': 'Only admins can edit categories.'}, status=403)
-        return super().update(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        if getattr(request.user, 'role', '') != 'admin':
-            return Response({'error': 'Only admins can delete categories.'}, status=403)
-        return super().destroy(request, *args, **kwargs)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # 2. Document ViewSet (Includes L1-L4 Filtering and Direct In-App Viewing)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class DocumentViewSet(viewsets.ModelViewSet):
     """
     Main Document ViewSet.
-    Supports filtering by level (L1, L2, L3, L4), status, category, and text search.
+    Supports filtering by level (L1, L2, L3, L4), status, and text search.
     """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         qs = Document.objects.select_related(
-            'category', 'uploaded_by', 'approved_by', 'reviewed_by'
+            'uploaded_by', 'approved_by', 'reviewed_by'
         ).filter(is_latest_revision=True)
 
         user = self.request.user
@@ -175,10 +147,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
         # Filter by Document Level (L1, L2, L3, L4)
         if level := params.get('level'):
             qs = qs.filter(doc_level=level)
-
-        # Filter by Category
-        if category := params.get('category'):
-            qs = qs.filter(category__id=category)
 
         # Filter by Status
         if status_filter := params.get('status'):
@@ -217,11 +185,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         file_type = _detect_mime(file)
-        category = serializer.validated_data.get('category')
-        category_name = category.name.lower().replace(' ', '_') if category else 'general'
 
         try:
-            upload_result = _upload_to_cloudinary(file, file_type, category_name)
+            upload_result = _upload_to_cloudinary(file, file_type)
         except Exception as exc:
             logger.error('Cloudinary upload failed: %s', exc)
             return Response({'error': f'File upload failed: {exc}'}, status=500)
@@ -569,12 +535,15 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='approve')
     def approve(self, request, pk=None):
-        """Assigned Admin / MR grants final authorization for DCR."""
+        """Assigned Approver grants final authorization for DCR."""
         dcr = self.get_object()
         user = request.user
 
-        if getattr(user, 'role', '') != 'admin':
-            return Response({'error': 'Only Admin / Management Representative can grant final DCR approval.'}, status=403)
+        is_assigned = (dcr.assigned_approver_id == user.id)
+        is_admin = (getattr(user, 'role', '') == 'admin')
+
+        if not (is_assigned or is_admin):
+            return Response({'error': 'Only the assigned Approver or Admin can grant final DCR approval.'}, status=403)
 
         if dcr.status != DocumentChangeRequest.Status.AWAITING_APPROVAL:
             return Response({'error': f'DCR cannot be approved in status {dcr.status}. Review must be completed first.'}, status=400)
@@ -607,12 +576,15 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='reject-approval')
     def reject_approval(self, request, pk=None):
-        """Admin / MR rejects DCR at final approval stage."""
+        """Approver rejects DCR at final approval stage."""
         dcr = self.get_object()
         user = request.user
 
-        if getattr(user, 'role', '') != 'admin':
-            return Response({'error': 'Only Admin can reject DCR at approval stage.'}, status=403)
+        is_assigned = (dcr.assigned_approver_id == user.id)
+        is_admin = (getattr(user, 'role', '') == 'admin')
+
+        if not (is_assigned or is_admin):
+            return Response({'error': 'Only the assigned Approver or Admin can reject DCR at approval stage.'}, status=403)
 
         serializer = DCRRejectSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -653,10 +625,8 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='assignable-users')
     def assignable_users(self, request):
-        """Returns non-operator/inspector users for CFT, Calibrator, and Approver dropdowns."""
-        eligible_users = User.objects.exclude(
-            role__in=['operator', 'quality_engineer', 'inspector']
-        ).values('id', 'first_name', 'last_name', 'username', 'role', 'email')
+        """Returns assignable users (excludes operators and the requestor)."""
+        eligible_users = User.objects.exclude(role='operator').exclude(id=request.user.id).values('id', 'first_name', 'last_name', 'username', 'role', 'email')
 
         result = []
         for u in eligible_users:

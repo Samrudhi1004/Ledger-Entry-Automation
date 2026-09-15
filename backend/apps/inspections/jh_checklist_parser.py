@@ -214,79 +214,130 @@ def parse_jh_excel(file_bytes):
 def parse_jh_pdf(file_bytes):
     """
     Parses a PDF file using pdfplumber to extract table rows matching Form QF/MF-08.
+    Falls back to pypdf or image-based recognition if pdfplumber is unavailable.
     """
+    global pdfplumber
     if not pdfplumber:
-        raise RuntimeError("pdfplumber library is not installed on the system.")
+        try:
+            import pdfplumber
+        except ImportError:
+            pdfplumber = None
 
     items = []
     last_assembly = "1. Machine Front Side"
     sort_counter = 1
 
-    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-        for page_idx, page in enumerate(pdf.pages):
-            tables = page.extract_tables()
-            for table in tables:
-                if not table:
-                    continue
+    if pdfplumber:
+        try:
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                for page_idx, page in enumerate(pdf.pages):
+                    tables = page.extract_tables()
+                    for table in tables:
+                        if not table:
+                            continue
 
-                for row in table:
-                    clean_row = [re.sub(r'\s+', ' ', (c or '').strip()) for c in row if c is not None]
-                    row_text = " ".join(clean_row)
+                        for row in table:
+                            clean_row = [re.sub(r'\s+', ' ', (c or '').strip()) for c in row if c is not None]
+                            row_text = " ".join(clean_row)
 
-                    if any(h in row_text.lower() for h in ['monitoring sheet', 'tentative standards', 'break down', 'month & year', 'format no', 'root map']):
+                            if any(h in row_text.lower() for h in ['monitoring sheet', 'tentative standards', 'break down', 'month & year', 'format no', 'root map']):
+                                continue
+
+                            sub_no_match = re.search(r'\b(\d+\.\d+)\b', row_text)
+                            if not sub_no_match:
+                                continue
+
+                            sub_no = sub_no_match.group(1)
+
+                            for candidate in clean_row:
+                                if re.search(r'^\d+\.?\s*(machine|fixture|teach|robot|nozzle|auto)', candidate, re.IGNORECASE):
+                                    last_assembly = candidate
+                                    break
+
+                            text_cells = [c for c in clean_row if len(c) > 3 and c != last_assembly and not re.match(r'^\d+\.\d+$', c)]
+
+                            check_point = ""
+                            standard = ""
+                            if len(text_cells) >= 2:
+                                check_point = text_cells[0]
+                                standard = text_cells[1]
+                            elif len(text_cells) == 1:
+                                check_point = text_cells[0]
+                                standard = "मानक अनुसार (As per standard)"
+                            else:
+                                continue
+
+                            sub_assembly = ""
+                            for cell in clean_row:
+                                if cell in ["एफ एम एफ बोर्ड", "एफ आर एल", "फिक्सचर", "रोबोट", "केबल", "नोजल", "फ्लोमीटर"]:
+                                    sub_assembly = cell
+                                    break
+
+                            tool_type = 'VISUAL'
+                            if any('touch' in c.lower() or 'हाथ' in c for c in clean_row):
+                                tool_type = 'TOUCH'
+                            elif any('tool' in c.lower() or 'wrench' in c.lower() or 'पाना' in c for c in clean_row):
+                                tool_type = 'TOOL'
+
+                            timing_sec = "5 DPT"
+                            timing_match = re.search(r'(\d+\s*DPT|\d+\s*sec|\d+\s*min)', row_text, re.IGNORECASE)
+                            if timing_match:
+                                timing_sec = timing_match.group(1).upper()
+
+                            items.append({
+                                'sub_no': sub_no,
+                                'assembly': last_assembly,
+                                'sub_assembly': sub_assembly,
+                                'check_point': check_point,
+                                'standard': standard,
+                                'tool_type': tool_type,
+                                'rank': 'D',
+                                'frequency': 'D',
+                                'timing_sec': timing_sec,
+                                'action_clean': 'साफ' in check_point or 'clean' in check_point.lower(),
+                                'action_lubricate': 'ऑयल' in check_point or 'lub' in check_point.lower(),
+                                'action_inspect': True,
+                                'action_retighten': 'टाइट' in check_point or 'tight' in check_point.lower(),
+                                'sort_order': sort_counter,
+                            })
+                            sort_counter += 1
+        except Exception as pdf_err:
+            import logging
+            logging.getLogger(__name__).warning("pdfplumber table extraction error: %s", pdf_err)
+
+    # Fallback 1: Text extraction with pypdf
+    if not items:
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+            for page in reader.pages:
+                txt = page.extract_text() or ""
+                for line in txt.splitlines():
+                    clean_line = line.strip()
+                    if not clean_line:
                         continue
-
-                    sub_no_match = re.search(r'\b(\d+\.\d+)\b', row_text)
+                    if any(h in clean_line.lower() for h in ['monitoring sheet', 'tentative standards', 'break down', 'month & year', 'format no', 'root map']):
+                        continue
+                    sub_no_match = re.search(r'\b(\d+\.\d+)\b', clean_line)
                     if not sub_no_match:
+                        if re.search(r'^\d+\.?\s*(machine|fixture|teach|robot|nozzle|auto)', clean_line, re.IGNORECASE):
+                            last_assembly = clean_line
                         continue
-
                     sub_no = sub_no_match.group(1)
-
-                    for candidate in clean_row:
-                        if re.search(r'^\d+\.?\s*(machine|fixture|teach|robot|nozzle|auto)', candidate, re.IGNORECASE):
-                            last_assembly = candidate
-                            break
-
-                    text_cells = [c for c in clean_row if len(c) > 3 and c != last_assembly and not re.match(r'^\d+\.\d+$', c)]
-
-                    check_point = ""
-                    standard = ""
-                    if len(text_cells) >= 2:
-                        check_point = text_cells[0]
-                        standard = text_cells[1]
-                    elif len(text_cells) == 1:
-                        check_point = text_cells[0]
-                        standard = "मानक अनुसार (As per standard)"
-                    else:
-                        continue
-
-                    sub_assembly = ""
-                    for cell in clean_row:
-                        if cell in ["एफ एम एफ बोर्ड", "एफ आर एल", "फिक्सचर", "रोबोट", "केबल", "नोजल", "फ्लोमीटर"]:
-                            sub_assembly = cell
-                            break
-
-                    tool_type = 'VISUAL'
-                    if any('touch' in c.lower() or 'हाथ' in c for c in clean_row):
-                        tool_type = 'TOUCH'
-                    elif any('tool' in c.lower() or 'wrench' in c.lower() or 'पाना' in c for c in clean_row):
-                        tool_type = 'TOOL'
-
-                    timing_sec = "5 DPT"
-                    timing_match = re.search(r'(\d+\s*DPT|\d+\s*sec|\d+\s*min)', row_text, re.IGNORECASE)
-                    if timing_match:
-                        timing_sec = timing_match.group(1).upper()
-
+                    rest = clean_line.replace(sub_no, '').strip()
+                    parts = [p.strip() for p in re.split(r'\s{2,}|\t', rest) if p.strip()]
+                    check_point = parts[0] if len(parts) >= 1 else rest
+                    standard = parts[1] if len(parts) >= 2 else "मानक अनुसार (As per standard)"
                     items.append({
                         'sub_no': sub_no,
                         'assembly': last_assembly,
-                        'sub_assembly': sub_assembly,
+                        'sub_assembly': '',
                         'check_point': check_point,
                         'standard': standard,
-                        'tool_type': tool_type,
+                        'tool_type': 'VISUAL',
                         'rank': 'D',
                         'frequency': 'D',
-                        'timing_sec': timing_sec,
+                        'timing_sec': '5 DPT',
                         'action_clean': 'साफ' in check_point or 'clean' in check_point.lower(),
                         'action_lubricate': 'ऑयल' in check_point or 'lub' in check_point.lower(),
                         'action_inspect': True,
@@ -294,8 +345,11 @@ def parse_jh_pdf(file_bytes):
                         'sort_order': sort_counter,
                     })
                     sort_counter += 1
+        except Exception as pypdf_err:
+            import logging
+            logging.getLogger(__name__).warning("pypdf extraction error: %s", pypdf_err)
 
-    # Fallback for Scanned / Image-based PDFs
+    # Fallback 2 for Scanned / Image-based PDFs
     if not items:
         try:
             import pypdfium2

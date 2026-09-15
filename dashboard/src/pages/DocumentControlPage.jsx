@@ -14,7 +14,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getDocuments, getCategories, getDCRs } from '../api/documentControl';
+import { getDocuments, getDCRs } from '../api/documentControl';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 
@@ -25,22 +25,20 @@ export default function DocumentControlPage() {
   const isCalibrator = user?.role === 'calibrator';
   const canManage    = isAdmin || isSupervisor || isCalibrator;
 
-  const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, categories: 0, pendingDcr: 0 });
+  const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, pendingDcr: 0 });
 
   useEffect(() => {
     Promise.all([
       getDocuments({ status: 'approved' }).catch(() => ({ data: [] })),
       getDocuments({ status: 'under_review' }).catch(() => ({ data: [] })),
-      getCategories().catch(() => ({ data: [] })),
       getDocuments().catch(() => ({ data: [] })),
       getDCRs({ tab: 'action_required' }).catch(() => ({ data: [] })),
-    ]).then(([approved, pending, cats, all, dcrRes]) => {
+    ]).then(([approved, pending, all, dcrRes]) => {
       const getLen = (res) => (Array.isArray(res.data) ? res.data.length : (res.data?.results?.length ?? 0));
       setStats({
         total:      getLen(all),
         approved:   getLen(approved),
         pending:    getLen(pending),
-        categories: getLen(cats),
         pendingDcr: getLen(dcrRes),
       });
     });

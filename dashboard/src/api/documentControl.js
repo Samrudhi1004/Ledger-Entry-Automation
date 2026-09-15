@@ -16,11 +16,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// ── Categories ─────────────────────────────────────────────────────────────
-export const getCategories   = ()     => api.get('/categories/');
-export const createCategory  = (data) => api.post('/categories/', data);
-export const updateCategory  = (id, data) => api.patch(`/categories/${id}/`, data);
-export const deleteCategory  = (id)   => api.delete(`/categories/${id}/`);
 
 // ── Documents ──────────────────────────────────────────────────────────────
 export const getDocuments = (params = {}) => api.get('/documents/', { params });

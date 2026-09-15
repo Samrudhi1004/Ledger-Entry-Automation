@@ -6,7 +6,6 @@ from django.db import models
 from rest_framework import serializers
 from .models import (
     Document,
-    DocumentCategory,
     DocumentActivity,
     DocumentChangeRequest,
     DCRNotification,
@@ -18,18 +17,6 @@ def get_user_display(user):
         return ''
     name = f"{user.first_name} {user.last_name}".strip()
     return name or user.username
-
-
-class DocumentCategorySerializer(serializers.ModelSerializer):
-    document_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = DocumentCategory
-        fields = ['id', 'name', 'description', 'color_hex', 'created_at', 'document_count']
-        read_only_fields = ['id', 'created_at', 'document_count']
-
-    def get_document_count(self, obj):
-        return obj.documents.count()
 
 
 class DocumentActivitySerializer(serializers.ModelSerializer):
@@ -46,8 +33,6 @@ class DocumentActivitySerializer(serializers.ModelSerializer):
 
 class DocumentListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for document list views."""
-    category_name     = serializers.CharField(source='category.name', read_only=True)
-    category_color    = serializers.CharField(source='category.color_hex', read_only=True)
     doc_level_display = serializers.CharField(source='get_doc_level_display', read_only=True)
     uploaded_by_name  = serializers.SerializerMethodField()
     approved_by_name  = serializers.SerializerMethodField()
@@ -58,7 +43,6 @@ class DocumentListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'document_number', 'title', 'description',
             'doc_level', 'doc_level_display',
-            'category', 'category_name', 'category_color',
             'status', 'revision', 'revision_number', 'is_latest_revision',
             'cloudinary_url', 'file_name', 'file_size', 'file_size_display', 'file_type',
             'uploaded_by', 'uploaded_by_name',
@@ -116,15 +100,11 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = [
-            'title', 'description', 'category', 'doc_level',
+            'title', 'description', 'doc_level',
             'effective_date', 'expiry_date',
             'related_part', 'related_machine',
         ]
 
-    def validate_category(self, value):
-        if not value:
-            raise serializers.ValidationError('Category is required.')
-        return value
 
 
 # ── DCR Serializers (DKI/MR/F/05) ─────────────────────────────────────────────
@@ -174,16 +154,16 @@ class DCRCreateSerializer(serializers.ModelSerializer):
 
         if not cft:
             raise serializers.ValidationError({"assigned_cft_reviewer": "A CFT Reviewer must be assigned."})
-        if getattr(cft, 'role', '') in ['operator', 'quality_engineer']:
-            raise serializers.ValidationError({"assigned_cft_reviewer": "Reviewer cannot be an Operator or Inspector."})
+        if getattr(cft, 'role', '') == 'operator':
+            raise serializers.ValidationError({"assigned_cft_reviewer": "Reviewer cannot be an Operator."})
 
-        if cal and getattr(cal, 'role', '') in ['operator', 'quality_engineer']:
-            raise serializers.ValidationError({"assigned_calibrator": "Calibrator cannot be an Operator or Inspector."})
+        if cal and getattr(cal, 'role', '') == 'operator':
+            raise serializers.ValidationError({"assigned_calibrator": "Calibrator cannot be an Operator."})
 
         if not app:
             raise serializers.ValidationError({"assigned_approver": "An Approver must be assigned."})
-        if getattr(app, 'role', '') != 'admin':
-            raise serializers.ValidationError({"assigned_approver": "Approver must hold an Admin / MR role."})
+        if getattr(app, 'role', '') == 'operator':
+            raise serializers.ValidationError({"assigned_approver": "Approver cannot be an Operator."})
 
         return attrs
 
