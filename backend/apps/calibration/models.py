@@ -143,3 +143,14 @@ class CalibrationPlanEntry(models.Model):
 
     def __str__(self):
         return f'{self.equipment.equipment_id} - {self.planned_date}'
+
+
+class CalibrationEmailLog(models.Model):
+    key = models.CharField(max_length=180, unique=True)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'calibration_email_logs'
+
+    def __str__(self):
+        return self.key

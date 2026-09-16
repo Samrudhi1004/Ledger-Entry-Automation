@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 from django.core import signing
 from django.db import transaction
 from django.http import HttpResponse
-from django.db.models import Count, F, OuterRef, Q, Subquery
+from django.db.models import Count, OuterRef, Q, Subquery
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.users.permissions import IsCalibratorOrAdmin
+from apps.users.models import User
 from apps.machines.models import Factory
 
 from .models import CalibrationEquipment, CalibrationPlanEntry, CalibrationRecord
@@ -546,22 +547,9 @@ class CalibrationSummaryView(APIView):
             repair_equipment=Count('id', filter=Q(state=CalibrationEquipment.State.REPAIR)),
             scrapped_equipment=Count('id', filter=Q(state=CalibrationEquipment.State.SCRAPPED)),
         )
-        due_plan_equipment = CalibrationPlanEntry.objects.filter(
-            planned_date__year=today.year,
-            planned_date__lte=today,
-        ).exclude(
-            equipment__state=CalibrationEquipment.State.SCRAPPED,
-        ).values('equipment_id').distinct().count()
-        calibrated_on_time = CalibrationRecord.objects.filter(
-            planned_date__year=today.year,
-            planned_date__lte=today,
-            calibration_date__lte=F('planned_date'),
-            result=CalibrationRecord.Result.ACCEPTED,
-        ).exclude(
-            equipment__state=CalibrationEquipment.State.SCRAPPED,
-        ).values('equipment_id').distinct().count()
-        summary['calibrated_on_time'] = calibrated_on_time
+        total_equipment = summary['total_equipment']
         summary['compliance_percentage'] = round(
-            calibrated_on_time * 100 / due_plan_equipment, 1
-        ) if due_plan_equipment else 100.0
+            (total_equipment - summary['overdue_equipment']) * 100 / total_equipment,
+            1,
+        ) if total_equipment else 100.0
         return Response(summary)
