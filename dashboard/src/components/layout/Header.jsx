@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useAuth } from '../../context/AuthContext';
 import NotificationBell from '../document_control/NotificationBell';
+import BugReportModal from '../common/BugReportModal';
 
 const SHIFTS = ['A', 'B', 'C'];
 
@@ -16,6 +18,7 @@ export default function Header({
   const ws = useWebSocket();
   const connected = ws?.connected ?? false;
   const { user } = useAuth();
+  const [showBugReportModal, setShowBugReportModal] = useState(false);
 
   const roleLabels = {
     admin: 'ADMIN',
@@ -60,12 +63,18 @@ export default function Header({
           </div>
         )}
 
-        {/* WebSocket status */}
-        {showLiveStatus && (
-          <div className="ws-indicator" title={connected ? 'Live feed connected' : 'Reconnecting...'}>
-            <span className={`ws-dot${connected ? '' : ' disconnected'}`} />
-            {connected ? 'Live' : 'Offline'}
-          </div>
+        {/* Report Issue Button */}
+        <button 
+          className="btn btn-outline" 
+          onClick={() => setShowBugReportModal(true)}
+          style={{ padding: '4px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          title="Report an issue or bug"
+        >
+          <span style={{ color: '#d32f2f' }}>⚠️</span> Report Issue
+        </button>
+
+        {showBugReportModal && (
+          <BugReportModal onClose={() => setShowBugReportModal(false)} />
         )}
 
         {/* Universal Notification Bell */}

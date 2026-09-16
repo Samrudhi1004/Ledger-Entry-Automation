@@ -37,6 +37,7 @@ import DocumentControlPage from './pages/DocumentControlPage';
 import DocumentControlDocumentsPage from './pages/DocumentControlDocumentsPage';
 import DocumentControlApprovalsPage from './pages/DocumentControlApprovalsPage';
 import DocumentControlDCRPage from './pages/DocumentControlDCRPage';
+import AdminBugReportsPage from './pages/AdminBugReportsPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
 
@@ -428,6 +429,14 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor', 'calibrator']}>
             <DocumentControlDCRPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/support/bug-reports"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
+            <AdminBugReportsPage />
           </ProtectedLayout>
         }
       />

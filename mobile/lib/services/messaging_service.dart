@@ -43,7 +43,10 @@ class MessagingService {
       );
 
       if (response.statusCode == 200) {
-        return json.decode(response.body) as List;
+        final decoded = json.decode(response.body);
+        if (decoded is List) return decoded;
+        if (decoded is Map && decoded['results'] != null) return decoded['results'] as List;
+        return [];
       } else {
         throw Exception('Failed to load conversations');
       }
@@ -120,7 +123,10 @@ class MessagingService {
       );
 
       if (response.statusCode == 200) {
-        return json.decode(response.body) as List;
+        final decoded = json.decode(response.body);
+        if (decoded is List) return decoded;
+        if (decoded is Map && decoded['results'] != null) return decoded['results'] as List;
+        return [];
       } else {
         throw Exception('Failed to search users');
       }

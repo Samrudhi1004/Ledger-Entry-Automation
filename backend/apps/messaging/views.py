@@ -9,6 +9,8 @@ from django.db.models import Q, Max
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.core.cache import cache
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 from apps.messaging.models import Conversation, Message, MessageAttachment, MessageRead, MessageReaction
 from apps.messaging.serializers import (
@@ -56,6 +58,26 @@ class ConversationViewSet(viewsets.ModelViewSet):
         if self.action == 'retrieve':
             return ConversationDetailSerializer
         return ConversationSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Create conversation, returning existing one for direct messages."""
+        conv_type = request.data.get('type')
+        participant_ids = request.data.get('participant_ids', [])
+        
+        if conv_type == Conversation.Type.DIRECT and len(participant_ids) == 1:
+            other_user_id = participant_ids[0]
+            existing_conv = Conversation.objects.filter(
+                type=Conversation.Type.DIRECT,
+                participants=request.user
+            ).filter(
+                participants__id=other_user_id
+            ).first()
+            
+            if existing_conv:
+                serializer = self.get_serializer(existing_conv)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         """Create conversation with current user as creator."""
@@ -343,6 +365,20 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         message.is_deleted = True
         message.save()
+
+        # Broadcast deletion to clients in real-time
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                f'conversation_{message.conversation.id}',
+                {
+                    'type': 'message_deleted',
+                    'data': {
+                        'message_id': str(message.id),
+                        'conversation_id': str(message.conversation.id)
+                    }
+                }
+            )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

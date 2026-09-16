@@ -15,6 +15,7 @@ import 'report_sheet_screen.dart';
 import 'tasks_screen.dart';
 import 'jh_inspection_screen.dart';
 import 'document_control_screen.dart';
+import 'bug_report_screen.dart';
 
 class AppHomeScreen extends StatefulWidget {
   const AppHomeScreen({super.key});
@@ -612,6 +613,16 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                 ),
                 Row(
                   children: [
+                    IconButton(
+                      icon: const Icon(Icons.bug_report_outlined, color: Color(0xFFEF4444), size: 26),
+                      tooltip: 'Report Issue',
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const BugReportScreen()),
+                        );
+                      },
+                    ),
                     IconButton(
                       icon: const Icon(Icons.chat_outlined, color: Color(0xFF4F46E5), size: 24),
                       tooltip: 'Messages',

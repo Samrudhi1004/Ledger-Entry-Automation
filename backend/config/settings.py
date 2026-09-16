@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'apps.tasks',
     'apps.messaging',
     'apps.document_control',
+    'apps.support',
 ]
 
 # ─── Middleware ────────────────────────────────────────────────
@@ -340,6 +341,7 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'  # Not used by API 
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')  # Mailjet API Key
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')  # Mailjet API Secret
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@example.com')
+SUPPORT_EMAIL = os.getenv('SUPPORT_EMAIL', 'admin@example.com')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
 

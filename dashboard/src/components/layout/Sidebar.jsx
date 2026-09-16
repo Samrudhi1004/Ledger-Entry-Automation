@@ -109,6 +109,13 @@ const MODULES = [
       { label: 'Approvals Queue', to: '/document-control/approvals' },
     ],
   },
+  {
+    key: 'support',
+    label: 'Support & Issues',
+    icon: ShieldCheck,
+    to: '/support/bug-reports',
+    items: [],
+  },
 ];
 
 const CALIBRATION_MODULES = [

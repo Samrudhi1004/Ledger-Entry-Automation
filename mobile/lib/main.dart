@@ -31,14 +31,15 @@ class VoiceInspectionApp extends StatelessWidget {
         title: 'Inspection Hub',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
-          brightness: Brightness.dark,
-          scaffoldBackgroundColor: const Color(0xFF080C18),
+          brightness: Brightness.light,
+          scaffoldBackgroundColor: Colors.grey[50],
           primaryColor: Colors.blueAccent,
-          colorScheme: const ColorScheme.dark(
-            primary: Colors.blueAccent,
-            surface: Color(0xFF0D1424),
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.blueAccent,
+            brightness: Brightness.light,
+            surface: Colors.white,
           ),
-          textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+          textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
           useMaterial3: true,
         ),
         routes: {

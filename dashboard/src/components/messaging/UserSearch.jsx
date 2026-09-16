@@ -1,32 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMessaging } from '../../context/MessagingContext';
 import { X, Search, UserPlus } from 'lucide-react';
 import './UserSearch.css';
 
 export default function UserSearch({ onClose }) {
-  const { searchUsers, createConversation } = useMessaging();
+  const { searchUsers, createConversation, selectConversation } = useMessaging();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const handleSearch = async (searchQuery) => {
-    setQuery(searchQuery);
+  // Load all org users on mount and re-run on query change (debounced)
+  useEffect(() => {
+    const run = async () => {
+      setLoading(true);
+      const users = await searchUsers(query.trim());
+      setResults(users);
+      setLoading(false);
+    };
 
-    if (searchQuery.trim().length < 2) {
-      setResults([]);
-      return;
-    }
-
-    setLoading(true);
-    const users = await searchUsers(searchQuery);
-    setResults(users);
-    setLoading(false);
-  };
+    const timer = setTimeout(run, 250);
+    return () => clearTimeout(timer);
+  }, [query, searchUsers]);
 
   const handleStartConversation = async (userId) => {
     const conversation = await createConversation('direct', [userId]);
 
     if (conversation) {
+      selectConversation(conversation);
       onClose();
     }
   };
@@ -46,7 +46,7 @@ export default function UserSearch({ onClose }) {
           <input
             type="text"
             value={query}
-            onChange={(e) => handleSearch(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="Search users by name or email..."
             className="user-search-input"
             autoFocus

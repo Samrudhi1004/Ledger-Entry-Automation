@@ -2,12 +2,12 @@ import { useMessaging } from '../../context/MessagingContext';
 import { useAuth } from '../../context/AuthContext';
 import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { MoreVertical, Video, Download, X, Reply, Forward, Pin, Smile } from 'lucide-react';
+import { MoreVertical, Download, X, Reply, Forward, Pin, Smile, Trash2 } from 'lucide-react';
 import MessageInput from './MessageInput';
 import './ChatWindow.css';
 
 export default function ChatWindow() {
-  const { activeConversation, messages, typingUsers, onlineUsers, markAsRead, conversations, fetchConversations, updateMessageReactions, pinMessage } = useMessaging();
+  const { activeConversation, messages, typingUsers, onlineUsers, markAsRead, conversations, fetchConversations, fetchMessages, updateMessageReactions, pinMessage, deleteMessage } = useMessaging();
   const { user } = useAuth();
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -230,9 +230,6 @@ export default function ChatWindow() {
 
   const typingUsersList = Object.values(typingUsers).filter(Boolean);
 
-  const handleStartMeeting = () => {
-    window.open('https://meet.google.com/new', '_blank');
-  };
 
   const handleImageClick = (imageUrl, imageName) => {
     setLightboxImage(imageUrl);
@@ -376,6 +373,13 @@ export default function ChatWindow() {
     });
   };
 
+  const handleDelete = async (message) => {
+    closeContextMenu();
+    if (window.confirm('Are you sure you want to unsend this message?')) {
+      await deleteMessage(activeConversation.id, message.id);
+    }
+  };
+
   const handleForwardToSelected = async () => {
     if (selectedConversations.length === 0) return;
 
@@ -408,6 +412,10 @@ export default function ChatWindow() {
       if (anySucceeded) {
         // Refresh conversation list to show updated order
         await fetchConversations();
+        // If the active conversation was a forward target, refresh its messages immediately
+        if (selectedConversations.includes(activeConversation?.id)) {
+          await fetchMessages(activeConversation.id);
+        }
         closeForwardModal();
       } else {
         // Log errors but don't show alert
@@ -634,9 +642,6 @@ export default function ChatWindow() {
         </div>
 
         <div className="chat-header-actions">
-          <button className="icon-button" onClick={handleStartMeeting} title="Start Google Meet">
-            <Video size={20} />
-          </button>
           <button className="icon-button" title="More options">
             <MoreVertical size={20} />
           </button>
@@ -842,6 +847,12 @@ export default function ChatWindow() {
             <Smile size={18} />
             <span>React</span>
           </div>
+          {contextMenu.message?.sender?.id === user.id && (
+            <div className="context-menu-item delete-item" onClick={() => handleDelete(contextMenu.message)}>
+              <Trash2 size={18} />
+              <span>Unsend</span>
+            </div>
+          )}
         </div>
       )}
 

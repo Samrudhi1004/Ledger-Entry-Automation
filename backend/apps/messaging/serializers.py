@@ -61,7 +61,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'reply_to_message', 'attachments', 'read_by', 'reactions',
             'created_at', 'edited_at', 'is_deleted'
         ]
-        read_only_fields = ['id', 'sender', 'created_at', 'edited_at']
+        read_only_fields = ['id', 'sender', 'conversation', 'created_at', 'edited_at']
 
     def get_reply_to_message(self, obj):
         """Get basic info of the message being replied to."""
