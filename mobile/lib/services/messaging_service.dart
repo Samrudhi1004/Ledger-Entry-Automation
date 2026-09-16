@@ -18,8 +18,10 @@ class MessagingService {
   final _storage = const FlutterSecureStorage();
   WebSocketChannel? _channel;
   Function(Map<String, dynamic>)? onMessageReceived;
+  Function(Map<String, dynamic>)? onMessageSent;
   Function(Map<String, dynamic>)? onTypingIndicator;
   Function(Map<String, dynamic>)? onMessageRead;
+  Function(String)? onMessageDeleted;
 
   Future<String?> _getToken() async {
     return await _storage.read(key: 'access_token');
@@ -102,10 +104,10 @@ class MessagingService {
         }),
       );
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 201 || response.statusCode == 200) {
         return json.decode(response.body);
       } else {
-        throw Exception('Failed to create conversation');
+        throw Exception('Failed to create conversation: ${response.statusCode}');
       }
     } catch (e) {
       print('Error creating conversation: $e');
@@ -215,7 +217,15 @@ class MessagingService {
         print('WebSocket connected: ${data['message']}');
         break;
 
+      case 'message_sent':
+        // Server confirmation that OUR message was saved — add it to the local list
+        if (onMessageSent != null) {
+          onMessageSent!(data['data']);
+        }
+        break;
+
       case 'new_message':
+        // Message from another user in the conversation
         if (onMessageReceived != null) {
           onMessageReceived!(data['data']);
         }
@@ -233,6 +243,12 @@ class MessagingService {
         }
         break;
 
+      case 'message_deleted':
+        if (onMessageDeleted != null) {
+          onMessageDeleted!(data['data']['message_id'].toString());
+        }
+        break;
+
       case 'error':
         print('WebSocket error: ${data['message']}');
         break;
@@ -243,20 +259,85 @@ class MessagingService {
   }
 
   // Send message via WebSocket
-  void sendMessage(String content, {String messageType = 'text', String? replyTo}) {
-    if (_channel == null) {
-      print('WebSocket not connected');
-      return;
-    }
-
-    _channel!.sink.add(json.encode({
-      'action': 'send_message',
-      'data': {
-        'content': content,
-        'message_type': messageType,
-        'reply_to': replyTo,
+  Future<void> sendMessage({required String content, String messageType = 'text', String? replyTo, String? conversationId}) async {
+    if (_channel != null) {
+      _channel!.sink.add(json.encode({
+        'action': 'send_message',
+        'data': {
+          'content': content,
+          'message_type': messageType,
+          'reply_to': replyTo,
+        }
+      }));
+    } else if (conversationId != null) {
+      // Fallback to REST if WebSocket is not connected (e.g. from Meet invite)
+      try {
+        final headers = await _getHeaders();
+        await http.post(
+          Uri.parse('$baseUrl/messaging/conversations/$conversationId/messages/'),
+          headers: headers,
+          body: json.encode({
+            'content': content,
+            'message_type': messageType,
+          }),
+        );
+      } catch (e) {
+        print('Error sending message via REST: $e');
       }
-    }));
+    } else {
+      print('WebSocket not connected and no conversationId provided for REST fallback');
+    }
+  }
+
+  // Send message with attachment (REST)
+  Future<Map<String, dynamic>?> sendAttachment({
+    required String conversationId,
+    required List<int> bytes,
+    required String filename,
+    required String messageType,
+  }) async {
+    try {
+      final headers = await _getHeaders();
+      
+      // 1. Create empty message first
+      final messageRes = await http.post(
+        Uri.parse('$baseUrl/messaging/conversations/$conversationId/messages/'),
+        headers: headers,
+        body: json.encode({
+          'content': '📎 $filename',
+          'message_type': messageType,
+        }),
+      );
+
+      if (messageRes.statusCode == 201) {
+        final message = json.decode(messageRes.body);
+        final messageId = message['id'];
+
+        // 2. Upload file
+        var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/messaging/upload/'));
+        request.headers.addAll({
+          'Authorization': headers['Authorization']!,
+        });
+        request.fields['message_id'] = messageId;
+        
+        request.files.add(
+          http.MultipartFile.fromBytes('file', bytes, filename: filename)
+        );
+
+        final uploadRes = await request.send();
+        if (uploadRes.statusCode == 201) {
+          final resBody = await uploadRes.stream.bytesToString();
+          final attachmentData = json.decode(resBody);
+          message['attachments'] = [attachmentData];
+          return message;
+        }
+        return null;
+      }
+      return null;
+    } catch (e) {
+      print('Error sending attachment: $e');
+      return null;
+    }
   }
 
   // Mark message as read
@@ -301,6 +382,91 @@ class MessagingService {
       );
     } catch (e) {
       print('Error marking message as read: $e');
+    }
+  }
+
+  // Get conversation details
+  Future<Map<String, dynamic>?> getConversation(String conversationId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/messaging/conversations/$conversationId/'),
+        headers: headers,
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching conversation: $e');
+      return null;
+    }
+  }
+
+  // Delete message
+  Future<bool> deleteMessage(String messageId) async {
+    try {
+      final headers = await _getHeaders();
+      // Look up conversation ID from cached messages if possible
+      String? convId = _currentConversationId;
+      if (convId == null) return false;
+      
+      final response = await http.delete(
+        Uri.parse('$baseUrl/messaging/conversations/$convId/messages/$messageId/'),
+        headers: headers,
+      );
+      return response.statusCode == 204;
+    } catch (e) {
+      print('Error deleting message: $e');
+      return false;
+    }
+  }
+
+  // Pin message
+  Future<bool> pinMessage(String conversationId, String messageId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse('$baseUrl/messaging/conversations/$conversationId/pin-message/'),
+        headers: headers,
+        body: json.encode({'message_id': messageId}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error pinning message: $e');
+      return false;
+    }
+  }
+
+  // React to message
+  Future<bool> reactToMessage(String conversationId, String messageId, String emoji) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse('$baseUrl/messaging/conversations/$conversationId/messages/$messageId/react/'),
+        headers: headers,
+        body: json.encode({'emoji': emoji}),
+      );
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print('Error reacting to message: $e');
+      return false;
+    }
+  }
+
+  // Forward message
+  Future<bool> forwardMessage(String originalConversationId, String messageId, String targetConversationId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse('$baseUrl/messaging/conversations/$originalConversationId/messages/$messageId/forward/'),
+        headers: headers,
+        body: json.encode({'target_conversation_id': targetConversationId}),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      print('Error forwarding message: $e');
+      return false;
     }
   }
 }
