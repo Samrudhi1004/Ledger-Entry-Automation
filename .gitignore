@@ -36,6 +36,8 @@ mobile/.flutter-plugins-dependencies
 mobile/.idea/
 mobile/build/
 mobile/.metadata
+*.apk
+*.aab
 
 # IDE & OS
 .vscode/
