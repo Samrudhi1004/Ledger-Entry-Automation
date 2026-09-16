@@ -59,6 +59,9 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkAndRoute() async {
+    // Refresh latest company metadata on startup so splash screen has live data
+    Provider.of<CompanyProvider>(context, listen: false).fetchCompanyDetails();
+
     // Give the splash a minimum display time so it doesn't flash.
     await Future.delayed(const Duration(milliseconds: 1400));
 
@@ -269,13 +272,19 @@ class _SplashScreenState extends State<SplashScreen>
             const SizedBox(height: 28),
             Consumer<CompanyProvider>(
               builder: (context, company, child) {
-                return Text(
-                  company.companyCode,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 6,
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Text(
+                    company.companyName.toUpperCase(),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2.0,
+                    ),
                   ),
                 );
               },

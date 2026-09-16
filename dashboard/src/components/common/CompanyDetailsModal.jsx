@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Modal from './Modal';
+import { useAuth } from '../../context/AuthContext';
 import { getCompanyDetails } from '../../api/company';
+import { Edit3 } from 'lucide-react';
 
 export default function CompanyDetailsModal({ onClose }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [company, setCompany] = useState({
     name: '',
@@ -72,7 +78,32 @@ export default function CompanyDetailsModal({ onClose }) {
   const dailyTotalUptimeMins = netWorkingMins * shiftsPerDay;
 
   const footer = (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+      {isAdmin ? (
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => {
+            onClose();
+            navigate('/company');
+          }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '8px 14px',
+            fontSize: '0.85rem',
+            color: 'var(--accent-blue)',
+            borderColor: 'rgba(56, 189, 248, 0.4)',
+            background: 'rgba(56, 189, 248, 0.06)',
+            cursor: 'pointer',
+          }}
+        >
+          <Edit3 size={15} /> Edit Company Details
+        </button>
+      ) : (
+        <div />
+      )}
       <button
         type="button"
         className="btn btn-secondary"
