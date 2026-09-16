@@ -587,32 +587,40 @@ class SetupStatusView(APIView):
         from django.utils import timezone
         today = timezone.localdate()
 
-        # Check for today's active session first
-        session = None
+        # ── Build shared machine filter ────────────────────────────────────────
         if str(machine_id).isdigit():
-            session = InspectionSession.objects.select_related('part', 'machine').filter(
-                Q(machine_id=int(machine_id)) | Q(machine__machine_code=machine_id),
-                started_at__date=today
-            ).order_by('-started_at').first()
+            mach_q = Q(machine_id=int(machine_id)) | Q(machine__machine_code=machine_id)
         else:
-            session = InspectionSession.objects.select_related('part', 'machine').filter(
-                machine__machine_code=machine_id,
-                started_at__date=today
-            ).order_by('-started_at').first()
+            mach_q = Q(machine__machine_code=machine_id)
 
-        has_today = True
+        # ── 1. Find today's first_piece session (priority for Setup Approval) ──
+        fp_session = InspectionSession.objects.select_related(
+            'part', 'machine', 'machine__plant__factory'
+        ).filter(
+            mach_q,
+            started_at__date=today,
+            inspection_type='first_piece',
+        ).order_by('-trial_number', '-started_at').first()
 
-        # Fallback to latest session if today's check finds no session
+        # ── 2. Find today's latest hourly session ──────────────────────────────
+        hourly_session = InspectionSession.objects.select_related(
+            'part', 'machine', 'machine__plant__factory'
+        ).filter(
+            mach_q,
+            started_at__date=today,
+            inspection_type='hourly',
+        ).order_by('-started_at').first()
+
+        # ── 3. Determine "active" session for generic session_id field ─────────
+        # Prefer first_piece (for backward compat with clients using session_id)
+        session = fp_session or hourly_session
+        has_today = bool(session)
+
+        # ── 4. Fallback: search across all dates if nothing found today ────────
         if not session:
-            has_today = False
-            if str(machine_id).isdigit():
-                session = InspectionSession.objects.select_related('part', 'machine').filter(
-                    Q(machine_id=int(machine_id)) | Q(machine__machine_code=machine_id)
-                ).order_by('-started_at').first()
-            else:
-                session = InspectionSession.objects.select_related('part', 'machine').filter(
-                    machine__machine_code=machine_id
-                ).order_by('-started_at').first()
+            session = InspectionSession.objects.select_related(
+                'part', 'machine', 'machine__plant__factory'
+            ).filter(mach_q).order_by('-started_at').first()
 
         if not session:
             return Response({
@@ -622,52 +630,59 @@ class SetupStatusView(APIView):
                 'message': 'No inspection started for today.'
             })
 
+        # ── 5. Compute completed hourly slots from hourly sessions directly ────
+        # Use get_session_document (which merges all related sessions) on the
+        # first_piece session so we get both trial and hourly measurements.
         completed_slots = []
         try:
-            doc = _service.get_session_document(str(session.session_id))
+            ref_session = fp_session or session
+            doc = _service.get_session_document(str(ref_session.session_id))
             if doc and 'measurements' in doc:
                 slot_set = set()
                 for m in doc['measurements']:
-                    slot = m.get('hourly_slot')
-                    if slot and isinstance(slot, int):
-                        slot_set.add(slot)
-                    elif m.get('inspection_type') == 'hourly' and m.get('hourly_slot'):
-                        try:
-                            slot_set.add(int(m.get('hourly_slot')))
-                        except Exception:
-                            pass
+                    if m.get('inspection_type') == 'hourly':
+                        slot = m.get('hourly_slot')
+                        if slot:
+                            try:
+                                slot_set.add(int(slot))
+                            except Exception:
+                                pass
                 completed_slots = sorted(list(slot_set))
         except Exception:
             pass
 
         next_slot = (max(completed_slots) + 1) if completed_slots else 1
 
-        is_approved = True
-
-        part_id = session.part.id if session.part else None
-        part_no = session.part.part_number if session.part else None
-        part_name = session.part.part_name if session.part else None
-        machine_id = session.machine.id if session.machine else None
+        # ── 6. Extract part / machine metadata from the primary session ────────
+        ref = fp_session or session
+        part_id   = ref.part.id if ref.part else None
+        part_no   = ref.part.part_number if ref.part else None
+        part_name = ref.part.part_name if ref.part else None
+        mach_db_id = ref.machine.id if ref.machine else None
 
         shift_hrs = 8
-        if session.machine and session.machine.plant and session.machine.plant.factory:
-            shift_hrs = session.machine.plant.factory.shift_hours or 8
+        if ref.machine and ref.machine.plant and ref.machine.plant.factory:
+            shift_hrs = ref.machine.plant.factory.shift_hours or 8
 
         return Response({
-            'has_today_report': has_today,
-            'is_setup_approved': is_approved,
-            'session_id': str(session.session_id),
-            'status': session.status,
-            'shift_hours': shift_hrs,
-            'total_hourly_slots': shift_hrs,
-            'machine_id': machine_id,
-            'part_id': part_id,
-            'part_number': part_no,
-            'part_name': part_name,
-            'inspection_type': session.inspection_type,
-            'completed_hourly_slots': completed_slots,
-            'next_unlocked_slot': next_slot,
-            'message': 'Today\'s inspection report active.' if has_today else 'No inspection started for today.'
+            'has_today_report':          has_today,
+            'is_setup_approved':         True,
+            # Generic session_id — first_piece preferred (backward compat)
+            'session_id':                str(fp_session.session_id) if fp_session else str(session.session_id),
+            # Explicit typed IDs for report screens
+            'first_piece_session_id':    str(fp_session.session_id) if fp_session else None,
+            'latest_hourly_session_id':  str(hourly_session.session_id) if hourly_session else None,
+            'status':                    session.status,
+            'inspection_type':           session.inspection_type,
+            'shift_hours':               shift_hrs,
+            'total_hourly_slots':        shift_hrs,
+            'machine_id':                mach_db_id,
+            'part_id':                   part_id,
+            'part_number':               part_no,
+            'part_name':                 part_name,
+            'completed_hourly_slots':    completed_slots,
+            'next_unlocked_slot':        next_slot,
+            'message':                   'Today\'s inspection report active.' if has_today else 'No inspection started for today.',
         })
 
 

@@ -989,6 +989,20 @@ class InspectionService:
         doc['hourly_unlocked_slot'] = session_obj.hourly_unlocked_slot
         doc['is_setup_approved'] = session_obj.is_setup_approved
         doc['status'] = session_obj.status
+        doc['trial_number'] = session_obj.trial_number or 1
+        doc['shift'] = session_obj.shift or 'I'
+
+        # Timestamps — essential for report date display
+        doc['started_at'] = session_obj.started_at.isoformat() if session_obj.started_at else None
+        completed_at = getattr(session_obj, 'completed_at', None)
+        doc['completed_at'] = completed_at.isoformat() if completed_at else None
+        finalized_at = getattr(session_obj, 'finalized_at', None)
+        doc['finalized_at'] = finalized_at.isoformat() if finalized_at else None
+
+        # Part and machine metadata
+        doc['part_number'] = session_obj.part.part_number if session_obj.part else None
+        doc['part_name'] = session_obj.part.part_name if session_obj.part else None
+        doc['machine_code'] = session_obj.machine.machine_code if session_obj.machine else None
 
         # Add user names
         if session_obj.finalized_by:

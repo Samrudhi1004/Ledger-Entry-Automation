@@ -74,9 +74,14 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
       _processParams = await ApiService.getProcessParameters(templateId);
 
       // Check for active or finalized inspection session document for this machine
+      // Fix 3: Use first_piece_session_id so Setup Approval Report always shows
+      // 1ST PC trial data (not hourly session data which has no trial_number).
       final setupStatus = await ApiService.checkSetupApproved(machineId);
-      if (setupStatus['session_id'] != null) {
-        final sessionDoc = await ApiService.getSessionDetail(setupStatus['session_id']);
+      final reportSessionId = setupStatus['first_piece_session_id']
+          ?? setupStatus['session_id'];
+
+      if (reportSessionId != null) {
+        final sessionDoc = await ApiService.getSessionDetail(reportSessionId.toString());
         if (sessionDoc != null) {
           _setupApprovalData = sessionDoc;
         }
@@ -91,11 +96,22 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
       _productResults = {};
 
       // 1. Populate from backend session measurements
+      // Fix 4: Null-safe trial_number mapping — preserve all 3 trial values.
+      // Measurements with inspection_type='hourly' are ignored here (they belong
+      // to the DailyProductionReport, not the SetupApproval F02 report).
       final measurements = _setupApprovalData?['measurements'] as List? ?? [];
       for (final m in measurements) {
+        final inspType = m['inspection_type']?.toString() ?? 'first_piece';
+        // Skip hourly measurements — they don't belong in this report
+        if (inspType == 'hourly') continue;
+
         final code = m['parameter_code']?.toString() ?? '';
         final name = m['parameter_name']?.toString() ?? '';
-        final trial = (m['trial_number'] ?? 1).toString();
+        final rawTrial = m['trial_number'];
+        // Use trial_number as-is if valid (>0), otherwise default to '1'
+        final trial = (rawTrial != null && rawTrial != 0)
+            ? rawTrial.toString()
+            : '1';
         final val = m['voice_raw_text']?.toString() ?? (m['measured_value'] != null ? m['measured_value'].toString() : '-');
 
         if (code.isNotEmpty) {
@@ -108,9 +124,14 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
         }
       }
 
-      // 2. Layer provider.recordedResults
+      // 2. Layer provider.recordedResults (only if inspection_type is first_piece)
       provider.recordedResults.forEach((code, val) {
-        final trial = (val['trial_number'] ?? '1').toString();
+        final inspType = val['inspection_type']?.toString() ?? 'first_piece';
+        if (inspType == 'hourly') return; // skip hourly in this report
+        final rawTrial = val['trial_number'];
+        final trial = (rawTrial != null && rawTrial != 0)
+            ? rawTrial.toString()
+            : '1';
         final vStr = val['voice_raw_text']?.toString() ?? val['measured_value']?.toString() ?? '-';
         _productResults.putIfAbsent(code, () => {});
         _productResults[code]![trial] = vStr;
@@ -135,10 +156,21 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
     final partName = provider.selectedPart?['part_name'] ?? 'poly v pulley';
     final processNo = provider.selectedTemplate?['version']?.toString() ?? '10';
     final inspectorName = _setupApprovalData?['inspector_name'] ?? auth.fullName ?? auth.username ?? 'Samruddhi Bartakke';
-    final now = DateTime.now();
     const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    final effectiveShift = auth.isShiftLocked ? auth.assignedShift : (provider.shift.isNotEmpty ? provider.shift : 'I');
-    final dateStr = '${now.day} ${months[now.month]} ${now.year} | Shift $effectiveShift';
+    // Fix 5: Use backend started_at for report date (not DateTime.now())
+    // This ensures the date shown matches the actual inspection date.
+    final startedAtRaw = _setupApprovalData?['started_at']?.toString();
+    final reportDate = (startedAtRaw != null && startedAtRaw.isNotEmpty)
+        ? (DateTime.tryParse(startedAtRaw)?.toLocal() ?? DateTime.now())
+        : DateTime.now();
+    // Use shift from backend doc, then provider, then auth, then default 'I'
+    final backendShift = _setupApprovalData?['shift']?.toString();
+    final effectiveShift = auth.isShiftLocked
+        ? auth.assignedShift
+        : (backendShift?.isNotEmpty == true
+            ? backendShift!
+            : (provider.shift.isNotEmpty ? provider.shift : 'I'));
+    final dateStr = '${reportDate.day} ${months[reportDate.month]} ${reportDate.year} | Shift $effectiveShift';
     final status = _setupApprovalData?['status']?.toString().toUpperCase() ?? 'FINALIZED PASSED';
 
     return Scaffold(
