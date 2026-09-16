@@ -248,23 +248,42 @@ class _SplashScreenState extends State<SplashScreen>
                   padding: const EdgeInsets.all(18.0),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: kIsWeb
-                        ? Image.network(
-                            'apple-touch-icon.png',
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) => Image.asset(
-                              'assets/images/app_logo.png',
-                              fit: BoxFit.contain,
-                            ),
-                          )
-                        : Image.asset(
-                            'assets/images/app_logo.png',
+                    child: Consumer<CompanyProvider>(
+                      builder: (context, company, child) {
+                        final customLogo = company.logoUrl.trim();
+                        if (customLogo.isNotEmpty) {
+                          return Image.network(
+                            customLogo,
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) => Image.network(
                               'apple-touch-icon.png',
                               fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) => Image.asset(
+                                'assets/images/app_logo.png',
+                                fit: BoxFit.contain,
+                              ),
                             ),
-                          ),
+                          );
+                        }
+                        return kIsWeb
+                            ? Image.network(
+                                'apple-touch-icon.png',
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) => Image.asset(
+                                  'assets/images/app_logo.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              )
+                            : Image.asset(
+                                'assets/images/app_logo.png',
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) => Image.network(
+                                  'apple-touch-icon.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              );
+                      },
+                    ),
                   ),
                 ),
               ),

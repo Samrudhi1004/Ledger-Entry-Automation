@@ -1,5 +1,6 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useCompany } from '../../context/CompanyContext';
 import { useState, useEffect } from 'react';
 import CompanyDetailsModal from '../common/CompanyDetailsModal';
 import {
@@ -122,6 +123,7 @@ const CALIBRATION_MODULES = [
 
 export default function Sidebar({ pendingCount = 0 }) {
   const { user, logout } = useAuth();
+  const { logoUrl } = useCompany() || {};
   const navigate = useNavigate();
   const location = useLocation();
   const [loggingOut, setLoggingOut] = useState(false);
@@ -243,9 +245,10 @@ export default function Sidebar({ pendingCount = 0 }) {
           }}
         >
           <img
-            src="/apple-touch-icon.png"
+            src={logoUrl || "/apple-touch-icon.png"}
             alt="Inspection Hub Logo"
-            style={{ width: '100%', height: '100%', borderRadius: 'inherit', objectFit: 'cover' }}
+            style={{ width: '100%', height: '100%', borderRadius: 'inherit', objectFit: 'contain' }}
+            onError={(e) => { e.target.src = "/apple-touch-icon.png"; }}
           />
         </div>
       </button>

@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
+import { useCompany } from '../context/CompanyContext';
 import { getCompanyDetails, updateCompanyDetails, getCompanyPlants } from '../api/company';
 import {
   Building2, AlertCircle, CheckCircle2, User, Clock, ShieldCheck, Lock, Save, Loader2
@@ -10,6 +11,7 @@ import {
 
 export default function CompanyDetailsPage() {
   const { user } = useAuth();
+  const { refreshCompany } = useCompany() || {};
   const isAdmin = user?.role === 'admin';
 
   const [loading, setLoading] = useState(true);
@@ -153,6 +155,7 @@ export default function CompanyDetailsPage() {
 
       const res = await updateCompanyDetails(factoryId, payload);
       if (res?.data) {
+        if (refreshCompany) refreshCompany();
         setSuccessMsg('Company & Shift details saved successfully!');
         setTimeout(() => setSuccessMsg(''), 4500);
       }

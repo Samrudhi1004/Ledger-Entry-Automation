@@ -10,8 +10,9 @@ export const useCompany = () => {
 
 export const CompanyProvider = ({ children }) => {
   const { user } = useAuth();
-  const [companyName, setCompanyName] = useState('MANTRI METALLICS PVT. LTD.');
-  const [companyCode, setCompanyCode] = useState('MMPL');
+  const [companyName, setCompanyName] = useState('Liha Tech Factory 1');
+  const [companyCode, setCompanyCode] = useState('LIHA-F1');
+  const [logoUrl, setLogoUrl] = useState('');
   const [shiftHours, setShiftHours] = useState(8);
   const [totalShiftsPerDay, setTotalShiftsPerDay] = useState(3);
 
@@ -23,8 +24,9 @@ export const CompanyProvider = ({ children }) => {
         const compData = res?.data?.results || res?.data;
         if (compData && compData.length > 0) {
           const primary = compData[0];
-          setCompanyName(primary.name || 'MANTRI METALLICS PVT. LTD.');
-          setCompanyCode(primary.code || 'MMPL');
+          setCompanyName(primary.name || 'Liha Tech Factory 1');
+          setCompanyCode(primary.code || 'LIHA-F1');
+          setLogoUrl(primary.logo_url || '');
           const hrs = Number(primary.shift_hours) === 12 ? 12 : 8;
           setShiftHours(hrs);
           setTotalShiftsPerDay(hrs === 12 ? 2 : 3);
@@ -35,6 +37,16 @@ export const CompanyProvider = ({ children }) => {
       });
     return () => { mounted = false; };
   }, []);
+
+  // Dynamically update browser tab favicon if custom logo_url is provided
+  useEffect(() => {
+    if (logoUrl) {
+      const favicon = document.querySelector("link[rel~='icon']");
+      if (favicon) {
+        favicon.href = logoUrl;
+      }
+    }
+  }, [logoUrl]);
 
   // Only fetch after the user is authenticated
   useEffect(() => {
@@ -48,6 +60,7 @@ export const CompanyProvider = ({ children }) => {
       value={{
         companyName,
         companyCode,
+        logoUrl,
         shiftHours,
         totalShiftsPerDay,
         availableShifts: shiftHours === 12 ? ['I', 'II'] : ['I', 'II', 'III'],

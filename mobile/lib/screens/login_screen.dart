@@ -65,23 +65,42 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: kIsWeb
-                        ? Image.network(
-                            'apple-touch-icon.png',
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) => Image.asset(
-                              'assets/images/app_logo.png',
-                              fit: BoxFit.contain,
-                            ),
-                          )
-                        : Image.asset(
-                            'assets/images/app_logo.png',
+                    child: Consumer<CompanyProvider>(
+                      builder: (context, company, child) {
+                        final customLogo = company.logoUrl.trim();
+                        if (customLogo.isNotEmpty) {
+                          return Image.network(
+                            customLogo,
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) => Image.network(
                               'apple-touch-icon.png',
                               fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) => Image.asset(
+                                'assets/images/app_logo.png',
+                                fit: BoxFit.contain,
+                              ),
                             ),
-                          ),
+                          );
+                        }
+                        return kIsWeb
+                            ? Image.network(
+                                'apple-touch-icon.png',
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) => Image.asset(
+                                  'assets/images/app_logo.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              )
+                            : Image.asset(
+                                'assets/images/app_logo.png',
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) => Image.network(
+                                  'apple-touch-icon.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              );
+                      },
+                    ),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -284,6 +303,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       targetScreen = const AppHomeScreen();
                                     }
 
+                                    if (!context.mounted) return;
                                     Navigator.pushReplacement(
                                       context,
                                       MaterialPageRoute(builder: (_) => targetScreen),
