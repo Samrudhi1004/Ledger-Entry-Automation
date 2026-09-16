@@ -129,7 +129,8 @@ class _DocumentControlScreenState extends State<DocumentControlScreen>
     return _docs.where((d) =>
         d.title.toLowerCase().contains(q) ||
         d.documentNumber.toLowerCase().contains(q) ||
-        d.docLevel.toLowerCase().contains(q)).toList();
+        d.docLevel.toLowerCase().contains(q) ||
+        d.description.toLowerCase().contains(q)).toList();
   }
 
   Future<void> _openFile(String? url) async {

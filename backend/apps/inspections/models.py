@@ -170,10 +170,14 @@ class DailyProductionReport(models.Model):
         available_time = 420
         if self.machine and self.machine.plant:
             plant = self.machine.plant
-            available_time = (plant.shift_duration_hours * 60) - plant.total_break_mins
-        elif self.machine and getattr(self.machine, 'plant', None) and getattr(self.machine.plant, 'factory', None):
-            fac = self.machine.plant.factory
-            available_time = (fac.shift_hours * 60) - (fac.lunch_break_minutes + fac.tea_break_minutes)
+            if getattr(plant, 'factory', None) and plant.factory.shift_hours:
+                fac = plant.factory
+                available_time = (fac.shift_hours * 60) - (fac.lunch_break_minutes + fac.tea_break_minutes)
+            elif plant.shift_duration_hours:
+                available_time = (plant.shift_duration_hours * 60) - (plant.total_break_mins or 0)
+        
+        if available_time <= 0:
+            available_time = 420
         
         from apps.parts.models import InspectionTemplate
         template = InspectionTemplate.objects.filter(
