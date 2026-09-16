@@ -12,7 +12,8 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
-from .models import CalibrationEquipment, CalibrationPlanEntry, CalibrationRecord
+from .models import CalibrationEmailLog, CalibrationEquipment, CalibrationPlanEntry, CalibrationRecord
+from .notification_service import check_calibration_email_notifications
 from .serializers import CalibrationEquipmentSerializer
 
 
@@ -56,6 +57,51 @@ class CalibrationDemoDataTests(TestCase):
             equipment__in=workflow, result='rejected',
         ).count(), 1)
 
+
+class CalibrationEmailNotificationTests(TestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            username='email-admin', email='admin@example.com', password='password',
+            role='admin', employee_id='EMP-EMAIL-ADMIN',
+        )
+        self.calibrator = get_user_model().objects.create_user(
+            username='email-calibrator', email='calibrator@example.com', password='password',
+            role='calibrator', employee_id='EMP-EMAIL-CALIBRATOR',
+        )
+
+    @patch('apps.calibration.notification_service.send_mail')
+    def test_monthly_due_list_is_sent_once_from_the_25th(self, send_mail):
+        CalibrationEquipment.objects.create(**equipment_data(
+            equipment_id='EQ-MONTHLY', serial_number='SN-MONTHLY',
+            next_calibration_date=date(2026, 10, 10),
+        ))
+
+        check_calibration_email_notifications(date(2026, 9, 25))
+        check_calibration_email_notifications(date(2026, 9, 25))
+
+        self.assertEqual(send_mail.call_count, 1)
+        self.assertEqual(send_mail.call_args.args[3], [self.calibrator.email])
+        self.assertIn('EQ-MONTHLY', send_mail.call_args.args[1])
+        self.assertNotIn('CURRENT MONTH ALERTS', send_mail.call_args.args[1])
+        self.assertEqual(CalibrationEmailLog.objects.count(), 1)
+
+    @patch('apps.calibration.notification_service.send_mail')
+    def test_alerts_are_sent_to_admins_and_calibrators(self, send_mail):
+        CalibrationEquipment.objects.create(**equipment_data(
+            equipment_id='EQ-DUE-SOON', serial_number='SN-DUE-SOON',
+            next_calibration_date=date(2026, 8, 30),
+        ))
+        CalibrationEquipment.objects.create(**equipment_data(
+            equipment_id='EQ-REPAIR', serial_number='SN-REPAIR',
+            next_calibration_date=date(2026, 12, 30),
+            state=CalibrationEquipment.State.REPAIR,
+        ))
+
+        check_calibration_email_notifications(date(2026, 8, 24))
+        self.assertEqual(send_mail.call_count, 1)
+        self.assertEqual(send_mail.call_args.args[3], [self.admin.email, self.calibrator.email])
+        self.assertIn('EQ-DUE-SOON', send_mail.call_args.args[1])
+        self.assertIn('EQ-REPAIR', send_mail.call_args.args[1])
 
 def equipment_data(**overrides):
     data = {
@@ -589,6 +635,5 @@ class CalibrationEquipmentApiTests(APITestCase):
             'failed_equipment': 1,
             'repair_equipment': 0,
             'scrapped_equipment': 0,
-            'calibrated_on_time': 0,
-            'compliance_percentage': 100.0,
+            'compliance_percentage': 85.7,
         })

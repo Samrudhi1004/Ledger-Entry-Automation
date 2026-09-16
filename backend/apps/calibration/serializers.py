@@ -12,7 +12,6 @@ class CalibrationEquipmentSerializer(serializers.ModelSerializer):
     days_remaining = serializers.IntegerField(read_only=True, allow_null=True)
     status = serializers.CharField(source='calibration_status', read_only=True)
     calibrated_on_time = serializers.SerializerMethodField()
-
     def get_calibrated_on_time(self, obj):
         result = getattr(obj, 'latest_result', None)
         planned = getattr(obj, 'latest_planned_date', None)

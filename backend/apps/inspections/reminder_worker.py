@@ -3,6 +3,8 @@ Background Reminder & Escalation Worker.
 Monitors active inspection sessions:
 - 60 Minutes without new reading -> Trigger Operator Reminder
 - 75 Minutes (60m + 15m grace) without new reading -> Escalates live alert to Quality Supervisor Web Dashboard!
+- 25th onward each month -> Email calibrators the next month's calibration list
+- Due within 10 days, overdue, or under repair -> Email admins and calibrators an alert
 """
 
 import os
@@ -85,6 +87,14 @@ def check_overdue_sessions():
         logger.error(f"Error in check_overdue_sessions: {e}")
 
 
+def check_calibration_email_notifications():
+    try:
+        from apps.calibration.notification_service import check_calibration_email_notifications as check
+        check()
+    except Exception as e:
+        logger.error(f"Error in calibration email notifications: {e}")
+
+
 def _broadcast_event(payload):
     try:
         channel_layer = get_channel_layer()
@@ -114,6 +124,7 @@ class ReminderWorkerThread(threading.Thread):
         while self.running:
             try:
                 check_overdue_sessions()
+                check_calibration_email_notifications()
             except Exception as err:
                 logger.error(f"Error in worker loop: {err}")
             time.sleep(self.interval_seconds)
