@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,7 +7,6 @@ import '../providers/inspection_provider.dart';
 import '../providers/company_provider.dart';
 import '../services/persistence_service.dart';
 import 'app_home_screen.dart';
-import 'inspector_home_screen.dart';
 import 'supervisor_info_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -17,13 +17,20 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _usernameController = TextEditingController(text: 'operator');
-  final _passwordController = TextEditingController(text: 'operator123');
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
   @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context);
+    final auth = context.watch<AuthProvider>();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -34,24 +41,47 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Header Logo / Icon
+                // Header Logo / Emblem
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  width: 104,
+                  height: 104,
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.blue.withValues(alpha: 0.15),
+                        color: Colors.black.withValues(alpha: 0.08),
                         blurRadius: 20,
-                        spreadRadius: 5,
-                      )
+                        spreadRadius: 3,
+                        offset: const Offset(0, 4),
+                      ),
+                      BoxShadow(
+                        color: Colors.blue.withValues(alpha: 0.12),
+                        blurRadius: 24,
+                        spreadRadius: 4,
+                      ),
                     ],
                   ),
-                  child: const Icon(
-                    Icons.mic_external_on_rounded,
-                    size: 64,
-                    color: Color(0xFF2563EB),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: kIsWeb
+                        ? Image.network(
+                            'apple-touch-icon.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => Image.asset(
+                              'assets/images/app_logo.png',
+                              fit: BoxFit.contain,
+                            ),
+                          )
+                        : Image.asset(
+                            'assets/images/app_logo.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => Image.network(
+                              'apple-touch-icon.png',
+                              fit: BoxFit.contain,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -64,15 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     letterSpacing: 1.5,
                   ),
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Mantri Metallics — Shop Floor Console',
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 36),
+                const SizedBox(height: 32),
 
                 // Form Container
                 Container(
@@ -298,15 +320,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                Consumer<CompanyProvider>(
-                  builder: (context, company, child) {
-                    return Text(
-                      'v1.0.0 — ${company.companyCode} Real-Time Quality Systems',
-                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                    );
-                  },
-                ),
+
               ],
             ),
           ),
