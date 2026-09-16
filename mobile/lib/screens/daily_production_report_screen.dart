@@ -945,7 +945,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(label, style: const TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
-              ?suffixBadge,
+              if (suffixBadge != null) suffixBadge,
             ],
           ),
           const SizedBox(height: 6),
