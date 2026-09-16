@@ -710,7 +710,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                                   const Text('•', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
                                                   const SizedBox(width: 8),
                                                   Text(
-                                                    '⏱️ $cycleTimeMins min',
+                                                    '  $cycleTimeMins min',
                                                     style: const TextStyle(color: Color(0xFF059669), fontSize: 12, fontWeight: FontWeight.bold),
                                                   ),
                                                 ],

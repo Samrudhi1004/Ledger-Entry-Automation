@@ -264,9 +264,9 @@ class DowntimeReportSerializer(serializers.ModelSerializer):
             template = InspectionTemplate.objects.filter(
                 part=prod.part
             ).first()
-        if template and template.cycle_time_mins:
+        if template and template.cycle_time_mins and float(template.cycle_time_mins) > 0:
             return float(template.cycle_time_mins)
-        return 0.0
+        return 10.0
 
     def validate(self, attrs):
         fields = [

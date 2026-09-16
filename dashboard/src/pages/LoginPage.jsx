@@ -38,8 +38,14 @@ export default function LoginPage() {
   return (
     <div className="login-page bg-gradient-animated">
       <div className="login-card">
-        <h1 className="login-title">Inspection Hub</h1>
-        <p className="login-sub">Supervisor Dashboard · Quality Control</p>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+          <img
+            src="/apple-touch-icon.png"
+            alt="Inspection Hub Logo"
+            style={{ width: '48px', height: '48px', borderRadius: '12px', boxShadow: '0 4px 14px rgba(217, 70, 239, 0.25)' }}
+          />
+        </div>
+        <h1 className="login-title" style={{ marginBottom: '20px' }}>Inspection Hub</h1>
 
         {error && <div className="login-error">{error}</div>}
 
@@ -109,12 +115,6 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-
-
-
-        <p className="text-xs text-muted mt-16" style={{ textAlign: 'center' }}>
-          Factory Quality Inspection System · v1.0
-        </p>
       </div>
     </div>
   );
