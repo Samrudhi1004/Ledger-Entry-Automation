@@ -320,8 +320,12 @@ class InspectionProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Replace the completed-slots set from authoritative server data.
+  /// Using addAll() was the root-cause of the "Slot 1/HR already completed"
+  /// false-positive: stale local slots were never evicted when the server
+  /// returned an empty list at the start of a new hourly inspection cycle.
   void syncCompletedSlots(List<int> slots) {
-    completedHourlySlots.addAll(slots);
+    completedHourlySlots = Set<int>.from(slots); // REPLACE, not addAll
     if (completedHourlySlots.isNotEmpty) {
       final maxDone = completedHourlySlots.reduce((a, b) => a > b ? a : b);
       if (maxDone >= hourlySlot && maxDone < 8) {
@@ -332,6 +336,50 @@ class InspectionProvider with ChangeNotifier {
   }
 
   Future<void> restoreActiveReportState(Map<String, dynamic> setupStatus) async {
+    // Always clear stale local completed-slots BEFORE syncing from server.
+    // Without this, old slots from the previous inspection cycle survive
+    // across sessions and produce "Slot X/HR already completed" false-positives.
+    completedHourlySlots.clear();
+
+    // Resolve shift hours first so slot-range checks below are accurate.
+    if (setupStatus['shift_hours'] is int) {
+      shiftHours = setupStatus['shift_hours'];
+    } else if (setupStatus['total_hourly_slots'] is int) {
+      shiftHours = setupStatus['total_hourly_slots'];
+    }
+
+    // ── Determine whether this session is a finalised first-piece session. ──
+    // If so, the operator is ready to start hourly rounds — do NOT carry over
+    // the session_id from the first-piece session into hourly mode.
+    final String serverStatus = (setupStatus['status'] ?? '').toString();
+    final String serverType = (setupStatus['inspection_type'] ?? '').toString();
+    final bool isFinalizedFirstPiece =
+        serverType == 'first_piece' &&
+        (serverStatus == 'finalized_passed' ||
+            serverStatus == 'finalized_failed' ||
+            serverStatus == 'completed');
+
+    if (isFinalizedFirstPiece) {
+      // 1ST PC is done. Reset hourly state so the operator starts at Slot 1.
+      sessionId = null;
+      hourlySlot = 1;
+      completedHourlySlots = {};
+      // Still restore part/machine context so the UI knows what part to inspect.
+      if (selectedPart == null && setupStatus['part_number'] != null) {
+        selectedPart = {
+          'id': setupStatus['part_id'],
+          'part_number': setupStatus['part_number'],
+          'part_name': setupStatus['part_name'] ?? setupStatus['part_number'],
+        };
+      }
+      if (selectedMachine == null && setupStatus['machine_id'] != null) {
+        selectedMachine = {'id': setupStatus['machine_id']};
+      }
+      notifyListeners();
+      return;
+    }
+
+    // ── Active or in-progress session — restore normally. ──
     if (setupStatus['session_id'] != null) {
       sessionId = setupStatus['session_id'].toString();
 
@@ -349,15 +397,10 @@ class InspectionProvider with ChangeNotifier {
         };
       }
 
+      // Sync completed slots from server (syncCompletedSlots now REPLACES the set).
       if (setupStatus['completed_hourly_slots'] is List) {
         final List<int> slots = List<int>.from(setupStatus['completed_hourly_slots']);
         syncCompletedSlots(slots);
-      }
-
-      if (setupStatus['shift_hours'] is int) {
-        shiftHours = setupStatus['shift_hours'];
-      } else if (setupStatus['total_hourly_slots'] is int) {
-        shiftHours = setupStatus['total_hourly_slots'];
       }
 
       if (setupStatus['next_unlocked_slot'] is int) {
