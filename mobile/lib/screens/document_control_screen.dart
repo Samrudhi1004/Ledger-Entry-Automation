@@ -24,9 +24,7 @@ class _DocumentControlScreenState extends State<DocumentControlScreen>
 
   // Documents state
   List<Document> _docs = [];
-  List<DocumentCategory> _categories = [];
   String _selectedLevel = ''; // '', 'L1', 'L2', 'L3', 'L4'
-  String _selectedCategory = '';
   bool _loadingDocs = true;
   String? _docsError;
 
@@ -91,16 +89,11 @@ class _DocumentControlScreenState extends State<DocumentControlScreen>
       _docsError = null;
     });
     try {
-      final results = await Future.wait([
-        _service.getDocuments(
-          category: _selectedCategory.isEmpty ? null : _selectedCategory,
-          level: _selectedLevel.isEmpty ? null : _selectedLevel,
-        ),
-        _service.getCategories(),
-      ]);
+      final docs = await _service.getDocuments(
+        level: _selectedLevel.isEmpty ? null : _selectedLevel,
+      );
       setState(() {
-        _docs = results[0] as List<Document>;
-        _categories = results[1] as List<DocumentCategory>;
+        _docs = docs;
         _loadingDocs = false;
       });
     } catch (e) {
@@ -136,7 +129,8 @@ class _DocumentControlScreenState extends State<DocumentControlScreen>
     return _docs.where((d) =>
         d.title.toLowerCase().contains(q) ||
         d.documentNumber.toLowerCase().contains(q) ||
-        (d.categoryName?.toLowerCase().contains(q) ?? false)).toList();
+        d.docLevel.toLowerCase().contains(q) ||
+        d.description.toLowerCase().contains(q)).toList();
   }
 
   Future<void> _openFile(String? url) async {

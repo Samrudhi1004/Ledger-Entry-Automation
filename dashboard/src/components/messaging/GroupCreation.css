@@ -165,7 +165,7 @@
   color: #374151;
 }
 
-.user-avatar {
+.user-item .user-avatar {
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -179,23 +179,23 @@
   flex-shrink: 0;
 }
 
-.user-info {
+.user-item .user-info {
   flex: 1;
   min-width: 0;
 }
 
-.user-name {
+.user-item .user-name {
   font-weight: 500;
-  color: #111827 !important;
+  color: #111827;
   font-size: 0.9375rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.user-email {
+.user-item .user-email {
   font-size: 0.8125rem;
-  color: #4b5563 !important;
+  color: #4b5563;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

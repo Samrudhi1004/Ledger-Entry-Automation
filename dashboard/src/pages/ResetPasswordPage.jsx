@@ -62,6 +62,13 @@ export default function ResetPasswordPage() {
   return (
     <div className="login-page bg-gradient-animated">
       <div className="login-card">
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+          <img
+            src="/apple-touch-icon.png"
+            alt="Inspection Hub Logo"
+            style={{ width: '48px', height: '48px', borderRadius: '12px', boxShadow: '0 4px 14px rgba(217, 70, 239, 0.25)' }}
+          />
+        </div>
         <h1 className="login-title">Choose New Password</h1>
         <p className="login-sub" style={{ marginBottom: '24px' }}>
           Please enter your new password below.

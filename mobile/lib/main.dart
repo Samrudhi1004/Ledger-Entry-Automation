@@ -28,7 +28,7 @@ class VoiceInspectionApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MessagingProvider()),
       ],
       child: MaterialApp(
-        title: 'Voice Inspection Operator Terminal',
+        title: 'Inspection Hub',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           brightness: Brightness.dark,

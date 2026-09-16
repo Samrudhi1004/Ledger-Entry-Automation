@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getCompanyDetails } from '../api/company';
 import { Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
@@ -12,6 +13,21 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
+  const [logoUrl, setLogoUrl]   = useState('/apple-touch-icon.png');
+
+  useEffect(() => {
+    getCompanyDetails()
+      .then((res) => {
+        const data = res?.data?.results || res?.data;
+        if (data && (Array.isArray(data) ? data.length > 0 : true)) {
+          const primary = Array.isArray(data) ? data[0] : data;
+          if (primary?.logo_url) {
+            setLogoUrl(primary.logo_url);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleLogin = async (u, p) => {
     setError('');
@@ -38,8 +54,15 @@ export default function LoginPage() {
   return (
     <div className="login-page bg-gradient-animated">
       <div className="login-card">
-        <h1 className="login-title">Inspection Hub</h1>
-        <p className="login-sub">Supervisor Dashboard · Quality Control</p>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+          <img
+            src={logoUrl}
+            alt="Inspection Hub Logo"
+            style={{ width: '48px', height: '48px', borderRadius: '12px', boxShadow: '0 4px 14px rgba(56, 189, 248, 0.25)', objectFit: 'contain' }}
+            onError={(e) => { e.target.src = '/apple-touch-icon.png'; }}
+          />
+        </div>
+        <h1 className="login-title" style={{ marginBottom: '20px' }}>Inspection Hub</h1>
 
         {error && <div className="login-error">{error}</div>}
 
@@ -109,12 +132,6 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-
-
-
-        <p className="text-xs text-muted mt-16" style={{ textAlign: 'center' }}>
-          Factory Quality Inspection System · v1.0
-        </p>
       </div>
     </div>
   );

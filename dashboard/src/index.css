@@ -146,6 +146,7 @@ p  { color: var(--text-secondary); }
   border-bottom: 1px solid #1e293b;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
 }
 
@@ -340,18 +341,26 @@ p  { color: var(--text-secondary); }
 }
 
 .user-info { flex: 1; min-width: 0; }
-.user-name {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #ffffff;
+.user-name,
+.sidebar-user-name {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #ffffff !important;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.user-role {
-  font-size: 0.68rem;
-  color: #94a3b8;
+.user-role,
+.sidebar-user-role {
+  font-size: 0.72rem;
+  color: #94a3b8 !important;
   text-transform: capitalize;
+}
+
+.sidebar-logout-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  color: #f87171 !important;
 }
 
 /* ── Header ────────────────────────────────────────────────── */

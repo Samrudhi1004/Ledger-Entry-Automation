@@ -330,7 +330,7 @@ export default function App() {
       <Route
         path="/company"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={ALL_ROLES}>
             <CompanyDetailsPage />
           </ProtectedLayout>
         }

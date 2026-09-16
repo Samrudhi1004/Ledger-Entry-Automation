@@ -1,7 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .models import Factory, Plant, Machine
 from .serializers import FactorySerializer, PlantSerializer, MachineSerializer, MachineListSerializer
@@ -11,17 +11,17 @@ from apps.users.permissions import IsAdminUser, IsSupervisorOrAbove
 # ─── Factory ──────────────────────────────────────────────────────────────
 class FactoryListCreateView(generics.ListCreateAPIView):
     """
-    GET  /api/machines/factories/   → list factories
+    GET  /api/machines/factories/   → list factories (Public branding metadata)
     POST /api/machines/factories/   → create (Admin only)
     """
     queryset           = Factory.objects.filter(is_active=True)
     serializer_class   = FactorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_permissions(self):
         if self.request.method == 'POST':
             return [IsSupervisorOrAbove()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
 
 class FactoryDetailView(generics.RetrieveUpdateDestroyAPIView):

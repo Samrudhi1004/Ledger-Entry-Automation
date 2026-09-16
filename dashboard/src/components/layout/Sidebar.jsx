@@ -1,6 +1,8 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useCompany } from '../../context/CompanyContext';
 import { useState, useEffect } from 'react';
+import CompanyDetailsModal from '../common/CompanyDetailsModal';
 import {
   Database,
   ShieldCheck,
@@ -121,9 +123,11 @@ const CALIBRATION_MODULES = [
 
 export default function Sidebar({ pendingCount = 0 }) {
   const { user, logout } = useAuth();
+  const { logoUrl } = useCompany() || {};
   const navigate = useNavigate();
   const location = useLocation();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
 
   // Initialize expanded state: expand module that contains current active route, or master by default
   const [expanded, setExpanded] = useState(() => {
@@ -206,16 +210,48 @@ export default function Sidebar({ pendingCount = 0 }) {
 
   return (
     <aside className="sidebar">
-      {/* Logo */}
-      <div className="sidebar-logo">
-        <div className="sidebar-logo-icon">
-          <Factory size={20} color="#ffffff" />
+      {/* Brand Logo -> Open Company Details Modal (Popup Only, No Navigation) */}
+      <button
+        type="button"
+        className="sidebar-logo"
+        title="View Company Details"
+        onClick={() => setShowCompanyModal(true)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          padding: '16px 20px',
+          border: 'none',
+          borderBottom: '1px solid #1e293b',
+          background: 'transparent',
+          cursor: 'pointer',
+          transition: 'background 0.2s ease',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      >
+        <div
+          className="sidebar-logo-icon"
+          style={{
+            width: '40px',
+            height: '40px',
+            overflow: 'hidden',
+            padding: 0,
+            background: 'transparent',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+            borderRadius: '10px',
+            transition: 'transform 0.18s ease',
+          }}
+        >
+          <img
+            src={logoUrl || "/apple-touch-icon.png"}
+            alt="Inspection Hub Logo"
+            style={{ width: '100%', height: '100%', borderRadius: 'inherit', objectFit: 'contain' }}
+            onError={(e) => { e.target.src = "/apple-touch-icon.png"; }}
+          />
         </div>
-        <div className="sidebar-logo-text">
-          <span className="sidebar-logo-title">{isCalibrator ? 'Calibration Hub' : user?.role === 'admin' ? 'Admin Hub' : 'Inspection Hub'}</span>
-          <span className="sidebar-logo-sub">{isCalibrator ? 'Equipment Control' : user?.role === 'admin' ? 'System Management' : 'Quality Control'}</span>
-        </div>
-      </div>
+      </button>
 
       {/* Nav */}
       <nav className="sidebar-nav">
@@ -327,25 +363,62 @@ export default function Sidebar({ pendingCount = 0 }) {
                 : initials
               }
             </div>
-            <div className="user-info">
-              <div className="user-name">
+            <div className="user-info" style={{ flex: 1, minWidth: 0 }}>
+              <div
+                className="sidebar-user-name"
+                style={{
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.84rem',
+                  lineHeight: 1.2,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
                 {user ? `${user.first_name} ${user.last_name}`.trim() || user.username : '—'}
               </div>
-              <div className="user-role">{user?.role ?? 'supervisor'}</div>
+              <div
+                className="sidebar-user-role"
+                style={{
+                  color: '#94a3b8',
+                  fontSize: '0.72rem',
+                  fontWeight: 500,
+                  textTransform: 'capitalize',
+                  marginTop: '2px',
+                }}
+              >
+                {user?.role ?? 'supervisor'}
+              </div>
             </div>
             <button
               id="sidebar-logout"
-              className="btn btn-ghost btn-sm"
+              className="sidebar-logout-btn"
               onClick={(e) => { e.preventDefault(); handleLogout(); }}
               disabled={loggingOut}
-              style={{ padding: '4px 8px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                color: '#cbd5e1',
+                borderRadius: '6px',
+                padding: '6px 8px',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
               title="Log out"
             >
-              <LogOut size={16} />
+              <LogOut size={15} />
             </button>
           </div>
         </NavLink>
       </div>
+
+      {showCompanyModal && (
+        <CompanyDetailsModal onClose={() => setShowCompanyModal(false)} />
+      )}
     </aside>
   );
 }

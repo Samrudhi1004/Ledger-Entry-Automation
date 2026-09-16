@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -58,6 +59,9 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkAndRoute() async {
+    // Refresh latest company metadata on startup so splash screen has live data
+    Provider.of<CompanyProvider>(context, listen: false).fetchCompanyDetails();
+
     // Give the splash a minimum display time so it doesn't flash.
     await Future.delayed(const Duration(milliseconds: 1400));
 
@@ -240,23 +244,66 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                   ],
                 ),
-                child: const Icon(
-                  Icons.mic_external_on_rounded,
-                  size: 56,
-                  color: Color(0xFF2563EB),
+                child: Padding(
+                  padding: const EdgeInsets.all(18.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Consumer<CompanyProvider>(
+                      builder: (context, company, child) {
+                        final customLogo = company.logoUrl.trim();
+                        if (customLogo.isNotEmpty) {
+                          return Image.network(
+                            customLogo,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => Image.network(
+                              'apple-touch-icon.png',
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) => Image.asset(
+                                'assets/images/app_logo.png',
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          );
+                        }
+                        return kIsWeb
+                            ? Image.network(
+                                'apple-touch-icon.png',
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) => Image.asset(
+                                  'assets/images/app_logo.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              )
+                            : Image.asset(
+                                'assets/images/app_logo.png',
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) => Image.network(
+                                  'apple-touch-icon.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              );
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: 28),
             Consumer<CompanyProvider>(
               builder: (context, company, child) {
-                return Text(
-                  company.companyCode,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 6,
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Text(
+                    company.companyName.toUpperCase(),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2.0,
+                    ),
                   ),
                 );
               },
