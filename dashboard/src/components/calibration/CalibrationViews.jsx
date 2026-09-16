@@ -7,7 +7,7 @@ import {
 import {
   CalendarClock, CircleCheckBig,
   CalendarDays, ChevronLeft, ChevronRight, ClipboardCheck, ClipboardList,
-  BellRing, Download, Eye, FileClock, LayoutDashboard, PackageCheck, Pencil, Plus, Printer,
+  Download, Eye, FileClock, LayoutDashboard, PackageCheck, Pencil, Plus, Printer,
   Search, ShieldCheck, Trash2, TriangleAlert, Wrench,
 } from 'lucide-react';
 
@@ -15,12 +15,10 @@ import StatCard from '../cards/StatCard';
 import Modal from '../common/Modal';
 import { EquipmentFields } from './CalibrationFields';
 import {
-  dashboardFilterLabel, daysLabel,
-  calibrationNotifications, filterDashboardEquipment, formatDate, STATUS_BADGES,
+  dashboardFilterLabel, daysLabel, filterDashboardEquipment, formatDate, STATUS_BADGES,
 } from '../../utils/calibrationData';
 
 const PAGE_SIZE = 20;
-const SEEN_NOTIFICATION_STORAGE_KEY = 'calibration-seen-notifications';
 
 function CompanyReportHeader({ company, title, format }) {
   const address = [company?.address, company?.location].filter(Boolean).join(', ');
@@ -166,20 +164,32 @@ function DueWindowChart({ equipment, selectedFilter, onFilterChange }) {
 function DashboardEquipmentModal({ equipment, filter, onClose, openStatus }) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [activeFilter, setActiveFilter] = useState(filter === 'compliance' ? 'all' : filter);
+  const complianceFilters = [
+    ['all', 'All equipment'],
+    ['compliant', 'Not overdue'],
+    ['overdue', 'Overdue'],
+  ];
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return filterDashboardEquipment(equipment, filter).filter((item) => !query || [
+    return filterDashboardEquipment(equipment, activeFilter).filter((item) => !query || [
       item.equipment_id, item.equipment_name, item.equipment_type,
       item.history_card_number, item.department, item.location,
     ].join(' ').toLowerCase().includes(query));
-  }, [equipment, filter, search]);
+  }, [equipment, activeFilter, search]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  useEffect(() => setPage(1), [filter, search]);
+  useEffect(() => setPage(1), [activeFilter, search]);
 
   return (
-    <Modal title={`${dashboardFilterLabel(filter)} (${filtered.length})`} size="xl" onClose={onClose}>
+    <Modal title={`${filter === 'compliance' ? 'Compliance breakdown' : dashboardFilterLabel(activeFilter)} (${filtered.length})`} size="xl" onClose={onClose}>
+      {filter === 'compliance' && <div className="calibration-compliance-filters" aria-label="Compliance list filters">
+        {complianceFilters.map(([value, label]) => {
+          const count = filterDashboardEquipment(equipment, value).length;
+          return <button key={value} type="button" className={`calibration-compliance-filter${activeFilter === value ? ' active' : ''}`} onClick={() => setActiveFilter(value)} aria-pressed={activeFilter === value}><span>{label}</span><strong>{count}</strong></button>;
+        })}
+      </div>}
       <label className="calibration-search calibration-modal-search">
         <span className="sr-only">Search matching equipment</span><Search size={16} aria-hidden="true" />
         <input className="form-input" type="search" placeholder="Search equipment ID, name, type, history card, department or location" value={search} onChange={(event) => setSearch(event.target.value)} autoFocus />
@@ -189,7 +199,7 @@ function DashboardEquipmentModal({ equipment, filter, onClose, openStatus }) {
       ) : (
         <div className="table-wrapper">
           <table className="calibration-detail-table">
-            <thead><tr><th>Equipment</th><th>Type</th><th>History Card No.</th><th>Department / Location</th><th>Next Calibration</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Equipment</th><th>Type</th><th>History Card No.</th><th>Department / Location</th><th>Next Calibration</th><th>Status</th>{filter === 'compliance' && <th>Compliance result</th>}<th>Actions</th></tr></thead>
             <tbody>{visible.map((item) => (
               <tr key={item.id}>
                 <td><span className="font-mono font-bold text-blue">{item.equipment_id}</span><br /><span className="text-xs text-muted">{item.equipment_name}</span></td>
@@ -198,6 +208,7 @@ function DashboardEquipmentModal({ equipment, filter, onClose, openStatus }) {
                 <td>{[item.department, item.location].filter(Boolean).join(' / ') || '—'}</td>
                 <td>{formatDate(item.next_calibration_date)}</td>
                 <td><span className={`badge ${STATUS_BADGES[item.status] ?? 'badge-manual'}`}>{item.status}</span></td>
+                {filter === 'compliance' && <td><span className={`badge ${item.status === 'Overdue' ? 'badge-ooc' : 'badge-ok'}`}>{item.status === 'Overdue' ? 'Overdue' : 'Not overdue'}</span></td>}
                 <td><div className="calibration-actions">
                   {item.state !== 'scrapped' && <button type="button" className="btn btn-primary btn-sm" onClick={() => { onClose(); openStatus(item); }}>{item.state === 'rejected' ? 'Choose Action' : item.state === 'repair' ? 'Recalibrate' : 'Record Result'}</button>}
                   <Link className="btn btn-ghost btn-sm" to={`/calibration/equipment/${item.id}/history`} state={{ calibrationPath: [{ label: 'Calibration Dashboard', to: '/calibration' }] }}><FileClock size={14} aria-hidden="true" /> History</Link>
@@ -214,16 +225,19 @@ function DashboardEquipmentModal({ equipment, filter, onClose, openStatus }) {
 
 function ComplianceCard({ summary, onOpen }) {
   const percentage = Number(summary.compliance_percentage || 0);
+  const totalEquipment = Number(summary.total_equipment || 0);
+  const overdueEquipment = Number(summary.overdue_equipment || 0);
+  const compliantEquipment = Math.max(0, totalEquipment - overdueEquipment);
   const needsAction = Number(summary.failed_equipment || 0) + Number(summary.repair_equipment || 0);
   return (
-    <button type="button" className="card calibration-compliance-card" onClick={() => onOpen('onTime')} aria-label={`Compliance ${summary.compliance_percentage} percent. Show calibrated on time equipment.`}>
+    <button type="button" className="card calibration-compliance-card" onClick={() => onOpen('compliance')} aria-label={`Compliance ${summary.compliance_percentage} percent. ${compliantEquipment} of ${totalEquipment} equipment is not overdue. Show compliance breakdown.`}>
       <div className="section-header">
-        <div><h2 className="section-title"><ShieldCheck size={17} aria-hidden="true" /> Calibration Compliance</h2><p className="text-xs text-muted mt-4">On-time calibrations against the current plan.</p></div>
+        <div><h2 className="section-title"><ShieldCheck size={17} aria-hidden="true" /> Calibration Compliance</h2><p className="text-xs text-muted mt-4">{compliantEquipment} of {totalEquipment} equipment is not overdue.</p></div>
         <strong className="calibration-compliance-percent">{summary.compliance_percentage}%</strong>
       </div>
       <div className="calibration-compliance-meter" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, percentage))}%` }} /></div>
-      <div className="calibration-compliance-summary-list" aria-label="Compliance summary">
-        <span>Done on time — <strong>{summary.calibrated_on_time}</strong></span>
+      <div className="calibration-compliance-summary-list" aria-label="Compliance summary" title="Compliance is total equipment minus overdue equipment, divided by total equipment.">
+        <span>Not overdue — <strong>{compliantEquipment}</strong></span>
         <span>Due soon — <strong>{summary.due_within_30_days}</strong></span>
         <span>Overdue — <strong>{summary.overdue_equipment}</strong></span>
         <span>Needs action — <strong>{needsAction}</strong></span>
@@ -269,21 +283,6 @@ function DashboardEquipmentList({ equipment, openStatus }) {
   );
 }
 
-function NotificationModal({ notifications, onClose }) {
-  return (
-    <Modal title={`Calibration Alerts (${notifications.length})`} size="lg" onClose={onClose}>
-      <p className="calibration-status-help">Review these calibration items and take action before the next due date.</p>
-      <div className="calibration-notification-list">
-        {notifications.length === 0 ? <div className="empty-state calibration-detail-empty"><CircleCheckBig className="empty-state-icon" aria-hidden="true" /><div className="empty-state-text">No active calibration alerts.</div></div> : notifications.map((item) => (
-          <Link key={item.notificationId} className={`calibration-notification-item ${item.notificationType}`} to={`/calibration/equipment/${item.id}/history`} state={{ calibrationPath: [{ label: 'Calibration Dashboard', to: '/calibration' }] }} onClick={onClose}>
-            <BellRing size={18} aria-hidden="true" /><span><strong>{item.title}</strong><small>{item.message}</small></span><ChevronRight size={16} aria-hidden="true" />
-          </Link>
-        ))}
-      </div>
-    </Modal>
-  );
-}
-
 export function CalibrationDashboard({ summary, equipment, selectedFilter, onFilterChange, openStatus }) {
   const cards = [
     { filter: 'all', label: 'Total Equipment', value: summary.total_equipment, sub: 'Registered assets', accent: 'var(--accent-blue)', icon: <PackageCheck /> },
@@ -292,23 +291,6 @@ export function CalibrationDashboard({ summary, equipment, selectedFilter, onFil
     { filter: 'repair', label: 'Under Repair', value: summary.repair_equipment, sub: 'Awaiting recalibration', accent: 'var(--accent-yellow)', icon: <Wrench /> },
   ];
   const [modalFilter, setModalFilter] = useState(null);
-  const [notificationOpen, setNotificationOpen] = useState(false);
-  const notifications = useMemo(() => calibrationNotifications(equipment).sort((a, b) => (a.daysRemaining ?? -1) - (b.daysRemaining ?? -1)), [equipment]);
-
-  useEffect(() => {
-    if (!equipment.length) return;
-    const notificationKeys = notifications.map((item) => `${item.notificationId}:${item.next_calibration_date ?? ''}`);
-    let seenKeys = [];
-    try {
-      seenKeys = JSON.parse(sessionStorage.getItem(SEEN_NOTIFICATION_STORAGE_KEY) ?? '[]');
-    } catch {
-      // Ignore an invalid old browser value and replace it below.
-    }
-    if (notificationKeys.some((key) => !seenKeys.includes(key))) {
-      setNotificationOpen(true);
-    }
-    sessionStorage.setItem(SEEN_NOTIFICATION_STORAGE_KEY, JSON.stringify(notificationKeys));
-  }, [equipment.length, notifications]);
 
   const showFilteredList = (filter) => {
     if (!filter) return;
@@ -318,11 +300,6 @@ export function CalibrationDashboard({ summary, equipment, selectedFilter, onFil
 
   return (
     <>
-      <div className="calibration-notification-toolbar">
-        <span className="text-xs text-muted">{summary.total_equipment} registered equipment · {summary.repair_equipment} awaiting recalibration</span>
-        <button type="button" className="calibration-notification-button" onClick={() => setNotificationOpen(true)} aria-label={`Open ${notifications.length} calibration alerts`}><BellRing size={18} aria-hidden="true" /><span>Calibration Alerts</span><strong className={notifications.length === 0 ? 'zero' : ''}>{notifications.length}</strong></button>
-      </div>
-
       <div className="stat-grid calibration-stat-grid" aria-label="Calibration summary filters">
         {cards.map((card) => (
           <button
@@ -347,7 +324,6 @@ export function CalibrationDashboard({ summary, equipment, selectedFilter, onFil
       <DashboardEquipmentList equipment={equipment} openStatus={openStatus} />
 
       {modalFilter && <DashboardEquipmentModal equipment={equipment} filter={modalFilter} onClose={() => setModalFilter(null)} openStatus={openStatus} />}
-      {notificationOpen && <NotificationModal notifications={notifications} onClose={() => setNotificationOpen(false)} />}
     </>
   );
 }

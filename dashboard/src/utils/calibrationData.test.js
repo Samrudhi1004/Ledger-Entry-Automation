@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  calculateNextCalibrationDate, calibrationNotifications, daysLabel, filterDashboardEquipment,
+  calculateNextCalibrationDate, daysLabel, filterDashboardEquipment,
 } from './calibrationData.js';
 
 const equipment = [
@@ -42,11 +42,8 @@ test('dashboard due windows return the exact matching equipment', () => {
   );
 });
 
-test('date calculation and emergency grouping stay deterministic', () => {
+test('date calculation stays deterministic', () => {
   assert.equal(calculateNextCalibrationDate('2026-01-01', 365), '2027-01-01');
-  assert.deepEqual(calibrationNotifications(equipment).map((item) => item.equipment_id), [
-    'DUE-20', 'DUE-5', 'TODAY', 'OVERDUE', 'REJECTED', 'REPAIR',
-  ]);
   assert.equal(daysLabel({ state: 'active', status: 'Overdue', days_remaining: -1 }), '1 day overdue');
   assert.equal(daysLabel({ state: 'active', status: 'Overdue', days_remaining: -8 }), '8 days overdue');
 });

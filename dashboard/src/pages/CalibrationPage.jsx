@@ -47,8 +47,7 @@ const VIEW_COPY = {
 };
 
 const EMPTY_STATUS_DATA = {
-  result_date: '', calibration_agency: '',
-  certificate_number: '', traceability_certificate_number: '',
+  result_date: '', calibration_agency: '', certificate_number: '',
   calibration_details: '', remarks: '', report_file: null,
 };
 
@@ -312,7 +311,6 @@ export default function CalibrationPage({ view = 'dashboard' }) {
         calibration_date: statusData.result_date,
         calibration_agency: statusData.calibration_agency,
         certificate_number: statusData.certificate_number,
-        traceability_certificate_number: statusData.traceability_certificate_number,
         calibration_details: statusData.calibration_details,
         remarks: statusData.remarks,
       };
@@ -584,7 +582,6 @@ export default function CalibrationPage({ view = 'dashboard' }) {
               <Field label="Calibration Date" name="result_date" type="date" value={statusData.result_date} onChange={(event) => setStatusData((current) => ({ ...current, result_date: event.target.value }))} required />
             </div>
             <p className="calibration-status-help">{statusAction === 'accepted' ? `The next calibration date will be calculated using the ${statusTarget.calibration_frequency_days}-day frequency.` : 'After saving the rejection, choose whether the equipment will be repaired or scrapped.'}</p>
-            {statusTarget.acceptance_criteria && <p className="calibration-status-help"><strong>Acceptance criteria:</strong> {statusTarget.acceptance_criteria}</p>}
             <div className="form-group">
               <label className="form-label" htmlFor="calibration-report-file">Certificate / Evidence *</label>
               <input id="calibration-report-file" className="form-input" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" required onChange={(event) => setStatusData((current) => ({ ...current, report_file: event.target.files?.[0] ?? null }))} />
@@ -593,7 +590,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
             <div className="calibration-form-grid calibration-result-details">
               <Field label="Calibration Agency *" name="calibration_agency" value={statusData.calibration_agency} onChange={(event) => setStatusData((current) => ({ ...current, calibration_agency: event.target.value }))} required />
               <Field label="Certificate No. *" name="certificate_number" value={statusData.certificate_number} onChange={(event) => setStatusData((current) => ({ ...current, certificate_number: event.target.value }))} required />
-              <Field label="Traceability Certificate" name="traceability_certificate_number" value={statusData.traceability_certificate_number} onChange={(event) => setStatusData((current) => ({ ...current, traceability_certificate_number: event.target.value }))} />
+              <Field label="Acceptance Criteria" name="acceptance_criteria" value={statusTarget.acceptance_criteria || ''} readOnly />
               <div className="form-group calibration-form-span"><label className="form-label" htmlFor="calibration-details">Calibration Details</label><textarea id="calibration-details" className="form-textarea" value={statusData.calibration_details} onChange={(event) => setStatusData((current) => ({ ...current, calibration_details: event.target.value }))} /></div>
               <div className="form-group calibration-form-span"><label className="form-label" htmlFor="result-remarks">{statusAction === 'rejected' ? 'Rejection Reason *' : 'Record Remarks'}</label><textarea id="result-remarks" className="form-textarea" required={statusAction === 'rejected'} value={statusData.remarks} onChange={(event) => setStatusData((current) => ({ ...current, remarks: event.target.value }))} /></div>
             </div>

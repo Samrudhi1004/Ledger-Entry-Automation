@@ -25,7 +25,6 @@ export const EMPTY_SUMMARY = {
   failed_equipment: 0,
   repair_equipment: 0,
   scrapped_equipment: 0,
-  calibrated_on_time: 0,
   compliance_percentage: 100,
 };
 
@@ -41,7 +40,7 @@ export const STATUS_BADGES = {
 
 export const DASHBOARD_FILTER_OPTIONS = [
   ['all', 'All equipment'],
-  ['onTime', 'Calibrated on time'],
+  ['compliant', 'Not overdue'],
   ['valid', 'Valid equipment'],
   ['due30', 'Due within 30 days'],
   ['due15', 'Due within 15 days'],
@@ -52,6 +51,7 @@ export const DASHBOARD_FILTER_OPTIONS = [
   ['due1to7', 'Due in 1–7 days'],
   ['due8to30', 'Due in 8–30 days'],
   ['overdue', 'Overdue equipment'],
+  ['needsAction', 'Needs action'],
   ['failed', 'Rejected equipment'],
   ['repair', 'Under repair'],
   ['scrapped', 'Scrapped equipment'],
@@ -74,7 +74,7 @@ export function filterDashboardEquipment(equipment, filter) {
     const active = item.state === 'active';
     switch (filter) {
       case 'valid': return item.status === 'Valid';
-      case 'onTime': return item.calibrated_on_time;
+      case 'compliant': return item.status !== 'Overdue';
       case 'due30': return active && days >= 0 && days <= 30;
       case 'due15': return active && days >= 0 && days <= 15;
       case 'due3': return active && days >= 0 && days <= 3;
@@ -84,6 +84,7 @@ export function filterDashboardEquipment(equipment, filter) {
       case 'due1to7': return active && days >= 1 && days <= 7;
       case 'due8to30': return active && days >= 8 && days <= 30;
       case 'overdue': return item.status === 'Overdue';
+      case 'needsAction': return item.status === 'Rejected' || item.status === 'Under Repair';
       case 'failed': return item.status === 'Rejected';
       case 'repair': return item.status === 'Under Repair';
       case 'scrapped': return item.status === 'Scrapped';
@@ -129,23 +130,4 @@ export function calculateNextCalibrationDate(lastDate, frequencyDays) {
   date.setUTCDate(date.getUTCDate() + days);
   if (Number.isNaN(date.getTime()) || date.getUTCFullYear() > 2100) return '';
   return date.toISOString().slice(0, 10);
-}
-
-export function calibrationNotifications(equipment) {
-  return equipment.flatMap((item) => {
-    if (item.state === 'scrapped') return [];
-    if (item.status === 'Rejected') {
-      return [{ ...item, notificationId: `${item.id}:rejected`, title: `${item.equipment_id} needs a decision`, message: 'Choose repair or scrap for this rejected equipment.', notificationType: 'workflow' }];
-    }
-    if (item.status === 'Under Repair') {
-      return [{ ...item, notificationId: `${item.id}:repair`, title: `${item.equipment_id} is awaiting recalibration`, message: 'Repair is recorded; complete calibration again before release.', notificationType: 'workflow' }];
-    }
-    const days = Number(item.days_remaining);
-    if (!Number.isFinite(days)) return [];
-    if (days < 0) return [{ ...item, notificationId: `${item.id}:overdue`, title: `${item.equipment_id} is overdue`, message: item.next_calibration_date ? `Calibration was due on ${formatDate(item.next_calibration_date)}.` : 'Calibration is past its due date.', notificationType: 'overdue', daysRemaining: days }];
-    if (days === 0) return [{ ...item, notificationId: `${item.id}:today`, title: `${item.equipment_id} is due today`, message: 'Calibration should be completed today.', notificationType: 'today', daysRemaining: days }];
-    const threshold = days <= 3 ? 3 : days <= 15 ? 15 : days <= 30 ? 30 : null;
-    if (!threshold) return [];
-    return [{ ...item, notificationId: `${item.id}:due-${threshold}`, title: `${item.equipment_id} is due within ${threshold} days`, message: item.next_calibration_date ? `Next calibration: ${formatDate(item.next_calibration_date)}.` : 'Schedule calibration before the due window closes.', notificationType: `due-${threshold}`, daysRemaining: days }];
-  });
 }

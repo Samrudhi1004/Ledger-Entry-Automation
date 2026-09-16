@@ -1867,76 +1867,6 @@ td.deviation-ooc { color: var(--accent-red);   font-family: 'JetBrains Mono', mo
   margin-bottom: 16px;
 }
 
-.calibration-notification-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.calibration-notification-button {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 8px 12px;
-  color: var(--text-primary);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.calibration-notification-button:hover,
-.calibration-notification-button:focus-visible {
-  border-color: var(--border-accent);
-  outline: 3px solid var(--accent-blue-glow);
-  outline-offset: 2px;
-}
-
-.calibration-notification-button strong {
-  display: inline-grid;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 5px;
-  place-items: center;
-  color: #ffffff;
-  background: var(--accent-red);
-  border-radius: 999px;
-  font-size: 0.7rem;
-}
-.calibration-notification-button strong.zero {
-  background: #94a3b8;
-  opacity: 0.7;
-}
-
-.calibration-notification-list { display: grid; gap: 10px; }
-
-.calibration-notification-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 60px;
-  padding: 12px 14px;
-  color: var(--text-primary);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent-yellow);
-  border-radius: var(--radius-md);
-  text-decoration: none;
-}
-
-.calibration-notification-item:hover { background: var(--bg-hover); border-color: var(--border-accent); }
-.calibration-notification-item.overdue,
-.calibration-notification-item.workflow { border-left-color: var(--accent-red); }
-.calibration-notification-item span { display: grid; flex: 1; gap: 3px; }
-.calibration-notification-item small { color: var(--text-muted); line-height: 1.4; }
-
 .calibration-dashboard-list { margin-top: 20px; }
 .calibration-dashboard-list-filters { margin-bottom: 16px; }
 .calibration-dashboard-table { min-width: 900px; }
@@ -1944,6 +1874,34 @@ td.deviation-ooc { color: var(--accent-red);   font-family: 'JetBrains Mono', mo
 .calibration-modal-search {
   max-width: none;
   margin-bottom: 16px;
+}
+
+.calibration-compliance-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.calibration-compliance-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.calibration-compliance-filter.active {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue-soft);
+  color: var(--text-primary);
 }
 
 .calibration-pagination {
@@ -2219,8 +2177,6 @@ td.deviation-ooc { color: var(--accent-red);   font-family: 'JetBrains Mono', mo
   .calibration-status-choices { grid-template-columns: 1fr; }
   .calibration-status-equipment-details { grid-template-columns: 1fr; }
   .calibration-disposition-actions { grid-template-columns: 1fr; }
-  .calibration-notification-toolbar { align-items: stretch; flex-direction: column; }
-  .calibration-notification-button { justify-content: center; }
   .calibration-pagination { justify-content: space-between; }
   .calibration-month-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .calibration-report-toolbar, .calibration-report-actions { align-items: stretch; flex-direction: column; }
