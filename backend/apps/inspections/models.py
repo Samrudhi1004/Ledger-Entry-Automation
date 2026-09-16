@@ -166,26 +166,41 @@ class DailyProductionReport(models.Model):
         ordering = ['-date', '-created_at']
 
     def save(self, *args, **kwargs):
-        # Auto-calculate target
+        # Auto-calculate target from available time and cycle time
+        available_time = 420
         if self.machine and self.machine.plant:
             plant = self.machine.plant
-            available_time = (plant.shift_duration_hours * 60) - plant.total_break_mins
-            
-            from apps.parts.models import InspectionTemplate
-            template = InspectionTemplate.objects.filter(
-                part=self.part, name=self.operation
-            ).first()
-            if not template:
-                template = InspectionTemplate.objects.filter(part=self.part).first()
-            
-            if template and getattr(template, 'cycle_time_mins', 0) > 0:
-                self.production_target = int(available_time / template.cycle_time_mins)
+            if getattr(plant, 'factory', None) and plant.factory.shift_hours:
+                fac = plant.factory
+                available_time = (fac.shift_hours * 60) - (fac.lunch_break_minutes + fac.tea_break_minutes)
+            elif plant.shift_duration_hours:
+                available_time = (plant.shift_duration_hours * 60) - (plant.total_break_mins or 0)
+        
+        if available_time <= 0:
+            available_time = 420
+        
+        from apps.parts.models import InspectionTemplate
+        template = InspectionTemplate.objects.filter(
+            part=self.part, name=self.operation
+        ).first()
+        if not template:
+            template = InspectionTemplate.objects.filter(part=self.part).first()
+        
+        if template and getattr(template, 'cycle_time_mins', 0) > 0:
+            self.production_target = int(available_time / template.cycle_time_mins)
+        else:
+            self.production_target = int(available_time / 10.0)
 
         if self.production_target > 0:
             self.achievement_percentage = round((self.jobs_completed / self.production_target) * 100, 2)
         else:
             self.achievement_percentage = 0.0
         super().save(*args, **kwargs)
+
+        # Immediately ensure linked DowntimeReport is created and updated
+        if self.status == self.Status.SUBMITTED:
+            downtime_report, _ = DowntimeReport.objects.get_or_create(production_report=self)
+            downtime_report.save()
 
     def __str__(self):
         return f"Daily Production Report {self.date} | {self.machine.machine_code} | {self.operator.username}"
@@ -268,6 +283,8 @@ class DowntimeReport(models.Model):
             template = InspectionTemplate.objects.filter(part=prod.part).first()
         if template and getattr(template, 'cycle_time_mins', 0) > 0:
             cycle_time = template.cycle_time_mins
+        else:
+            cycle_time = 10.0
         
         self.expected_downtime = max(0, int((target - produced) * cycle_time))
 

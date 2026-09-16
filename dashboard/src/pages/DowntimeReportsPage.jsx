@@ -141,14 +141,14 @@ export default function DowntimeReportsPage() {
 
   const getAccountedTotal = (r) => {
     return (Number(r.no_load) || 0) +
-           (Number(r.no_operator) || 0) +
-           (Number(r.um) || 0) +
-           (Number(r.setting) || 0) +
-           (Number(r.inspection_wait) || 0) +
-           (Number(r.tool_change) || 0) +
-           (Number(r.power_off) || 0) +
-           (Number(r.rework) || 0) +
-           (Number(r.tool_problem) || 0);
+      (Number(r.no_operator) || 0) +
+      (Number(r.um) || 0) +
+      (Number(r.setting) || 0) +
+      (Number(r.inspection_wait) || 0) +
+      (Number(r.tool_change) || 0) +
+      (Number(r.power_off) || 0) +
+      (Number(r.rework) || 0) +
+      (Number(r.tool_problem) || 0);
   };
   const getRowTotal = getAccountedTotal;
 
@@ -210,7 +210,7 @@ export default function DowntimeReportsPage() {
       setSuccessMsg(`Downtime Report for ${dateFilter || 'selected entries'} successfully SUBMITTED! Saved to Date-Wise History.`);
       fetchDowntimeReports();
       await fetchDowntimeHistory();
-      
+
       // Auto-switch to History tab
       setActiveTab('history');
     } catch (err) {
@@ -308,9 +308,9 @@ export default function DowntimeReportsPage() {
 
         <div className="page-content" style={{ padding: '16px 20px', backgroundColor: '#F8FAFC', minHeight: '100vh' }}>
           <Breadcrumbs items={[{ label: 'Reports', to: '/reports' }, { label: 'Downtime Analysis' }]} />
-          
+
           <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '20px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            
+
             {/* Toolbar */}
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
               <div>
@@ -376,7 +376,7 @@ export default function DowntimeReportsPage() {
                   <tbody>
                     {filteredHistory.map((item, idx) => (
                       <tr key={item.key || idx} style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
-                        
+
                         <td style={{ padding: '12px 14px', fontWeight: '800', color: '#0F172A', fontSize: '14px' }}>
                           {item.date}
                         </td>
@@ -485,7 +485,7 @@ export default function DowntimeReportsPage() {
 
       <div className="page-content" style={{ padding: '14px 16px', backgroundColor: '#F8FAFC', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>
         <Breadcrumbs items={[{ label: 'Reports', to: '/reports' }, { label: 'Downtime Analysis' }]} />
-        
+
         {/* Navigation Tabs */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', borderBottom: '2px solid #E2E8F0', paddingBottom: '6px' }}>
           <button
@@ -565,11 +565,11 @@ export default function DowntimeReportsPage() {
           <>
             {/* Header & Filter Card */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '14px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', marginBottom: '14px' }}>
-              
+
               {/* Filter Toolbar */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                  
+
                   {/* Date Filter */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#F8FAFC', padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1' }}>
                     <Calendar size={14} color="#475569" />
@@ -650,7 +650,7 @@ export default function DowntimeReportsPage() {
 
             {/* MAIN DOWNTIME TABLE */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%', overflow: 'hidden' }}>
-              
+
               {loading ? (
                 <div style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
                   <RefreshCw size={22} className="spin" style={{ marginBottom: '8px' }} />
@@ -667,7 +667,7 @@ export default function DowntimeReportsPage() {
               ) : (
                 <div style={{ overflowX: 'auto', width: '100%' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'center', border: '1px solid #CBD5E1', tableLayout: 'auto' }}>
-                    
+
                     {/* EXCEL MERGED HEADER STRUCTURE */}
                     <thead style={{ backgroundColor: '#B0E0E6', color: '#0F172A', fontWeight: '700' }}>
                       <tr>
@@ -677,7 +677,7 @@ export default function DowntimeReportsPage() {
                         <th rowSpan={2} style={{ padding: '5px 2px', border: '1px solid #94A3B8', width: '42px' }}>TARGET</th>
                         <th rowSpan={2} style={{ padding: '5px 2px', border: '1px solid #94A3B8', width: '42px' }}>PRODUCED</th>
                         <th rowSpan={2} style={{ padding: '5px 2px', border: '1px solid #94A3B8', width: '58px' }}>ACCEPTED / ACTUAL</th>
-                        
+
                         <th colSpan={3} style={{ padding: '4px 2px', border: '1px solid #94A3B8', backgroundColor: '#93C5FD', color: '#1E3A8A', fontSize: '10px' }}>
                           REJECTION SUMMARY
                         </th>
@@ -687,7 +687,7 @@ export default function DowntimeReportsPage() {
                         </th>
 
                         <th rowSpan={2} style={{ padding: '5px 2px', border: '1px solid #94A3B8', width: '65px', backgroundColor: '#E0F2FE', color: '#0369A1' }}>
-                          TOTAL<br/>DOWN TIME
+                          TOTAL<br />DOWN TIME
                         </th>
                         <th rowSpan={2} style={{ padding: '5px 2px', border: '1px solid #94A3B8', width: '80px' }}>
                           REMARKS
@@ -730,20 +730,25 @@ export default function DowntimeReportsPage() {
 
                         return (
                           <tr key={r.id || idx} style={{ backgroundColor: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
-                            
+
                             <td style={{ padding: '4px 2px', border: '1px solid #CBD5E1', backgroundColor: '#F1F5F9', fontWeight: '700', color: '#475569' }}>
                               {idx + 1}
                             </td>
                             <td style={{ padding: '4px 2px', border: '1px solid #CBD5E1', backgroundColor: '#F1F5F9', fontWeight: '800', color: '#0F172A' }}>
-                              {r.machine_code || r.machine}
+                              <div>{r.machine_code || r.machine}</div>
+                              {Number(r.cycle_time_mins) > 0 && (
+                                <div style={{ fontSize: '10px', color: '#64748B', fontWeight: '600', marginTop: '1px', letterSpacing: '0.2px' }}>
+                                  {Number(r.cycle_time_mins)} min
+                                </div>
+                              )}
                             </td>
                             <td style={{ padding: '4px 2px', border: '1px solid #CBD5E1', backgroundColor: '#F1F5F9', fontWeight: '600', color: '#1E293B' }}>
                               {r.operator_name || r.operator}
                             </td>
-                            <td style={{ padding: '4px 2px', border: '1px solid #CBD5E1', backgroundColor: '#F1F5F9', color: '#334155' }}>
+                            <td style={{ padding: '4px 2px', border: '1px solid #CBD5E1', backgroundColor: '#F1F5F9', fontWeight: '800', color: '#0F172A' }} title="Target auto-calculated from available shift time and cycle time">
                               {r.target}
                             </td>
-                            <td style={{ padding: '4px 2px', border: '1px solid #CBD5E1', backgroundColor: '#F1F5F9', color: '#334155' }}>
+                            <td style={{ padding: '4px 2px', border: '1px solid #CBD5E1', backgroundColor: '#F1F5F9', fontWeight: '800', color: '#0F172A' }} title="Produced units submitted by operator">
                               {r.produced}
                             </td>
                             <td style={{ padding: '4px 2px', border: '1px solid #CBD5E1', backgroundColor: '#F1F5F9', fontWeight: '700', color: '#15803D' }}>
@@ -789,9 +794,12 @@ export default function DowntimeReportsPage() {
                             </td>
 
                             {/* TOTAL DOWN TIME */}
-                            <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1', backgroundColor: getExpectedTotal(r) === getAccountedTotal(r) ? '#DCFCE7' : '#FEE2E2' }}>
+                            <td
+                              style={{ padding: '2px 1px', border: '1px solid #CBD5E1', backgroundColor: getExpectedTotal(r) === getAccountedTotal(r) ? '#DCFCE7' : '#FEE2E2' }}
+                              title={`Total Down Time = (Target ${r.target || 0} - Produced ${r.produced || 0}) * ${r.cycle_time_mins || 0}m = ${getExpectedTotal(r)} mins`}
+                            >
                               <div style={{ textAlign: 'center', fontWeight: '800', color: getExpectedTotal(r) === getAccountedTotal(r) ? '#166534' : '#991B1B', fontSize: '12px' }}>
-                                {getExpectedTotal(r)}
+                                {getExpectedTotal(r)} m
                               </div>
                             </td>
 
@@ -873,7 +881,7 @@ export default function DowntimeReportsPage() {
         {/* ── TAB 2: DOWNTIME REPORT HISTORY (DATE-WISE) ────────────────────── */}
         {activeTab === 'history' && (
           <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '16px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            
+
             {/* History Toolbar */}
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
               <div>
@@ -939,7 +947,7 @@ export default function DowntimeReportsPage() {
                   <tbody>
                     {filteredHistory.map((item, idx) => (
                       <tr key={item.key || idx} style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
-                        
+
                         {/* DATE */}
                         <td style={{ padding: '10px 12px', fontWeight: '800', color: '#0F172A' }}>
                           {item.date}
