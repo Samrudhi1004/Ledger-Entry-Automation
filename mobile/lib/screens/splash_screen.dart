@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -240,10 +241,28 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                   ],
                 ),
-                child: const Icon(
-                  Icons.mic_external_on_rounded,
-                  size: 56,
-                  color: Color(0xFF2563EB),
+                child: Padding(
+                  padding: const EdgeInsets.all(18.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: kIsWeb
+                        ? Image.network(
+                            'apple-touch-icon.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => Image.asset(
+                              'assets/images/app_logo.png',
+                              fit: BoxFit.contain,
+                            ),
+                          )
+                        : Image.asset(
+                            'assets/images/app_logo.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => Image.network(
+                              'apple-touch-icon.png',
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                  ),
                 ),
               ),
             ),
