@@ -1174,3 +1174,12 @@
 .message-highlight-flash {
   animation: highlightFlash 2s ease-out forwards;
 }
+
+/* ── Delete Menu Item ────────────────────────────── */
+.context-menu-item.delete-item {
+  color: #ef4444;
+}
+
+.context-menu-item.delete-item:hover {
+  background-color: #fef2f2;
+}

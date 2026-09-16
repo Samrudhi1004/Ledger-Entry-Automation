@@ -10,7 +10,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   static String baseUrl = const String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://backend-production-343b4.up.railway.app/api',
+    defaultValue: kReleaseMode 
+        ? 'https://backend-production-343b4.up.railway.app/api'
+        : 'http://127.0.0.1:8000/api',
   );
 
   // Secure storage for JWT tokens — EncryptedSharedPreferences on Android / Keychain on iOS

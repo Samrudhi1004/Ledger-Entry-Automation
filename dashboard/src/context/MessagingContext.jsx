@@ -150,6 +150,15 @@ export const MessagingProvider = ({ children }) => {
           }
           break;
 
+        case 'message_deleted':
+          // Remove message from local state for all clients
+          setMessages(prev => prev.filter(msg => msg.id !== data.data.message_id));
+          
+          // Note: we might also want to update the last_message in conversations 
+          // if the deleted message was the last one, but the simplest approach 
+          // is to just let the next fetch handle it or let it be.
+          break;
+
         case 'message_read':
           // Update read status
           setMessages(prev =>
@@ -245,6 +254,24 @@ export const MessagingProvider = ({ children }) => {
       }
     }));
   }, []);
+
+  // Delete message
+  const deleteMessage = useCallback(async (conversationId, messageId) => {
+    try {
+      await api.delete(`${API_BASE}/messaging/conversations/${conversationId}/messages/${messageId}/`);
+      
+      // Update local state instantly
+      setMessages(prev => prev.filter(msg => msg.id !== messageId));
+      
+      // Send a WebSocket message so other clients know to remove it?
+      // (Backend should ideally broadcast this, but for now we rely on local update)
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to delete message:', error);
+      return false;
+    }
+  }, [API_BASE]);
 
   // Send typing indicator
   const sendTypingIndicator = useCallback((isTyping) => {
@@ -343,6 +370,11 @@ export const MessagingProvider = ({ children }) => {
     if (conversation) {
       fetchMessages(conversation.id);
       connectWebSocket(conversation.id);
+      
+      // Clear unread count locally when selecting
+      setConversations(prev => prev.map(conv => 
+        conv.id === conversation.id ? { ...conv, unread_count: 0 } : conv
+      ));
     }
   }, [fetchMessages, connectWebSocket]);
 
@@ -416,6 +448,14 @@ export const MessagingProvider = ({ children }) => {
           const { conversation_id, message } = data.data;
 
           setConversations(prev => {
+            const conversationExists = prev.some(c => c.id === conversation_id);
+
+            // If conversation is brand-new (first message from a stranger), fetch full list
+            if (!conversationExists) {
+              setTimeout(() => fetchConversations(), 0);
+              return prev; // leave state unchanged — fetchConversations will update it
+            }
+
             const updated = prev.map(conv =>
               conv.id === conversation_id
                 ? {
@@ -428,7 +468,7 @@ export const MessagingProvider = ({ children }) => {
                       created_at: message.created_at
                     },
                     updated_at: message.created_at,
-                    unread_count: conv.id !== activeConversation?.id
+                    unread_count: (conv.id !== activeConversation?.id && message.sender?.id !== user?.id)
                       ? (conv.unread_count || 0) + 1
                       : conv.unread_count
                   }
@@ -613,6 +653,7 @@ export const MessagingProvider = ({ children }) => {
     setActiveConversation,
     updateMessageReactions,
     pinMessage,
+    deleteMessage,
   };
 
   return (

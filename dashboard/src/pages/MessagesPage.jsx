@@ -4,7 +4,8 @@ import ConversationList from '../components/messaging/ConversationList';
 import ChatWindow from '../components/messaging/ChatWindow';
 import UserSearch from '../components/messaging/UserSearch';
 import GroupCreation from '../components/messaging/GroupCreation';
-import { Plus, MessageCircle, Users, ChevronDown } from 'lucide-react';
+import CreateMeet from '../components/messaging/CreateMeet';
+import { Plus, MessageCircle, Users, ChevronDown, Video } from 'lucide-react';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import './MessagesPage.css';
@@ -12,6 +13,7 @@ import './MessagesPage.css';
 export default function MessagesPage() {
   const [showUserSearch, setShowUserSearch] = useState(false);
   const [showGroupCreation, setShowGroupCreation] = useState(false);
+  const [showMeetCreation, setShowMeetCreation] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -37,6 +39,11 @@ export default function MessagesPage() {
   const handleNewGroup = () => {
     setShowDropdown(false);
     setShowGroupCreation(true);
+  };
+
+  const handleNewMeet = () => {
+    setShowDropdown(false);
+    setShowMeetCreation(true);
   };
 
   return (
@@ -74,6 +81,10 @@ export default function MessagesPage() {
                     <Users size={18} />
                     <span>New Group</span>
                   </button>
+                  <button className="dropdown-item" onClick={handleNewMeet}>
+                    <Video size={18} />
+                    <span>Create Meet</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -90,6 +101,10 @@ export default function MessagesPage() {
 
         {showGroupCreation && (
           <GroupCreation onClose={() => setShowGroupCreation(false)} />
+        )}
+
+        {showMeetCreation && (
+          <CreateMeet onClose={() => setShowMeetCreation(false)} />
         )}
       </div>
     </MessagingProvider>

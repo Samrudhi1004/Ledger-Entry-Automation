@@ -248,6 +248,13 @@ class MessagingConsumer(AsyncWebsocketConsumer):
                 }
             }))
 
+    async def message_deleted(self, event):
+        """Send message deletion notification to WebSocket."""
+        await self.send(text_data=json.dumps({
+            'type': 'message_deleted',
+            'data': event['data']
+        }))
+
     # Database operations (sync_to_async wrappers)
 
     @database_sync_to_async
