@@ -24,12 +24,19 @@ class BugReportListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         bug_report = serializer.save(user=self.request.user)
         
+        from django.utils.html import escape
+        from rest_framework.exceptions import APIException
+        
         # Send email notification
         try:
             # You can change settings.ADMIN_EMAIL to the specific email later
             target_email = getattr(settings, 'SUPPORT_EMAIL', 'admin@example.com') 
             
-            subject = f"New Bug Report: #{bug_report.id} from {bug_report.user.username}"
+            safe_username = escape(bug_report.user.username)
+            safe_email = escape(bug_report.user.email)
+            safe_message = escape(bug_report.message)
+            
+            subject = f"New Bug Report: #{bug_report.id} from {safe_username}"
             html_content = f"""
             <html>
                 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -38,13 +45,13 @@ class BugReportListCreateView(generics.ListCreateAPIView):
                         
                         <div style="margin-bottom: 20px;">
                             <p style="margin: 0 0 10px 0;"><strong>Report ID:</strong> #{bug_report.id}</p>
-                            <p style="margin: 0 0 10px 0;"><strong>User:</strong> {bug_report.user.username} ({bug_report.user.email})</p>
+                            <p style="margin: 0 0 10px 0;"><strong>User:</strong> {safe_username} ({safe_email})</p>
                             <p style="margin: 0 0 10px 0;"><strong>Status:</strong> <span style="background-color: #ffc107; color: #000; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">{bug_report.get_status_display()}</span></p>
                         </div>
 
                         <div style="background-color: #ffffff; padding: 15px; border-radius: 6px; border: 1px solid #dee2e6; margin-bottom: 20px;">
                             <h3 style="margin-top: 0; color: #495057; font-size: 16px;">Issue Description:</h3>
-                            <p style="white-space: pre-wrap; margin-bottom: 0;">{bug_report.message}</p>
+                            <p style="white-space: pre-wrap; margin-bottom: 0;">{safe_message}</p>
                         </div>
 
                         <p style="font-size: 14px; color: #6c757d; margin-bottom: 0;">Please check the admin dashboard for more details.</p>
@@ -81,3 +88,5 @@ Please check the admin dashboard for more details.
             
         except Exception as e:
             logger.error(f"Failed to send bug report email: {e}")
+            bug_report.delete()
+            raise APIException("Failed to send bug report email. Please try again later.")

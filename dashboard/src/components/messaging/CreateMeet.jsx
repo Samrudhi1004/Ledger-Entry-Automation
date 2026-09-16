@@ -95,39 +95,46 @@ export default function CreateMeet({ onClose }) {
       setStatusMessage(`Sending invite to ${selectedUsers.length} participant(s)...`);
 
       // Send meet link to each selected user's direct conversation
+      const sentToConvoIds = [];
+      let successCount = 0;
+      let failCount = 0;
+
       const sendPromises = selectedUsers.map(async (invitee) => {
         try {
           const conversation = await getOrCreateDirectConversation(invitee.id);
           if (conversation) {
             await sendMessageViaRest(conversation.id, meetMessage);
+            sentToConvoIds.push(conversation.id);
+            successCount++;
+          } else {
+            failCount++;
           }
         } catch (err) {
           console.error(`Failed to send meet invite to ${getDisplayName(invitee)}:`, err);
+          failCount++;
         }
       });
 
       await Promise.all(sendPromises);
 
       // If the currently open chat is one of the invited users' convos, refresh its messages
-      if (activeConversation) {
-        const sentToConvoIds = await Promise.all(
-          selectedUsers.map(async (invitee) => {
-            const c = conversations.find(
-              (cv) => cv.type === 'direct' && cv.participants.some((p) => p.id === invitee.id)
-            );
-            return c?.id;
-          })
-        );
-        if (sentToConvoIds.includes(activeConversation.id)) {
-          await fetchMessages(activeConversation.id);
-        }
+      if (activeConversation && sentToConvoIds.includes(activeConversation.id)) {
+        await fetchMessages(activeConversation.id);
       }
 
       // Refresh conversation list so new/updated convos appear at top immediately
       await fetchConversations();
 
-      setStatusMessage('Done! Meeting opened and invites sent ✓');
-      setTimeout(onClose, 1200);
+      if (failCount === 0) {
+        setStatusMessage('Done! Meeting opened and invites sent ✓');
+        setTimeout(onClose, 1200);
+      } else if (successCount > 0) {
+        setStatusMessage(`Warning: ${failCount} invite(s) failed, ${successCount} sent.`);
+        setTimeout(onClose, 2500);
+      } else {
+        setStatusMessage('Failed to send any invites.');
+        setIsCreating(false);
+      }
     } catch (err) {
       console.error('Failed to create meet:', err);
       setStatusMessage('Something went wrong. Please try again.');

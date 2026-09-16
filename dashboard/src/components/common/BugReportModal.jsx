@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import api from '../../api/axios';
 
 export default function BugReportModal({ onClose }) {
   const [message, setMessage] = useState('');
@@ -27,19 +28,11 @@ export default function BugReportModal({ onClose }) {
         formData.append('screenshot', screenshot);
       }
 
-      const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
-
-      const res = await fetch('http://localhost:8000/api/support/bug-reports/', {
-        method: 'POST',
+      const res = await api.post('/support/bug-reports/', formData, {
         headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData,
+          'Content-Type': 'multipart/form-data' // Axios handles the boundary automatically usually, but explicitly setting it to multipart/form-data tells the interceptor
+        }
       });
-
-      if (!res.ok) {
-        throw new Error('Failed to submit bug report. Please try again.');
-      }
 
       setSuccess(true);
       setTimeout(() => {

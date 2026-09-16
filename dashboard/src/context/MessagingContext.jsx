@@ -154,9 +154,8 @@ export const MessagingProvider = ({ children }) => {
           // Remove message from local state for all clients
           setMessages(prev => prev.filter(msg => msg.id !== data.data.message_id));
           
-          // Note: we might also want to update the last_message in conversations 
-          // if the deleted message was the last one, but the simplest approach 
-          // is to just let the next fetch handle it or let it be.
+          // Refresh conversations to properly update the last_message and unread counts
+          setTimeout(() => fetchConversations(), 0);
           break;
 
         case 'message_read':
