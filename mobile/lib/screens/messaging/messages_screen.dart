@@ -3,7 +3,11 @@ import 'package:provider/provider.dart';
 import '../../services/messaging_service.dart';
 import 'chat_screen.dart';
 import 'user_search_screen.dart';
+import 'create_meet_screen.dart';
+import 'group_creation_screen.dart';
 import 'package:intl/intl.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/messaging_provider.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({Key? key}) : super(key: key);
@@ -93,8 +97,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Assuming we have a user provider or can get current user ID
-    const currentUserId = 1; // Replace with actual user ID from auth
+    // Fix: Fall back to 0 (not 1) so we never accidentally treat messages from
+    // real user ID 1 as the current user's own when the session has no persisted userId.
+    final currentUserId = int.tryParse(Provider.of<AuthProvider>(context, listen: false).userId ?? '0') ?? 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -217,17 +222,70 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   ),
                 ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const UserSearchScreen(),
+        onPressed: () {
+          showModalBottomSheet(
+            context: context,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            builder: (context) => SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.chat),
+                    title: const Text('New Conversation'),
+                    onTap: () async {
+                      Navigator.pop(context); // close bottom sheet
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const UserSearchScreen(),
+                        ),
+                      );
+                      if (result != null) {
+                        _loadConversations();
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.group_add),
+                    title: const Text('New Group'),
+                    subtitle: const Text('Create a group with org members'),
+                    onTap: () async {
+                      Navigator.pop(context); // close bottom sheet
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const GroupCreationScreen(),
+                        ),
+                      );
+                      if (result == true) {
+                        _loadConversations();
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.video_call),
+                    title: const Text('Create Meet'),
+                    subtitle: const Text('Invite org members to a Jitsi meeting'),
+                    onTap: () async {
+                      Navigator.pop(context); // close bottom sheet
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const CreateMeetScreen(),
+                        ),
+                      );
+                      if (result == true) {
+                        _loadConversations();
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
           );
-
-          if (result != null) {
-            _loadConversations();
-          }
         },
         child: const Icon(Icons.add),
       ),

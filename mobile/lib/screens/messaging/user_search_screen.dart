@@ -3,7 +3,9 @@ import '../../services/messaging_service.dart';
 import 'chat_screen.dart';
 
 class UserSearchScreen extends StatefulWidget {
-  const UserSearchScreen({Key? key}) : super(key: key);
+  final Function(Map<String, dynamic>)? onUserSelected;
+
+  const UserSearchScreen({Key? key, this.onUserSelected}) : super(key: key);
 
   @override
   State<UserSearchScreen> createState() => _UserSearchScreenState();
@@ -136,7 +138,13 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                             trailing: IconButton(
                               icon: const Icon(Icons.chat_bubble),
                               color: Colors.blue,
-                              onPressed: () => _startConversation(user),
+                              onPressed: () {
+                                if (widget.onUserSelected != null) {
+                                  widget.onUserSelected!(user);
+                                } else {
+                                  _startConversation(user);
+                                }
+                              },
                             ),
                           );
                         },

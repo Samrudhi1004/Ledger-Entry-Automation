@@ -21,8 +21,9 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = true;
 
   bool get isAuthenticated => _isAuthenticated;
+  int? _userId;
   String? get username => _username;
-  String? get userId => _username;
+  String? get userId => _userId?.toString();
   String? get userRole => _userRole;
   String get assignedShift => _assignedShift ?? 'ALL';
   bool get isShiftLocked => _assignedShift != null && _assignedShift != 'ALL';
@@ -72,6 +73,7 @@ class AuthProvider with ChangeNotifier {
             final info = jsonDecode(userInfoStr);
             _userRole = info['role'] ?? 'operator';
             _assignedShift = info['assigned_shift'] ?? 'ALL';
+            _userId = info['id'];
             _fullName = (info['full_name'] != null && info['full_name'].toString().isNotEmpty)
                 ? info['full_name']
                 : _username;
@@ -94,6 +96,7 @@ class AuthProvider with ChangeNotifier {
           await ApiService.clearTokens();
           _isAuthenticated = false;
           _username = null;
+          _userId = null;
           _userRole = null;
           _assignedShift = null;
           _fullName = null;
@@ -110,10 +113,13 @@ class AuthProvider with ChangeNotifier {
                 final payload = jsonDecode(utf8.decode(payloadBytes)) as Map<String, dynamic>;
                 final roleFromJwt = payload['role']?.toString() ?? _userRole ?? 'operator';
                 final shiftFromJwt = payload['assigned_shift']?.toString() ?? _assignedShift ?? 'ALL';
+                final idFromJwt = payload['user_id'] != null ? int.tryParse(payload['user_id'].toString()) : _userId;
                 _userRole = roleFromJwt;
                 _assignedShift = shiftFromJwt;
+                _userId = idFromJwt;
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setString('user_info', jsonEncode({
+                  'id': idFromJwt,
                   'role': roleFromJwt,
                   'assigned_shift': shiftFromJwt,
                   'full_name': _fullName ?? _username,
@@ -131,6 +137,7 @@ class AuthProvider with ChangeNotifier {
       } else {
         _isAuthenticated = false;
         _username = null;
+        _userId = null;
         _userRole = null;
         _assignedShift = null;
         _fullName = null;
@@ -158,6 +165,9 @@ class AuthProvider with ChangeNotifier {
         _profilePhotoUrl = profile['profile_photo_url'];
         _userRole = profile['role'] ?? _userRole;
         _assignedShift = profile['assigned_shift'] ?? _assignedShift ?? 'ALL';
+        if (profile['id'] != null) {
+          _userId = int.tryParse(profile['id'].toString());
+        }
 
         final first = _firstName ?? '';
         final last = _lastName ?? '';
@@ -166,6 +176,7 @@ class AuthProvider with ChangeNotifier {
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('user_info', jsonEncode({
+          'id': _userId,
           'role': _userRole,
           'assigned_shift': _assignedShift,
           'full_name': _fullName,
@@ -198,10 +209,14 @@ class AuthProvider with ChangeNotifier {
         if (userData != null) {
           _userRole = userData['role'] ?? 'operator';
           _assignedShift = userData['assigned_shift'] ?? 'ALL';
+          if (userData['id'] != null) {
+            _userId = int.tryParse(userData['id'].toString());
+          }
           _fullName = (userData['full_name'] != null && userData['full_name'].toString().isNotEmpty)
               ? userData['full_name']
               : username;
           await prefs.setString('user_info', jsonEncode({
+            'id': _userId,
             'role': _userRole,
             'assigned_shift': _assignedShift,
             'full_name': _fullName,
@@ -235,6 +250,7 @@ class AuthProvider with ChangeNotifier {
 
     _isAuthenticated = false;
     _username = null;
+    _userId = null;
     _userRole = null;
     _fullName = null;
     _isLoading = false;
@@ -249,6 +265,7 @@ class AuthProvider with ChangeNotifier {
     // (router/splash) can react without waiting for the async token clear.
     _isAuthenticated = false;
     _username = null;
+    _userId = null;
     _userRole = null;
     _fullName = null;
     _isLoading = false;

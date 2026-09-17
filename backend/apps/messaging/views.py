@@ -367,10 +367,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         message.save()
 
         # Broadcast deletion to clients in real-time
+        # Group name must match MessagingConsumer.room_group_name = messaging_<id>
         channel_layer = get_channel_layer()
         if channel_layer:
             async_to_sync(channel_layer.group_send)(
-                f'conversation_{message.conversation.id}',
+                f'messaging_{message.conversation.id}',
                 {
                     'type': 'message_deleted',
                     'data': {
@@ -469,7 +470,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 
                 # Send to conversation group (for users currently viewing this conversation)
                 async_to_sync(channel_layer.group_send)(
-                    f'conversation_{target_conversation_id}',
+                    f'messaging_{target_conversation_id}',
                     {
                         'type': 'message_sent' if request.user.id == forwarded_message.sender.id else 'new_message',
                         'data': message_data
@@ -563,7 +564,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             channel_layer = get_channel_layer()
             if channel_layer:
                 async_to_sync(channel_layer.group_send)(
-                    f'conversation_{conversation_pk}',
+                    f'messaging_{conversation_pk}',
                     {
                         'type': 'message_reaction',
                         'data': {
