@@ -22,6 +22,7 @@ class MessagingService {
   Function(Map<String, dynamic>)? onTypingIndicator;
   Function(Map<String, dynamic>)? onMessageRead;
   Function(String)? onMessageDeleted;
+  Function(Map<String, dynamic>)? onMessageReaction;
 
   Future<String?> _getToken() async {
     return await _storage.read(key: 'access_token');
@@ -249,6 +250,12 @@ class MessagingService {
         }
         break;
 
+      case 'message_reaction':
+        if (onMessageReaction != null) {
+          onMessageReaction!(data['data'] as Map<String, dynamic>);
+        }
+        break;
+
       case 'error':
         print('WebSocket error: ${data['message']}');
         break;
@@ -290,15 +297,27 @@ class MessagingService {
   }
 
   // Send message with attachment (REST)
+  // Fix 5: Enforces a 20 MB size limit before buffering to avoid memory exhaustion.
+  // Fix 4: Deletes the created message if the upload step fails (non-atomic operation
+  //         made safe by compensating delete on failure).
+  static const int _maxAttachmentBytes = 20 * 1024 * 1024; // 20 MB
+
   Future<Map<String, dynamic>?> sendAttachment({
     required String conversationId,
     required List<int> bytes,
     required String filename,
     required String messageType,
   }) async {
+    // Fix 5: Reject files larger than the size limit before creating any server state.
+    if (bytes.length > _maxAttachmentBytes) {
+      throw ArgumentError(
+        'File "$filename" exceeds the ${_maxAttachmentBytes ~/ (1024 * 1024)} MB size limit.'
+      );
+    }
+
     try {
       final headers = await _getHeaders();
-      
+
       // 1. Create empty message first
       final messageRes = await http.post(
         Uri.parse('$baseUrl/messaging/conversations/$conversationId/messages/'),
@@ -319,7 +338,7 @@ class MessagingService {
           'Authorization': headers['Authorization']!,
         });
         request.fields['message_id'] = messageId;
-        
+
         request.files.add(
           http.MultipartFile.fromBytes('file', bytes, filename: filename)
         );
@@ -330,6 +349,16 @@ class MessagingService {
           final attachmentData = json.decode(resBody);
           message['attachments'] = [attachmentData];
           return message;
+        }
+
+        // Fix 4: Upload failed — delete the orphan message to keep DB consistent.
+        try {
+          await http.delete(
+            Uri.parse('$baseUrl/messaging/conversations/$conversationId/messages/$messageId/'),
+            headers: headers,
+          );
+        } catch (e) {
+          print('Warning: failed to clean up orphan message $messageId after upload failure: $e');
         }
         return null;
       }
@@ -450,6 +479,22 @@ class MessagingService {
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       print('Error reacting to message: $e');
+      return false;
+    }
+  }
+
+  // Remove reaction from message
+  Future<bool> removeReaction(String conversationId, String messageId, String emoji) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.delete(
+        Uri.parse('$baseUrl/messaging/conversations/$conversationId/messages/$messageId/react/'),
+        headers: headers,
+        body: json.encode({'emoji': emoji}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error removing reaction: $e');
       return false;
     }
   }

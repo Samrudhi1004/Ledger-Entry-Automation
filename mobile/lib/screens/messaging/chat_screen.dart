@@ -55,11 +55,14 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _disposed = true;
 
-    // Clear all callbacks before disconnecting to prevent setState() on disposed widget
+    // Clear ALL callbacks before disconnecting to prevent setState() on disposed widget.
+    // onMessageDeleted must also be cleared — the service may outlive this screen.
     _messagingService.onMessageReceived = null;
     _messagingService.onMessageSent = null;
     _messagingService.onTypingIndicator = null;
     _messagingService.onMessageRead = null;
+    _messagingService.onMessageReaction = null;
+    _messagingService.onMessageDeleted = null; // Fix: was missing — caused stale callback leak
 
     _messagingService.disconnectWebSocket();
     _messageController.dispose();
@@ -116,7 +119,10 @@ class _ChatScreenState extends State<ChatScreen> {
     _messagingService.onMessageSent = (message) {
       if (_disposed) return;
       setState(() {
-        _messages.add(message);
+        // Fix: Deduplicate — server echoes the saved message back as 'message_sent'.
+        // Without this check, the message would appear twice when sent via WebSocket.
+        final exists = _messages.any((m) => m['id']?.toString() == message['id']?.toString());
+        if (!exists) _messages.add(message);
       });
       _scrollToBottom();
     };
@@ -167,6 +173,18 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.removeWhere((m) => m['id'].toString() == messageId);
       });
     };
+
+    _messagingService.onMessageReaction = (data) {
+      if (_disposed) return;
+      final messageId = data['message_id'] as String;
+      final reactions = data['reactions'] as List;
+      setState(() {
+        final idx = _messages.indexWhere((m) => m['id'].toString() == messageId);
+        if (idx != -1) {
+          _messages[idx]['reactions'] = reactions;
+        }
+      });
+    };
   }
 
   void _scrollToBottom() {
@@ -185,6 +203,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
+    // Capture replyTo ID before clearing state
+    final replyToId = _replyingTo?['id']?.toString();
+
     // Clear input immediately for snappy UX
     _messageController.clear();
     setState(() {
@@ -194,7 +215,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _messagingService.sendMessage(
       content: text,
-      replyTo: _replyingTo?['id']?.toString(),
+      replyTo: replyToId,
     );
     _messagingService.sendTypingIndicator(false);
   }
@@ -213,22 +234,31 @@ class _ChatScreenState extends State<ChatScreen> {
     final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
     if (image != null) {
       final bytes = await image.readAsBytes();
-      final message = await _messagingService.sendAttachment(
-        conversationId: widget.conversationId,
-        bytes: bytes,
-        filename: image.name,
-        messageType: 'image',
-      );
-      
-      if (message == null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to upload image')),
+      try {
+        final message = await _messagingService.sendAttachment(
+          conversationId: widget.conversationId,
+          bytes: bytes,
+          filename: image.name,
+          messageType: 'image',
         );
-      } else if (message != null && mounted) {
-        setState(() {
-          _messages.add(message);
-        });
-        _scrollToBottom();
+
+        if (message == null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to upload image')),
+          );
+        } else if (message != null && mounted) {
+          setState(() {
+            _messages.add(message);
+          });
+          _scrollToBottom();
+        }
+      } on ArgumentError catch (e) {
+        // Fix 5: File size limit exceeded
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.message.toString())),
+          );
+        }
       }
     }
   }
@@ -238,24 +268,33 @@ class _ChatScreenState extends State<ChatScreen> {
     if (result != null && result.files.isNotEmpty) {
       final file = result.files.first;
       final bytes = file.bytes;
-      
+
       if (bytes != null) {
-        final message = await _messagingService.sendAttachment(
-          conversationId: widget.conversationId,
-          bytes: bytes,
-          filename: file.name,
-          messageType: 'file',
-        );
-        
-        if (message == null && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to upload file')),
+        try {
+          final message = await _messagingService.sendAttachment(
+            conversationId: widget.conversationId,
+            bytes: bytes,
+            filename: file.name,
+            messageType: 'file',
           );
-        } else if (message != null && mounted) {
-          setState(() {
-            _messages.add(message);
-          });
-          _scrollToBottom();
+
+          if (message == null && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to upload file')),
+            );
+          } else if (message != null && mounted) {
+            setState(() {
+              _messages.add(message);
+            });
+            _scrollToBottom();
+          }
+        } on ArgumentError catch (e) {
+          // Fix 5: File size limit exceeded
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(e.message.toString())),
+            );
+          }
         }
       } else {
         if (mounted) {
@@ -293,9 +332,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 return GestureDetector(
                   onTap: () async {
                     Navigator.pop(context);
-                    final success = await _messagingService.reactToMessage(widget.conversationId, messageId, emoji);
+                    final success = await _messagingService.reactToMessage(
+                        widget.conversationId, messageId, emoji);
                     if (success) {
-                      _loadMessages(); // reload to get updated reactions
+                      // Update reactions locally from REST response instead of _loadMessages()
+                      // (WebSocket broadcast will also deliver the update via onMessageReaction)
                     } else if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Failed to add reaction')),
@@ -364,7 +405,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUserId = int.tryParse(Provider.of<AuthProvider>(context, listen: false).userId ?? '1') ?? 1;
+    // Fix: Fall back to 0 (not 1) so we never accidentally treat messages from
+    // another real user (id=1) as our own when the session has no persisted userId.
+    final currentUserId = int.tryParse(Provider.of<AuthProvider>(context, listen: false).userId ?? '0') ?? 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -447,35 +490,72 @@ class _ChatScreenState extends State<ChatScreen> {
                         onReact: () {
                           _showReactionPicker(message['id'].toString());
                         },
+                        onRemoveReaction: (emoji) async {
+                          final success = await _messagingService.removeReaction(
+                              widget.conversationId, message['id'].toString(), emoji);
+                          if (!success && mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Failed to remove reaction')),
+                            );
+                          }
+                        },
                       );
                     },
                   ),
           ),
           if (_replyingTo != null)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Colors.grey[200],
+              color: Colors.grey[100],
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
               child: Row(
                 children: [
-                  const Icon(Icons.reply, size: 20, color: Colors.grey),
-                  const SizedBox(width: 8),
+                  // WhatsApp-style accent bar + content
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _replyingTo!['sender']['first_name'] ?? _replyingTo!['sender']['email'],
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      clipBehavior: Clip.hardEdge,
+                      child: IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Container(width: 4, color: Colors.teal),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _replyingTo!['sender']['first_name'] ??
+                                          _replyingTo!['sender']['email'] ??
+                                          'Someone',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: Colors.teal,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _replyingTo!['content'] as String? ?? 'Attachment',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          _replyingTo!['content'] ?? 'Attachment',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.grey, fontSize: 13),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
+                  // Close button
                   IconButton(
                     icon: const Icon(Icons.close, size: 20),
                     onPressed: () {
@@ -485,6 +565,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
+                    color: Colors.grey[600],
                   ),
                 ],
               ),

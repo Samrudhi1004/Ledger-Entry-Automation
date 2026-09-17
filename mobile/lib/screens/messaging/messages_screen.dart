@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../services/messaging_service.dart';
 import 'chat_screen.dart';
 import 'user_search_screen.dart';
+import 'create_meet_screen.dart';
+import 'group_creation_screen.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/messaging_provider.dart';
@@ -95,7 +97,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUserId = int.tryParse(Provider.of<AuthProvider>(context, listen: false).userId ?? '1') ?? 1;
+    // Fix: Fall back to 0 (not 1) so we never accidentally treat messages from
+    // real user ID 1 as the current user's own when the session has no persisted userId.
+    final currentUserId = int.tryParse(Provider.of<AuthProvider>(context, listen: false).userId ?? '0') ?? 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -247,63 +251,35 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   ListTile(
                     leading: const Icon(Icons.group_add),
                     title: const Text('New Group'),
-                    subtitle: const Text('Coming Soon'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Group chats coming soon!')),
+                    subtitle: const Text('Create a group with org members'),
+                    onTap: () async {
+                      Navigator.pop(context); // close bottom sheet
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const GroupCreationScreen(),
+                        ),
                       );
+                      if (result == true) {
+                        _loadConversations();
+                      }
                     },
                   ),
                   ListTile(
                     leading: const Icon(Icons.video_call),
                     title: const Text('Create Meet'),
+                    subtitle: const Text('Invite org members to a Jitsi meeting'),
                     onTap: () async {
                       Navigator.pop(context); // close bottom sheet
-                      await Navigator.push(
+                      final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => UserSearchScreen(
-                            onUserSelected: (user) async {
-                              Navigator.pop(context); // close search screen
-                              
-                              // Create conversation
-                              final messagingService = MessagingProvider().getService('0'); // arbitrary instance
-                              final conversation = await messagingService.createConversation(
-                                type: 'direct',
-                                participantIds: [user['id']],
-                              );
-
-                              if (conversation != null) {
-                                // Generate meeting link
-                                final roomName = 'Ledger_Meet_${DateTime.now().millisecondsSinceEpoch}';
-                                final link = 'https://meet.jit.si/$roomName';
-                                
-                                // Send message via API
-                                final convoService = MessagingProvider().getService(conversation['id']);
-                                await convoService.sendMessage(
-                                  content: 'Join my meeting: $link',
-                                  messageType: 'meeting',
-                                );
-
-                                // Open chat
-                                if (mounted) {
-                                  _loadConversations();
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => ChatScreen(
-                                        conversationId: conversation['id'],
-                                        conversationName: '${user['first_name']} ${user['last_name']}'.trim(),
-                                      ),
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                          ),
+                          builder: (context) => const CreateMeetScreen(),
                         ),
                       );
+                      if (result == true) {
+                        _loadConversations();
+                      }
                     },
                   ),
                 ],

@@ -8,9 +8,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
+  // Fix: Use 10.0.2.2 on Android debug builds (emulator/physical device loopback to host).
+  // `localhost` only works inside the iOS simulator; Android needs the host alias.
   static String baseUrl = const String.fromEnvironment('API_BASE_URL',
       defaultValue: kDebugMode
-          ? 'http://localhost:8000/api'
+          ? (Platform.isAndroid
+              ? 'http://10.0.2.2:8000/api'
+              : 'http://localhost:8000/api')
           : 'https://backend-production-343b4.up.railway.app/api');
 
   // Secure storage for JWT tokens — EncryptedSharedPreferences on Android / Keychain on iOS
