@@ -401,6 +401,43 @@ class MessagingService {
     _channel = null;
   }
 
+  WebSocketChannel? _presenceChannel;
+  Map<int, bool> onlineUsers = {};
+  void Function(Map<int, bool>)? onPresenceUpdated;
+
+  void connectPresenceWebSocket() async {
+    final token = await _getToken();
+    if (token == null) return;
+    try {
+      final uri = Uri.parse('$wsUrl/ws/presence/?token=$token');
+      _presenceChannel = WebSocketChannel.connect(uri);
+      _presenceChannel!.stream.listen(
+        (message) {
+          final data = json.decode(message);
+          if (data['type'] == 'initial_presence') {
+            final users = data['data']['online_users'] as List;
+            for (var u in users) onlineUsers[u as int] = true;
+            if (onPresenceUpdated != null) onPresenceUpdated!(onlineUsers);
+          } else if (data['type'] == 'user_status_changed') {
+            final userId = data['data']['user_id'] as int;
+            final status = data['data']['status'] as String;
+            onlineUsers[userId] = status == 'online';
+            if (onPresenceUpdated != null) onPresenceUpdated!(onlineUsers);
+          }
+        },
+        onError: (e) => print('Presence WS error: $e'),
+        onDone: () => print('Presence WS closed'),
+      );
+    } catch (e) {
+      print('Presence WS connection error: $e');
+    }
+  }
+
+  void disconnectPresenceWebSocket() {
+    _presenceChannel?.sink.close();
+    _presenceChannel = null;
+  }
+
   // Mark message as read via HTTP (fallback)
   Future<void> markMessageAsReadHttp(String conversationId, String messageId) async {
     try {

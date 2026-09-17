@@ -5,6 +5,14 @@ import '../services/messaging_service.dart';
 /// Prevents state conflicts when multiple chat screens are open simultaneously.
 class MessagingProvider extends ChangeNotifier {
   final Map<String, MessagingService> _services = {};
+  MessagingService? _globalService;
+
+  /// Get the global shared MessagingService for general REST operations
+  /// (like fetching the list of conversations or creating groups).
+  MessagingService get globalService {
+    _globalService ??= MessagingService();
+    return _globalService!;
+  }
 
   /// Get or create a MessagingService instance for a specific conversation.
   MessagingService getService(String conversationId) {
@@ -26,6 +34,7 @@ class MessagingProvider extends ChangeNotifier {
   /// Dispose all services.
   @override
   void dispose() {
+    _globalService?.disconnectWebSocket();
     for (var service in _services.values) {
       service.disconnectWebSocket();
     }

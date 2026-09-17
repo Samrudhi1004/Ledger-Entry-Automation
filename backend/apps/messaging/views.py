@@ -517,7 +517,14 @@ class MessageViewSet(viewsets.ModelViewSet):
             )
 
         if request.method == 'POST':
-            # Add or toggle reaction
+            # Replace: remove any existing reaction from this user on this message first
+            existing = MessageReaction.objects.filter(
+                message=message,
+                user=request.user,
+            ).exclude(emoji=emoji)
+            existing.delete()
+
+            # Now add or toggle the requested emoji (toggle = remove if already there)
             reaction, created = MessageReaction.objects.get_or_create(
                 message=message,
                 user=request.user,
@@ -525,7 +532,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             )
 
             if not created:
-                # If reaction already exists, remove it (toggle)
+                # Same emoji already exists → toggle it off
                 reaction.delete()
                 action = 'removed'
             else:

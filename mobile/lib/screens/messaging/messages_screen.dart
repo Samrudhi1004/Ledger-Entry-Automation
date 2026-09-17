@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import '../../services/messaging_service.dart';
 import 'chat_screen.dart';
 import 'user_search_screen.dart';
@@ -17,23 +18,46 @@ class MessagesScreen extends StatefulWidget {
 }
 
 class _MessagesScreenState extends State<MessagesScreen> {
-  final MessagingService _messagingService = MessagingService();
+  late final MessagingService _messagingService;
   List<dynamic> _conversations = [];
   bool _loading = true;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
+    _messagingService = Provider.of<MessagingProvider>(context, listen: false).globalService;
     _loadConversations();
+    // Refresh every 10 seconds for near-live unread badge updates
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _silentRefresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadConversations() async {
     setState(() => _loading = true);
     final conversations = await _messagingService.fetchConversations();
-    setState(() {
-      _conversations = conversations;
-      _loading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _conversations = conversations;
+        _loading = false;
+      });
+    }
+  }
+
+  /// Silent refresh — no loading spinner, just updates data in background.
+  Future<void> _silentRefresh() async {
+    if (!mounted) return;
+    final conversations = await _messagingService.fetchConversations();
+    if (mounted) {
+      setState(() => _conversations = conversations);
+    }
   }
 
   String _getConversationName(Map<String, dynamic> conversation, int currentUserId) {
@@ -165,14 +189,28 @@ class _MessagesScreenState extends State<MessagesScreen> {
                           _getConversationName(conversation, currentUserId),
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        subtitle: Text(
-                          _getLastMessagePreview(lastMessage, currentUserId),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: unreadCount > 0 ? Colors.black87 : Colors.grey[600],
-                            fontWeight: unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
-                          ),
+                        subtitle: Row(
+                          children: [
+                            if (lastMessage != null && (lastMessage['sender']?['id'] as int? ?? 0) == currentUserId) ...[
+                              Icon(
+                                Icons.done_all,
+                                size: 14,
+                                color: (lastMessage['read_by'] as List?)?.isNotEmpty == true ? Colors.blue : Colors.grey,
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+                            Expanded(
+                              child: Text(
+                                _getLastMessagePreview(lastMessage, currentUserId),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: unreadCount > 0 ? Colors.black87 : Colors.grey[600],
+                                  fontWeight: unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         trailing: Column(
                           mainAxisAlignment: MainAxisAlignment.center,

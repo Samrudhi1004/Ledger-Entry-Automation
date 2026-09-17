@@ -15,26 +15,54 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   final MessagingService _messagingService = MessagingService();
   final TextEditingController _searchController = TextEditingController();
 
-  List<dynamic> _searchResults = [];
+  List<dynamic> _allUsers = [];       // full org member list loaded on init
+  List<dynamic> _filteredUsers = [];  // filtered by search query
   bool _loading = false;
 
   @override
+  void initState() {
+    super.initState();
+    _loadAllUsers();
+    _searchController.addListener(_filterUsers);
+  }
+
+  @override
   void dispose() {
+    _searchController.removeListener(_filterUsers);
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _searchUsers(String query) async {
-    if (query.trim().length < 2) {
-      setState(() => _searchResults = []);
+  /// Loads all org members once on screen open (empty query = all users),
+  /// matching the dashboard UserSearch behaviour.
+  Future<void> _loadAllUsers() async {
+    setState(() => _loading = true);
+    final results = await _messagingService.searchUsers('');
+    if (mounted) {
+      setState(() {
+        _allUsers = results;
+        _filteredUsers = results;
+        _loading = false;
+      });
+    }
+  }
+
+  /// Filters the already-loaded list locally so there are no extra API calls
+  /// while the user types. Falls back to a remote search for longer queries
+  /// in case the initial load was paginated / truncated.
+  void _filterUsers() {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) {
+      setState(() => _filteredUsers = _allUsers);
       return;
     }
-
-    setState(() => _loading = true);
-    final results = await _messagingService.searchUsers(query);
     setState(() {
-      _searchResults = results;
-      _loading = false;
+      _filteredUsers = _allUsers.where((user) {
+        final name = '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'.toLowerCase();
+        final email = (user['email'] ?? '').toLowerCase();
+        final role = (user['role'] ?? '').toLowerCase();
+        return name.contains(query) || email.contains(query) || role.contains(query);
+      }).toList();
     });
   }
 
@@ -45,7 +73,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     );
 
     if (conversation != null && mounted) {
-      Navigator.pop(context, true); // Return success
+      Navigator.pop(context, true);
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -70,7 +98,6 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
             padding: const EdgeInsets.all(16),
             child: TextField(
               controller: _searchController,
-              onChanged: _searchUsers,
               decoration: InputDecoration(
                 hintText: 'Search users by name or email...',
                 prefixIcon: const Icon(Icons.search),
@@ -80,18 +107,18 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                 filled: true,
                 fillColor: Colors.grey[100],
               ),
-              autofocus: true,
+              autofocus: false,
             ),
           ),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : _searchResults.isEmpty
+                : _filteredUsers.isEmpty
                     ? Center(
                         child: Text(
-                          _searchController.text.length >= 2
+                          _searchController.text.isNotEmpty
                               ? 'No users found'
-                              : 'Type to search for users',
+                              : 'No members in this organisation',
                           style: TextStyle(
                             fontSize: 16,
                             color: Colors.grey[600],
@@ -99,9 +126,9 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                         ),
                       )
                     : ListView.builder(
-                        itemCount: _searchResults.length,
+                        itemCount: _filteredUsers.length,
                         itemBuilder: (context, index) {
-                          final user = _searchResults[index] as Map<String, dynamic>;
+                          final user = _filteredUsers[index] as Map<String, dynamic>;
                           final firstName = user['first_name'] ?? '';
                           final lastName = user['last_name'] ?? '';
                           final email = user['email'] ?? '';
@@ -111,7 +138,11 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                             leading: CircleAvatar(
                               backgroundColor: Colors.blue,
                               child: Text(
-                                (firstName.isNotEmpty ? firstName[0] : email[0]).toUpperCase(),
+                                (firstName.isNotEmpty
+                                    ? firstName[0]
+                                    : email.isNotEmpty
+                                        ? email[0]
+                                        : '?').toUpperCase(),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,

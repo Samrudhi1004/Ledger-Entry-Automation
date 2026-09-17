@@ -255,6 +255,13 @@ class MessagingConsumer(AsyncWebsocketConsumer):
             'data': event['data']
         }))
 
+    async def message_reaction(self, event):
+        """Send reaction update to WebSocket clients."""
+        await self.send(text_data=json.dumps({
+            'type': 'message_reaction',
+            'data': event['data']
+        }))
+
     # Database operations (sync_to_async wrappers)
 
     @database_sync_to_async

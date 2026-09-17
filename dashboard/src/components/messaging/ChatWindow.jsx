@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { MoreVertical, Download, X, Reply, Forward, Pin, Smile, Trash2 } from 'lucide-react';
 import MessageInput from './MessageInput';
+import { BASE_URL } from '../../api/axios';
 import './ChatWindow.css';
 
 export default function ChatWindow() {
@@ -178,7 +179,6 @@ export default function ChatWindow() {
     if (activeConversation.type === 'direct') {
       const otherParticipant = activeConversation.participants.find(p => p.id !== user.id);
       if (otherParticipant) {
-        console.log('Checking online status for user:', otherParticipant.id, 'onlineUsers:', onlineUsers);
         return onlineUsers[otherParticipant.id];
       }
     }
@@ -264,7 +264,7 @@ export default function ChatWindow() {
     try {
       const token = localStorage.getItem('access_token');
       const response = await fetch(
-        `http://127.0.0.1:8000/api/messaging/attachments/${attachment.id}/download/`,
+        `${BASE_URL}/api/messaging/attachments/${attachment.id}/download/`,
         {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -386,7 +386,7 @@ export default function ChatWindow() {
     try {
       const messageToForward = forwardModal.message;
       const token = localStorage.getItem('access_token');
-      const baseUrl = 'http://127.0.0.1:8000/api/messaging';
+      const baseUrl = `${BASE_URL}/api/messaging`;
 
       // Forward to all selected conversations
       const forwardPromises = selectedConversations.map(conversationId => {
@@ -531,7 +531,7 @@ export default function ChatWindow() {
     try {
       const token = localStorage.getItem('access_token');
       const response = await fetch(
-        `http://127.0.0.1:8000/api/messaging/conversations/${activeConversation.id}/messages/${message.id}/react/`,
+        `${BASE_URL}/api/messaging/conversations/${activeConversation.id}/messages/${message.id}/react/`,
         {
           method: 'POST',
           headers: {
@@ -598,7 +598,7 @@ export default function ChatWindow() {
     try {
       const token = localStorage.getItem('access_token');
       const response = await fetch(
-        `http://127.0.0.1:8000/api/messaging/conversations/${activeConversation.id}/messages/${message.id}/react/`,
+        `${BASE_URL}/api/messaging/conversations/${activeConversation.id}/messages/${message.id}/react/`,
         {
           method: 'POST',
           headers: {
