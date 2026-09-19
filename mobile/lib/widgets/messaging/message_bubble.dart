@@ -12,6 +12,7 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onForward;
   final VoidCallback? onPin;
   final VoidCallback? onReact;
+  final void Function(String emoji)? onRemoveReaction;
 
   const MessageBubble({
     Key? key,
@@ -23,6 +24,7 @@ class MessageBubble extends StatelessWidget {
     this.onForward,
     this.onPin,
     this.onReact,
+    this.onRemoveReaction,
   }) : super(key: key);
 
   String _formatTime(String timestamp) {
@@ -35,14 +37,183 @@ class MessageBubble extends StatelessWidget {
   }
 
   List<Map<String, dynamic>> _groupReactions(List reactions) {
-    final Map<String, int> counts = {};
+    // Group by emoji, collecting all reacting users and whether current user reacted
+    final Map<String, Map<String, dynamic>> groups = {};
     for (var reaction in reactions) {
       final emoji = reaction['emoji'] as String;
-      counts[emoji] = (counts[emoji] ?? 0) + 1;
+      final reactionUser = reaction['user'] as Map<String, dynamic>? ?? {};
+      final reactionUserId = reactionUser['id'] as int? ?? -1;
+      final name = reactionUser['first_name'] as String? ??
+          reactionUser['email'] as String? ??
+          'Someone';
+
+      if (!groups.containsKey(emoji)) {
+        groups[emoji] = {
+          'emoji': emoji,
+          'count': 0,
+          'users': <String>[],
+          'isMine': false,
+        };
+      }
+      groups[emoji]!['count'] = (groups[emoji]!['count'] as int) + 1;
+      (groups[emoji]!['users'] as List<String>).add(name);
+      if (reactionUserId == currentUserId) {
+        groups[emoji]!['isMine'] = true;
+      }
     }
-    return counts.entries
-        .map((e) => {'emoji': e.key, 'count': e.value})
-        .toList();
+    return groups.values.toList();
+  }
+
+  void _showReactionDetail(BuildContext context, Map<String, dynamic> reactionGroup) {
+    final emoji = reactionGroup['emoji'] as String;
+    final users = reactionGroup['users'] as List<String>;
+    final isMine = reactionGroup['isMine'] as bool;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  Text(emoji, style: const TextStyle(fontSize: 24)),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${users.length} reaction${users.length == 1 ? '' : 's'}',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            ...users.map((name) => ListTile(
+                  leading: const CircleAvatar(child: Icon(Icons.person, size: 18)),
+                  title: Text(name),
+                )),
+            if (isMine && onRemoveReaction != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      onRemoveReaction!(emoji);
+                    },
+                    icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                    label: const Text('Remove my reaction', style: TextStyle(color: Colors.red)),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// WhatsApp-style quoted message block with a left accent bar.
+  Widget _buildReplyPreview(Map<String, dynamic> replyToMessage, bool isSent) {
+    final senderName = replyToMessage['sender']?['first_name'] as String? ??
+        replyToMessage['sender']?['email'] as String? ??
+        'Someone';
+    final replyContent = replyToMessage['content'] as String? ?? '';
+    final replyAttachments = replyToMessage['attachments'] as List? ?? [];
+    final hasImage = replyAttachments.any(
+        (a) => (a['attachment_type'] as String? ?? '') == 'image');
+    final displayText = replyContent.isNotEmpty
+        ? replyContent
+        : hasImage
+            ? '📷 Photo'
+            : replyAttachments.isNotEmpty
+                ? '📎 Attachment'
+                : 'Message';
+
+    // Accent bar colour: green for sent-side quotes, teal for received-side
+    final accentColor = isSent ? Colors.greenAccent[400]! : Colors.teal[300]!;
+    final bgColor = isSent
+        ? Colors.blue[800]!.withOpacity(0.6)
+        : Colors.black12;
+    final nameColor = isSent ? Colors.greenAccent[200]! : Colors.teal[600]!;
+    final textColor = isSent ? Colors.white70 : Colors.black54;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      clipBehavior: Clip.hardEdge,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Left accent bar
+            Container(width: 4, color: accentColor),
+            // Content
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            senderName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              color: nameColor,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            displayText,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: textColor),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Thumbnail if the quoted message has an image
+                    if (hasImage)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Image.network(
+                            (replyAttachments.firstWhere(
+                                (a) => (a['attachment_type'] as String? ?? '') ==
+                                    'image'))['cloudinary_url'] as String,
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.image,
+                              size: 40,
+                              color: Colors.white54,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -160,36 +331,7 @@ class MessageBubble extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (replyToMessage != null)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: isSent ? Colors.blue[700] : Colors.grey[400],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              replyToMessage['sender']?['first_name'] ?? replyToMessage['sender']?['email'] ?? 'Someone',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                                color: isSent ? Colors.white : Colors.black87,
-                              ),
-                            ),
-                            Text(
-                              replyToMessage['content'] ?? 'Attachment',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isSent ? Colors.white70 : Colors.black54,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      _buildReplyPreview(replyToMessage, isSent),
                     if (content.isNotEmpty)
                       SelectableLinkify(
                         text: content,
@@ -227,23 +369,30 @@ class MessageBubble extends StatelessWidget {
                 child: Wrap(
                   spacing: 4,
                   children: _groupReactions(reactions).map((reactionGroup) {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(reactionGroup['emoji'], style: const TextStyle(fontSize: 12)),
-                          if (reactionGroup['count'] > 1)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 4),
-                              child: Text('${reactionGroup['count']}', style: const TextStyle(fontSize: 12)),
-                            ),
-                        ],
+                    final isMine = reactionGroup['isMine'] as bool;
+                    return GestureDetector(
+                      onTap: () => _showReactionDetail(context, reactionGroup),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isMine ? Colors.blue[100] : Colors.grey[200],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isMine ? Colors.blue : Colors.grey[300]!,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(reactionGroup['emoji'], style: const TextStyle(fontSize: 12)),
+                            if ((reactionGroup['count'] as int) > 1)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: Text('${reactionGroup['count']}',
+                                    style: const TextStyle(fontSize: 12)),
+                              ),
+                          ],
+                        ),
                       ),
                     );
                   }).toList(),
@@ -284,11 +433,35 @@ class MessageBubble extends StatelessWidget {
     final cloudinaryUrl = attachment['cloudinary_url'] as String?;
 
     if (attachmentType == 'image' && cloudinaryUrl != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          cloudinaryUrl,
-          fit: BoxFit.cover,
+      return GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => Scaffold(
+                backgroundColor: Colors.black,
+                appBar: AppBar(
+                  backgroundColor: Colors.black,
+                  iconTheme: const IconThemeData(color: Colors.white),
+                  title: Text(fileName, style: const TextStyle(color: Colors.white, fontSize: 16)),
+                ),
+                body: Center(
+                  child: InteractiveViewer(
+                    panEnabled: true,
+                    minScale: 0.5,
+                    maxScale: 4,
+                    child: Image.network(cloudinaryUrl),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            cloudinaryUrl,
+            fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) {
             return Container(
               padding: const EdgeInsets.all(8),
