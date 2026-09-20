@@ -292,7 +292,6 @@ class BatchMeasureView(APIView):
         else:
             try:
                 from apps.inspections import document_utils as doc_utils
-                session_obj = InspectionSession.objects.filter(session_id=session_id).first()
                 if session_obj:
                     session_obj.has_ooc = True
                     session_obj.save(update_fields=['has_ooc'])
