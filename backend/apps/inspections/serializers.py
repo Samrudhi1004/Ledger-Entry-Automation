@@ -32,10 +32,13 @@ class RecordMeasurementSerializer(serializers.Serializer):
 
 class SingleMeasurementSerializer(serializers.Serializer):
     """One field entry within a batch-measure submission."""
-    parameter_code = serializers.CharField()
-    measured_value = serializers.FloatField(required=False, allow_null=True)
-    voice_raw_text = serializers.CharField(required=False, allow_blank=True, default='')
-    method         = serializers.CharField(required=False, default='form')
+    parameter_code  = serializers.CharField()
+    measured_value  = serializers.FloatField(required=False, allow_null=True)
+    voice_raw_text  = serializers.CharField(required=False, allow_blank=True, default='')
+    method          = serializers.CharField(required=False, default='form')
+    hourly_slot     = serializers.IntegerField(required=False, allow_null=True, default=None)
+    inspection_type = serializers.CharField(required=False, allow_null=True, allow_blank=True, default=None)
+    trial_number    = serializers.IntegerField(required=False, allow_null=True, default=None)
 
 
 class BatchMeasureSerializer(serializers.Serializer):

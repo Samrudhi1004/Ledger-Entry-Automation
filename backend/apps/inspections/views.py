@@ -236,6 +236,10 @@ class BatchMeasureView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        session_obj = InspectionSession.objects.filter(session_id=session_id).first()
+        session_insp_type = session_obj.inspection_type if session_obj else None
+        session_hourly_slot = (session_obj.hourly_unlocked_slot or session_obj.hourly_slot or 1) if session_obj else 1
+
         results = []
         failed_codes = []
 
@@ -244,6 +248,8 @@ class BatchMeasureView(APIView):
             val      = m.get('measured_value') or 0.0
             raw_text = m.get('voice_raw_text', '')
             method   = m.get('method', 'form')
+            m_type   = m.get('inspection_type') or session_insp_type
+            m_slot   = m.get('hourly_slot') or (session_hourly_slot if m_type == 'hourly' else None)
 
             try:
                 field_result = _service.record_measurement(
@@ -252,7 +258,8 @@ class BatchMeasureView(APIView):
                     measured_value  = float(val),
                     voice_raw_text  = raw_text,
                     method          = method,
-                    inspection_type = 'first_piece',
+                    inspection_type = m_type,
+                    hourly_slot     = m_slot,
                 )
                 field_status = field_result.get('status', 'ok')
                 results.append({

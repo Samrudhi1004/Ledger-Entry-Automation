@@ -539,6 +539,9 @@ class InspectionProvider with ChangeNotifier {
       'measured_value': value,
       'voice_raw_text': voiceRawText,
       'method': method,
+      'inspection_type': inspectionType,
+      'hourly_slot': hourlySlot,
+      'trial_number': trialNumber,
     };
     notifyListeners();
   }
@@ -559,7 +562,13 @@ class InspectionProvider with ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
-    var measurementsList = pendingBatchValues.values.toList();
+    var measurementsList = pendingBatchValues.values.map((item) => {
+      ...item,
+      'inspection_type': item['inspection_type'] ?? inspectionType,
+      'hourly_slot': item['hourly_slot'] ?? hourlySlot,
+      'trial_number': item['trial_number'] ?? trialNumber,
+    }).toList();
+
     if (measurementsList.isEmpty && recordedResults.isNotEmpty) {
       debugPrint('[PROVIDER] pendingBatchValues empty, constructing from recordedResults...');
       for (var entry in recordedResults.entries) {
@@ -575,6 +584,9 @@ class InspectionProvider with ChangeNotifier {
             'measured_value': doubleVal,
             'voice_raw_text': data['voice_raw_text'] ?? '',
             'method': data['method'] ?? 'voice',
+            'inspection_type': inspectionType,
+            'hourly_slot': hourlySlot,
+            'trial_number': trialNumber,
           });
         }
       }
