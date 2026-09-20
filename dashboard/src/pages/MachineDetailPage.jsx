@@ -583,7 +583,11 @@ export default function MachineDetailPage() {
                       <tr key={s.session_id}>
                         <td>
                           <span className="badge badge-progress">
-                            {s.trial_number ? `1ST PC #${s.trial_number}` : '1ST PC #1'}
+                            {s.inspection_type === 'hourly'
+                              ? `Slot ${s.hourly_unlocked_slot || s.hourly_slot || 1}/HR`
+                              : s.inspection_type === 'first_piece'
+                              ? `1ST PC #${s.trial_number || 1}`
+                              : s.inspection_type?.replace('_', ' ')?.toUpperCase() || '—'}
                           </span>
                         </td>
                         <td className="font-mono font-bold">

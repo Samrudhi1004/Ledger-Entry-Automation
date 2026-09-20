@@ -165,7 +165,7 @@ class ToleranceValidator:
         p_code = (parameter.parameter_code or '').upper()
         p_name = (parameter.parameter_name or '').upper()
 
-        if m_type == 'visual':
+        if m_type == 'visual' or (parameter.unit or '').lower() in ['pass', 'yes/no', 'yes / no', 'visual']:
             # Rule 2: Visual Pass/Fail Check (1.0 = PASS / YES, 0.0 = REJECT / NO)
             is_within = measured_value >= 0.5
             message = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
@@ -1096,6 +1096,65 @@ class InspectionService:
                     doc['inspector_name'] = fp_s.finalized_by.get_full_name()
                 for m in fp_doc.get('measurements', []):
                     add_meas(m, def_type='first_piece', def_trial=t_no, def_slot=1)
+
+            # ── Authoritative override pass ───────────────────────────────────
+            # Each first-piece session's own parameter_summary is the ground-truth
+            # for that trial.  Raw measurements inside the (root/final) session doc
+            # carry copies for ALL trials – those copies can overwrite earlier
+            # trials' correct out_of_spec values.  We fix that by re-applying
+            # each trial's own parameter_summary on top of meas_dict.
+            for fp_s in fp_sessions:
+                fp_doc = doc_utils.get_document(fp_s)
+                t_no = fp_s.trial_number or fp_doc.get('trial_number') or 1
+                for p in fp_doc.get('parameter_summary', []):
+                    if p.get('measured_value') is None:
+                        continue
+                    if p.get('carried_forward'):
+                        continue
+                    key = (p['parameter_code'], 'first_piece', t_no)
+                    meas_dict[key] = {
+                        'parameter_code':   p['parameter_code'],
+                        'parameter_name':   p.get('parameter_name'),
+                        'unit':             p.get('unit'),
+                        'nominal':          p.get('nominal'),
+                        'upper_limit':      p.get('upper_limit'),
+                        'lower_limit':      p.get('lower_limit'),
+                        'measured_value':   p.get('measured_value'),
+                        'deviation':        p.get('deviation', 0),
+                        'status':           p.get('status', 'ok'),
+                        'is_critical_fail': p.get('is_critical_fail', False),
+                        'voice_raw_text':   p.get('voice_raw_text', ''),
+                        'audio_file_path':  p.get('audio_file_path', ''),
+                        'method':           p.get('method', 'voice'),
+                        'inspection_type':  'first_piece',
+                        'trial_number':     t_no,
+                        'hourly_slot':      0,
+                    }
+                for p in fp_doc.get('process_parameter_summary', []):
+                    if p.get('measured_value') is None:
+                        continue
+                    if p.get('carried_forward'):
+                        continue
+                    key = (p['parameter_code'], 'first_piece', t_no)
+                    meas_dict[key] = {
+                        'parameter_code':        p['parameter_code'],
+                        'parameter_name':        p.get('parameter_name'),
+                        'unit':                  p.get('unit'),
+                        'nominal':               p.get('nominal'),
+                        'upper_limit':           p.get('upper_limit'),
+                        'lower_limit':           p.get('lower_limit'),
+                        'measured_value':        p.get('measured_value'),
+                        'deviation':             p.get('deviation', 0),
+                        'status':                p.get('status', 'ok'),
+                        'is_critical_fail':      False,
+                        'is_process_parameter':  True,
+                        'voice_raw_text':        p.get('voice_raw_text', ''),
+                        'audio_file_path':       p.get('audio_file_path', ''),
+                        'method':                p.get('method', 'voice'),
+                        'inspection_type':       'first_piece',
+                        'trial_number':          t_no,
+                        'hourly_slot':           0,
+                    }
 
             # Get all hourly sessions for same machine/part/date/shift
             hourly_kwargs = {
