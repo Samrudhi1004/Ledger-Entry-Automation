@@ -1,5 +1,5 @@
 # -- Stage 1: Build Flutter Web ---------------------------------------------
-FROM ghcr.io/cirruslabs/flutter:3.24.3 AS builder
+FROM ghcr.io/cirruslabs/flutter:stable AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,6 @@ RUN flutter pub get
 COPY . .
 
 # Build Flutter web release
-# API_BASE_URL is baked in at build time via --dart-define
 ARG API_BASE_URL=https://backend-production-343b4.up.railway.app/api
 RUN flutter build web --release \
     --dart-define=API_BASE_URL=${API_BASE_URL}
@@ -24,10 +23,9 @@ FROM nginx:alpine
 # Copy built web files from builder stage
 COPY --from=builder /app/build/web /usr/share/nginx/html
 
-# Custom nginx config to handle Flutter routing (SPA support)
-RUN echo 'server { listen 8080; root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; } gzip on; gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript; }' > /etc/nginx/conf.d/default.conf
+# nginx config with Flutter SPA routing + gzip
+RUN printf 'server {\n  listen 8080;\n  root /usr/share/nginx/html;\n  index index.html;\n  location / {\n    try_files $uri $uri/ /index.html;\n  }\n  gzip on;\n  gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;\n}\n' > /etc/nginx/conf.d/default.conf
 
-# Railway uses port 8080
 EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]
