@@ -1,12 +1,14 @@
 import { useMessaging } from '../../context/MessagingContext';
 import { useAuth } from '../../context/AuthContext';
-import { formatDistanceToNow } from 'date-fns';
+import { useState } from 'react';
+import { format, isToday, isYesterday, differenceInDays } from 'date-fns';
 import { Search } from 'lucide-react';
 import './ConversationList.css';
 
 export default function ConversationList() {
   const { conversations, activeConversation, selectConversation, onlineUsers } = useMessaging();
   const { user } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
 
   const getConversationName = (conversation) => {
     if (conversation.type === 'group') {
@@ -45,11 +47,35 @@ export default function ConversationList() {
   const getTimeAgo = (timestamp) => {
     if (!timestamp) return '';
     try {
-      return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+      const date = new Date(timestamp);
+      if (isToday(date)) {
+        return format(date, 'HH:mm');
+      } else if (isYesterday(date)) {
+        return 'Yesterday';
+      } else if (differenceInDays(new Date(), date) < 7) {
+        return format(date, 'EEEE');
+      } else {
+        return format(date, 'MMM dd');
+      }
     } catch {
       return '';
     }
   };
+
+  // Filter conversations locally — no API call per keystroke
+  const filteredConversations = searchQuery.trim()
+    ? conversations.filter(conversation => {
+        const name = getConversationName(conversation).toLowerCase();
+        const query = searchQuery.toLowerCase();
+        if (name.includes(query)) return true;
+        // Also search participant email for direct chats
+        if (conversation.type === 'direct') {
+          const other = conversation.participants.find(p => p.id !== user.id);
+          return other?.email?.toLowerCase().includes(query);
+        }
+        return false;
+      })
+    : conversations;
 
   return (
     <div className="conversation-list">
@@ -59,17 +85,28 @@ export default function ConversationList() {
 
       <div className="conversation-search">
         <Search size={18} />
-        <input type="text" placeholder="Search conversations..." />
+        <input
+          type="text"
+          placeholder="Search conversations..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
       </div>
 
       <div className="conversations">
-        {conversations.length === 0 ? (
+        {filteredConversations.length === 0 ? (
           <div className="no-conversations">
-            <p>No conversations yet</p>
-            <p className="text-muted">Start a new chat to get started</p>
+            {searchQuery.trim() ? (
+              <p>No conversations match &ldquo;<strong>{searchQuery}</strong>&rdquo;</p>
+            ) : (
+              <>
+                <p>No conversations yet</p>
+                <p className="text-muted">Start a new chat to get started</p>
+              </>
+            )}
           </div>
         ) : (
-          conversations.map(conversation => (
+          filteredConversations.map(conversation => (
             <div
               key={conversation.id}
               className={`conversation-item ${activeConversation?.id === conversation.id ? 'active' : ''}`}

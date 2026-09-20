@@ -38,6 +38,12 @@ class _ChatScreenState extends State<ChatScreen> {
   
   Map<String, dynamic>? _replyingTo;
   List<Map<String, dynamic>> _pinnedMessages = [];
+  int _currentPinIndex = 0;
+
+  Map<int, bool> _onlineUsers = {};
+  List<dynamic> _participants = [];
+  bool _isGroup = false;
+  int? _otherUserId;
 
   @override
   void initState() {
@@ -63,8 +69,10 @@ class _ChatScreenState extends State<ChatScreen> {
     _messagingService.onMessageRead = null;
     _messagingService.onMessageReaction = null;
     _messagingService.onMessageDeleted = null; // Fix: was missing — caused stale callback leak
+    _messagingService.onPresenceUpdated = null;
 
     _messagingService.disconnectWebSocket();
+    _messagingService.disconnectPresenceWebSocket();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -80,10 +88,21 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (_disposed) return;
 
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUserId = int.tryParse(authProvider.userId ?? '0') ?? 0;
+
     setState(() {
       _messages = messages.cast<Map<String, dynamic>>().reversed.toList();
       _pinnedMessages = pinned.cast<Map<String, dynamic>>();
       _loading = false;
+      if (conv != null) {
+        _isGroup = conv['type'] == 'group';
+        _participants = conv['participants'] as List? ?? [];
+        if (!_isGroup) {
+          final other = _participants.firstWhere((p) => (p['id'] as int?) != currentUserId, orElse: () => null);
+          if (other != null) _otherUserId = other['id'] as int?;
+        }
+      }
     });
 
     _scrollToBottom();
@@ -103,7 +122,7 @@ class _ChatScreenState extends State<ChatScreen> {
       // If we didn't send it, check if we've read it
       if (senderId != currentUserId) {
         final readBy = msg['read_by'] as List? ?? [];
-        final hasRead = readBy.any((r) => r['user']?['id'] == currentUserId);
+        final hasRead = readBy.any((r) => r['user']?['id']?.toString() == currentUserId.toString());
         
         if (!hasRead) {
           _messagingService.markMessageAsReadHttp(widget.conversationId, msg['id'].toString());
@@ -114,6 +133,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _connectWebSocket() {
     _messagingService.connectWebSocket(widget.conversationId);
+    
+    _messagingService.onPresenceUpdated = (onlineUsers) {
+      if (_disposed) return;
+      setState(() {
+        _onlineUsers = Map.from(onlineUsers);
+      });
+    };
+    _messagingService.connectPresenceWebSocket();
 
     // Message we sent — server echoes it back as 'message_sent' with the full saved object
     _messagingService.onMessageSent = (message) {
@@ -134,7 +161,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final exists = _messages.any((m) => m['id']?.toString() == message['id']?.toString());
         if (!exists) _messages.add(message);
       });
-      _scrollToBottom();
+      _scrollToBottomIfNeeded();
     };
 
     _messagingService.onTypingIndicator = (data) {
@@ -195,6 +222,26 @@ class _ChatScreenState extends State<ChatScreen> {
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
+      }
+    });
+  }
+
+  void _scrollToBottomIfNeeded() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        final position = _scrollController.position;
+        final maxScroll = position.maxScrollExtent;
+        final currentScroll = position.pixels;
+        
+        // If we are within 300 pixels of the bottom, auto-scroll.
+        // Otherwise, the user is reading history; let them be.
+        if (maxScroll - currentScroll <= 300) {
+          _scrollController.animateTo(
+            maxScroll,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
       }
     });
   }
@@ -354,52 +401,22 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showForwardDialog(String messageId, String content) {
-    // We need to fetch conversations to forward to
     showModalBottomSheet(
       context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text('Forward to...', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.send),
-                title: const Text('Select conversation'),
-                onTap: () {
-                  Navigator.pop(context); // close bottom sheet
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => UserSearchScreen(
-                        onUserSelected: (user) async {
-                          final conversation = await _messagingService.createConversation(
-                            type: 'direct',
-                            participantIds: [user['id']],
-                          );
-                          if (conversation != null) {
-                            final success = await _messagingService.forwardMessage(
-                                widget.conversationId, messageId, conversation['id']);
-                            if (success && mounted) {
-                              Navigator.pop(context); // close search screen
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Message forwarded!')),
-                              );
-                            }
-                          }
-                        },
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return _ForwardConversationSheet(
+          messagingService: _messagingService,
+          sourceConversationId: widget.conversationId,
+          messageId: messageId,
+          currentUserId: int.tryParse(
+                Provider.of<AuthProvider>(context, listen: false).userId ?? '0') ??
+            0,
         );
-      }
+      },
     );
   }
 
@@ -411,7 +428,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.conversationName),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.conversationName, style: const TextStyle(fontSize: 16)),
+            if (!_isGroup && _otherUserId != null && _onlineUsers[_otherUserId] == true)
+              const Text('Online', style: TextStyle(fontSize: 12, color: Colors.greenAccent, fontWeight: FontWeight.normal)),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.more_vert),
@@ -424,27 +448,43 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           if (_pinnedMessages.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Colors.amber[50],
-              child: Row(
-                children: [
-                  const Icon(Icons.push_pin, size: 16, color: Colors.orange),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _pinnedMessages.first['content'] ?? 'Attachment',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.orange[800], fontSize: 13),
+            GestureDetector(
+              onTap: () {
+                if (_pinnedMessages.length > 1) {
+                  setState(() {
+                    _currentPinIndex = (_currentPinIndex + 1) % _pinnedMessages.length;
+                  });
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: Colors.amber[50],
+                child: Row(
+                  children: [
+                    const Icon(Icons.push_pin, size: 16, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _pinnedMessages[_currentPinIndex]['content'] ?? 'Attachment',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.orange[800], fontSize: 13),
+                      ),
                     ),
-                  ),
-                  if (_pinnedMessages.length > 1)
-                    Text(
-                      '+${_pinnedMessages.length - 1}',
-                      style: TextStyle(color: Colors.orange[800], fontSize: 12, fontWeight: FontWeight.bold),
-                    ),
-                ],
+                    if (_pinnedMessages.length > 1)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[100],
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${_currentPinIndex + 1}/${_pinnedMessages.length}',
+                          style: TextStyle(color: Colors.orange[900], fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           Expanded(
@@ -618,6 +658,179 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// A bottom sheet that shows existing conversations for forwarding — no duplicates.
+class _ForwardConversationSheet extends StatefulWidget {
+  final MessagingService messagingService;
+  final String sourceConversationId;
+  final String messageId;
+  final int currentUserId;
+
+  const _ForwardConversationSheet({
+    required this.messagingService,
+    required this.sourceConversationId,
+    required this.messageId,
+    required this.currentUserId,
+  });
+
+  @override
+  State<_ForwardConversationSheet> createState() => _ForwardConversationSheetState();
+}
+
+class _ForwardConversationSheetState extends State<_ForwardConversationSheet> {
+  final TextEditingController _searchCtrl = TextEditingController();
+  List<dynamic> _allConversations = [];
+  List<dynamic> _filtered = [];
+  bool _loading = true;
+  bool _forwarding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConversations();
+    _searchCtrl.addListener(_filter);
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.removeListener(_filter);
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadConversations() async {
+    final convs = await widget.messagingService.fetchConversations();
+    if (mounted) {
+      final others = convs
+          .where((c) => c['id'].toString() != widget.sourceConversationId)
+          .toList();
+      setState(() {
+        _allConversations = others;
+        _filtered = others;
+        _loading = false;
+      });
+    }
+  }
+
+  void _filter() {
+    final q = _searchCtrl.text.trim().toLowerCase();
+    setState(() {
+      _filtered = q.isEmpty
+          ? _allConversations
+          : _allConversations.where((c) {
+              final name = _convName(c).toLowerCase();
+              return name.contains(q);
+            }).toList();
+    });
+  }
+
+  String _convName(Map<String, dynamic> conv) {
+    if (conv['type'] == 'group') return conv['name'] ?? 'Unnamed Group';
+    final participants = conv['participants'] as List? ?? [];
+    final other = participants.firstWhere(
+      (p) => p['id'] != widget.currentUserId,
+      orElse: () => <String, dynamic>{'first_name': 'Unknown', 'last_name': '', 'email': ''},
+    );
+    final full = ' '.trim();
+    return full.isNotEmpty ? full : (other['email'] ?? 'Unknown');
+  }
+
+  Future<void> _forward(Map<String, dynamic> conv) async {
+    setState(() => _forwarding = true);
+    final success = await widget.messagingService.forwardMessage(
+      widget.sourceConversationId,
+      widget.messageId,
+      conv['id'].toString(),
+    );
+    if (!mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success
+            ? 'Message forwarded to '
+            : 'Failed to forward message'),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (_, scrollController) {
+        return Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Text('Forward to...', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _searchCtrl,
+                decoration: InputDecoration(
+                  hintText: 'Search conversations...',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filtered.isEmpty
+                      ? Center(
+                          child: Text(
+                            _searchCtrl.text.isNotEmpty ? 'No conversations match' : 'No other conversations',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        )
+                      : ListView.separated(
+                          controller: scrollController,
+                          itemCount: _filtered.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, i) {
+                            final conv = _filtered[i] as Map<String, dynamic>;
+                            final name = _convName(conv);
+                            final isGroup = conv['type'] == 'group';
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: isGroup ? Colors.teal : Colors.blue,
+                                child: Icon(isGroup ? Icons.group : Icons.person, color: Colors.white, size: 18),
+                              ),
+                              title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                              subtitle: Text(
+                                isGroup ? ' members' : 'Direct message',
+                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                              ),
+                              trailing: _forwarding
+                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                                  : const Icon(Icons.send, color: Colors.blue),
+                              onTap: _forwarding ? null : () => _forward(conv),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
