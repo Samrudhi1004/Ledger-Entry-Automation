@@ -12,6 +12,7 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onForward;
   final VoidCallback? onPin;
   final VoidCallback? onReact;
+  final Future<void> Function(String emoji)? onRemoveReaction;
 
   const MessageBubble({
     Key? key,
@@ -23,6 +24,7 @@ class MessageBubble extends StatelessWidget {
     this.onForward,
     this.onPin,
     this.onReact,
+    this.onRemoveReaction,
   }) : super(key: key);
 
   String _formatTime(String timestamp) {
@@ -227,23 +229,29 @@ class MessageBubble extends StatelessWidget {
                 child: Wrap(
                   spacing: 4,
                   children: _groupReactions(reactions).map((reactionGroup) {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(reactionGroup['emoji'], style: const TextStyle(fontSize: 12)),
-                          if (reactionGroup['count'] > 1)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 4),
-                              child: Text('${reactionGroup['count']}', style: const TextStyle(fontSize: 12)),
-                            ),
-                        ],
+                    final emoji = reactionGroup['emoji'] as String;
+                    return GestureDetector(
+                      onTap: onRemoveReaction != null
+                          ? () => onRemoveReaction!(emoji)
+                          : null,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(emoji, style: const TextStyle(fontSize: 12)),
+                            if (reactionGroup['count'] > 1)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: Text('${reactionGroup['count']}', style: const TextStyle(fontSize: 12)),
+                              ),
+                          ],
+                        ),
                       ),
                     );
                   }).toList(),
