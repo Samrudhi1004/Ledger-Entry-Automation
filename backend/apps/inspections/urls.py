@@ -47,23 +47,23 @@ urlpatterns = [
 
     # Inspector & Setup flow
     path('first-piece-status/',             FirstPieceStatusView.as_view(),   name='first-piece-status'),
-    path('<str:session_id>/finalize/',      FinalizeFirstPieceView.as_view(), name='finalize-first-piece'),
-    path('<str:session_id>/pdf/',           FirstPiecePDFView.as_view(),      name='first-piece-pdf'),
+    path('<uuid:session_id>/finalize/',      FinalizeFirstPieceView.as_view(), name='finalize-first-piece'),
+    path('<uuid:session_id>/pdf/',           FirstPiecePDFView.as_view(),      name='first-piece-pdf'),
 
     # Supervisor flow
     path('pending/',                        PendingReviewView.as_view(),      name='pending-review'),
     path('clear-history/',                  ClearHistoryView.as_view(),       name='clear-history'),
-    path('<str:session_id>/supervisor-override/', SupervisorOverrideView.as_view(), name='supervisor-override'),
-    path('<str:session_id>/hourly-status/', HourlyStatusView.as_view(),      name='hourly-status'),
+    path('<uuid:session_id>/supervisor-override/', SupervisorOverrideView.as_view(), name='supervisor-override'),
+    path('<uuid:session_id>/hourly-status/', HourlyStatusView.as_view(),      name='hourly-status'),
 
     # Operator flow
     path('setup-status/',                   SetupStatusView.as_view(),        name='setup-status'),
     path('setup-approval/',                 SetupApprovalView.as_view(),      name='setup-approval'),
     path('rejections/',                     RejectionsListView.as_view(),     name='rejections-list'),
     path('start/',                          StartInspectionView.as_view(),    name='inspection-start'),
-    path('<str:session_id>/measure/',       RecordMeasurementView.as_view(),  name='record-measurement'),
-    path('<str:session_id>/complete/',      CompleteInspectionView.as_view(), name='inspection-complete'),
-    path('<str:session_id>/review/',        ApproveRejectView.as_view(),      name='approve-reject'),
+    path('<uuid:session_id>/measure/',       RecordMeasurementView.as_view(),  name='record-measurement'),
+    path('<uuid:session_id>/complete/',      CompleteInspectionView.as_view(), name='inspection-complete'),
+    path('<uuid:session_id>/review/',        ApproveRejectView.as_view(),      name='approve-reject'),
 
     # JH (Autonomous Maintenance) Routes
     path('jh/items/',                                       JHChecklistItemsView.as_view(),              name='jh-checklist-items'),
@@ -82,8 +82,6 @@ urlpatterns = [
     path('jh/matrix/',                      JHInspectionMatrixView.as_view(),             name='jh-inspection-matrix'),
 
     # Session detail (full MongoDB document) — wildcard route must be last
-    path('<str:session_id>/batch-measure/', BatchMeasureView.as_view(),      name='batch-measure'),
-    path('<str:session_id>/',              SessionDetailView.as_view(),      name='session-detail'),
+    path('<uuid:session_id>/batch-measure/', BatchMeasureView.as_view(),      name='batch-measure'),
+    path('<uuid:session_id>/',              SessionDetailView.as_view(),      name='session-detail'),
 ]
-
-
