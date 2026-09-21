@@ -103,15 +103,22 @@ class ConversationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
 
+    def _get_clear_history(self, obj):
+        """Helper to fetch and memoize clear history per conversation."""
+        if not hasattr(self, '_clear_histories'):
+            self._clear_histories = {}
+        if obj.id not in self._clear_histories:
+            from apps.messaging.models import ConversationClearHistory
+            user = self.context['request'].user
+            self._clear_histories[obj.id] = ConversationClearHistory.objects.filter(
+                user=user, conversation=obj
+            ).first()
+        return self._clear_histories[obj.id]
+
     def get_last_message(self, obj):
         """Get the last message in the conversation."""
-        from apps.messaging.models import ConversationClearHistory
         queryset = obj.messages.filter(is_deleted=False)
-        
-        user = self.context['request'].user
-        clear_history = ConversationClearHistory.objects.filter(
-            user=user, conversation=obj
-        ).first()
+        clear_history = self._get_clear_history(obj)
         
         if clear_history:
             queryset = queryset.filter(created_at__gt=clear_history.cleared_at)
@@ -129,13 +136,10 @@ class ConversationSerializer(serializers.ModelSerializer):
 
     def get_unread_count(self, obj):
         """Get unread message count for current user."""
-        from apps.messaging.models import ConversationClearHistory
         user = self.context['request'].user
         queryset = obj.messages.filter(is_deleted=False)
         
-        clear_history = ConversationClearHistory.objects.filter(
-            user=user, conversation=obj
-        ).first()
+        clear_history = self._get_clear_history(obj)
         
         if clear_history:
             queryset = queryset.filter(created_at__gt=clear_history.cleared_at)
@@ -148,13 +152,9 @@ class ConversationSerializer(serializers.ModelSerializer):
 
     def get_pinned_messages(self, obj):
         """Get pinned messages with basic info for the banner."""
-        from apps.messaging.models import ConversationClearHistory
-        user = self.context['request'].user
         queryset = obj.pinned_messages.filter(is_deleted=False)
         
-        clear_history = ConversationClearHistory.objects.filter(
-            user=user, conversation=obj
-        ).first()
+        clear_history = self._get_clear_history(obj)
         
         if clear_history:
             queryset = queryset.filter(created_at__gt=clear_history.cleared_at)
@@ -220,15 +220,8 @@ class ConversationDetailSerializer(ConversationSerializer):
 
     def get_recent_messages(self, obj):
         """Get the 50 most recent messages."""
-        from apps.messaging.models import ConversationClearHistory
-        
-        user = self.context['request'].user
         queryset = obj.messages.filter(is_deleted=False)
-        
-        clear_history = ConversationClearHistory.objects.filter(
-            user=user,
-            conversation=obj
-        ).first()
+        clear_history = self._get_clear_history(obj)
         
         if clear_history:
             queryset = queryset.filter(created_at__gt=clear_history.cleared_at)
