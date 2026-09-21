@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
-import { Cpu, FileText, ArrowRight, ShieldCheck, Clock, Gauge } from 'lucide-react';
+import { Cpu, FileText, ArrowRight, ShieldCheck, Clock, Gauge, FileSpreadsheet } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function QualityAnalyzerPage() {
@@ -73,6 +73,22 @@ export default function QualityAnalyzerPage() {
       link: '/calibration',
       disabled: false,
     },
+    {
+      id: 'monthly-oee',
+      title: 'Monthly OEE Excel Report',
+      badge: '● OEE Analytics',
+      badgeBg: '#DCFCE7',
+      badgeColor: '#166534',
+      icon: FileSpreadsheet,
+      iconBg: '#DCFCE7',
+      iconColor: '#15803D',
+      description:
+        'Generate and download automated Monthly Overall Equipment Effectiveness (OEE) Excel reports with full parameter tracking.',
+      details: ['Dynamic Shift Formatting', 'Downtime & Quality Rates', 'Excel Formulas Built-in'],
+      actionText: 'View OEE Report',
+      link: '/reports/oee',
+      disabled: false,
+    },
   ];
 
   const reportCards = allReportCards.filter(
@@ -98,14 +114,20 @@ export default function QualityAnalyzerPage() {
           >
           {reportCards.map((card) => {
             const CardIcon = card.icon;
-            const isDisabled = card.disabled || !card.link;
+            const isDisabled = card.disabled || (!card.link && !card.onClick);
 
             return (
               <div
                 key={card.id}
                 className="card"
                 onClick={() => {
-                  if (!isDisabled) navigate(card.link);
+                  if (!isDisabled) {
+                    if (card.onClick) {
+                      card.onClick();
+                    } else if (card.link) {
+                      navigate(card.link);
+                    }
+                  }
                 }}
                 style={{
                   background: isDisabled ? '#FAFBFD' : '#ffffff',
