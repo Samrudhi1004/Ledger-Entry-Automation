@@ -178,6 +178,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
         try:
             user_to_remove = User.objects.get(id=user_id)
             conversation.participants.remove(user_to_remove)
+            conversation.past_participants.add(user_to_remove)
 
             # If removed user was admin, transfer to oldest remaining member
             if conversation.admin == user_to_remove:

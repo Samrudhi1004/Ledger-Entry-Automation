@@ -105,7 +105,18 @@ class ConversationSerializer(serializers.ModelSerializer):
 
     def get_last_message(self, obj):
         """Get the last message in the conversation."""
-        last_message = obj.messages.filter(is_deleted=False).order_by('-created_at').first()
+        from apps.messaging.models import ConversationClearHistory
+        queryset = obj.messages.filter(is_deleted=False)
+        
+        user = self.context['request'].user
+        clear_history = ConversationClearHistory.objects.filter(
+            user=user, conversation=obj
+        ).first()
+        
+        if clear_history:
+            queryset = queryset.filter(created_at__gt=clear_history.cleared_at)
+            
+        last_message = queryset.order_by('-created_at').first()
         if last_message:
             return {
                 'id': str(last_message.id),
@@ -118,16 +129,37 @@ class ConversationSerializer(serializers.ModelSerializer):
 
     def get_unread_count(self, obj):
         """Get unread message count for current user."""
+        from apps.messaging.models import ConversationClearHistory
         user = self.context['request'].user
+        queryset = obj.messages.filter(is_deleted=False)
+        
+        clear_history = ConversationClearHistory.objects.filter(
+            user=user, conversation=obj
+        ).first()
+        
+        if clear_history:
+            queryset = queryset.filter(created_at__gt=clear_history.cleared_at)
+            
         # Messages in this conversation not read by current user
-        unread = obj.messages.filter(is_deleted=False).exclude(
+        unread = queryset.exclude(
             read_by__user=user
         ).exclude(sender=user).count()
         return unread
 
     def get_pinned_messages(self, obj):
         """Get pinned messages with basic info for the banner."""
-        pinned = obj.pinned_messages.filter(is_deleted=False).order_by('created_at')
+        from apps.messaging.models import ConversationClearHistory
+        user = self.context['request'].user
+        queryset = obj.pinned_messages.filter(is_deleted=False)
+        
+        clear_history = ConversationClearHistory.objects.filter(
+            user=user, conversation=obj
+        ).first()
+        
+        if clear_history:
+            queryset = queryset.filter(created_at__gt=clear_history.cleared_at)
+            
+        pinned = queryset.order_by('created_at')
         return [
             {
                 'id': str(msg.id),
@@ -167,7 +199,14 @@ class ConversationSerializer(serializers.ModelSerializer):
         conversation = super().update(instance, validated_data)
 
         if participant_ids is not None:
+            current_participants = set(conversation.participants.values_list('id', flat=True))
+            new_participants = set(participant_ids)
+            removed_ids = current_participants - new_participants
+            
             conversation.participants.set(participant_ids)
+            
+            if removed_ids:
+                conversation.past_participants.add(*removed_ids)
 
         return conversation
 
