@@ -12,7 +12,7 @@ from django.core.cache import cache
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
-from apps.messaging.models import Conversation, Message, MessageAttachment, MessageRead, MessageReaction
+from apps.messaging.models import Conversation, Message, MessageAttachment, MessageRead, MessageReaction, ConversationClearHistory
 from apps.messaging.serializers import (
     ConversationSerializer,
     ConversationDetailSerializer,
@@ -48,10 +48,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
     serializer_class = ConversationSerializer
 
     def get_queryset(self):
-        """Return conversations where the user is a participant."""
+        """Return conversations where the user is an active or past participant."""
         return Conversation.objects.filter(
-            participants=self.request.user
-        ).prefetch_related('participants', 'messages')
+            Q(participants=self.request.user) | Q(past_participants=self.request.user)
+        ).distinct().prefetch_related('participants', 'messages')
 
     def get_serializer_class(self):
         """Use detailed serializer for retrieve action."""
@@ -101,12 +101,13 @@ class ConversationViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def destroy(self, request, *args, **kwargs):
-        """Leave conversation (remove self from participants)."""
+        """Leave conversation (remove from participants and add to past_participants)."""
         conversation = self.get_object()
         user = request.user
 
-        # Remove user from participants
+        # Remove user from active participants and add to past_participants
         conversation.participants.remove(user)
+        conversation.past_participants.add(user)
 
         # If user was admin and group still has members, transfer admin to oldest member
         if conversation.type == Conversation.Type.GROUP and conversation.admin == user:
@@ -280,6 +281,23 @@ class ConversationViewSet(viewsets.ModelViewSet):
             'pinned_messages': serializer.data
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='clear')
+    def clear_history(self, request, pk=None):
+        """Clear conversation history for the current user."""
+        conversation = self.get_object()
+        
+        # Update or create the cleared history record
+        ConversationClearHistory.objects.update_or_create(
+            user=request.user,
+            conversation=conversation,
+            defaults={'cleared_at': timezone.now()}
+        )
+        
+        return Response(
+            {'message': 'Conversation history cleared successfully.'},
+            status=status.HTTP_200_OK
+        )
+
 
 class MessageViewSet(viewsets.ModelViewSet):
     """
@@ -293,16 +311,29 @@ class MessageViewSet(viewsets.ModelViewSet):
         """Return messages from conversations where user is a participant."""
         conversation_id = self.kwargs.get('conversation_pk')
         if conversation_id:
-            # Verify user is participant
+            # Verify user is active or past participant
             conversation = get_object_or_404(
-                Conversation,
-                id=conversation_id,
-                participants=self.request.user
+                Conversation.objects.filter(
+                    Q(participants=self.request.user) | Q(past_participants=self.request.user)
+                ).distinct(),
+                id=conversation_id
             )
-            return Message.objects.filter(
+            
+            queryset = Message.objects.filter(
                 conversation=conversation,
                 is_deleted=False
-            ).select_related('sender').prefetch_related('attachments', 'read_by')
+            )
+            
+            # Filter out messages created before the user cleared history
+            clear_history = ConversationClearHistory.objects.filter(
+                user=self.request.user,
+                conversation=conversation
+            ).first()
+            
+            if clear_history:
+                queryset = queryset.filter(created_at__gt=clear_history.cleared_at)
+                
+            return queryset.select_related('sender').prefetch_related('attachments', 'read_by')
 
         return Message.objects.none()
 

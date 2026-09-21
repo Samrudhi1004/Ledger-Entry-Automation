@@ -8,7 +8,7 @@ import { BASE_URL } from '../../api/axios';
 import './ChatWindow.css';
 
 export default function ChatWindow() {
-  const { activeConversation, messages, typingUsers, onlineUsers, markAsRead, conversations, fetchConversations, fetchMessages, updateMessageReactions, pinMessage, deleteMessage } = useMessaging();
+  const { activeConversation, messages, typingUsers, onlineUsers, markAsRead, conversations, fetchConversations, fetchMessages, updateMessageReactions, pinMessage, deleteMessage, clearHistory, leaveGroup } = useMessaging();
   const { user } = useAuth();
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -25,6 +25,8 @@ export default function ChatWindow() {
   const [activePinIndex, setActivePinIndex] = useState(0);
   const [highlightedMessageId, setHighlightedMessageId] = useState(null);
   const [reactionModal, setReactionModal] = useState(null); // { message, reactions }
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const messageRefs = useRef({});
   const previousMessageCountRef = useRef(0);
 
@@ -145,9 +147,12 @@ export default function ChatWindow() {
       if (emojiPicker) {
         closeEmojiPicker();
       }
+      if (headerMenuOpen) {
+        setHeaderMenuOpen(false);
+      }
     };
 
-    if (contextMenu || emojiPicker) {
+    if (contextMenu || emojiPicker || headerMenuOpen) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
     }
@@ -631,6 +636,8 @@ export default function ChatWindow() {
     setEmojiPicker(null);
   };
 
+  const isParticipant = activeConversation.participants?.some(p => p.id === user.id);
+
   return (
     <div className="chat-window">
       <div className="chat-header">
@@ -641,10 +648,57 @@ export default function ChatWindow() {
           </p>
         </div>
 
-        <div className="chat-header-actions">
-          <button className="icon-button" title="More options">
+        <div className="chat-header-actions" style={{ position: 'relative' }}>
+          <button 
+            className="icon-button" 
+            title="More options"
+            onClick={(e) => {
+              e.stopPropagation();
+              setHeaderMenuOpen(!headerMenuOpen);
+            }}
+          >
             <MoreVertical size={20} />
           </button>
+          
+          {headerMenuOpen && (
+            <div className="header-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+              <div 
+                className="dropdown-item" 
+                onClick={() => {
+                  setDetailsModalOpen(true);
+                  setHeaderMenuOpen(false);
+                }}
+              >
+                {activeConversation.type === 'group' ? 'Group Details' : 'Contact Info'}
+              </div>
+              <div
+                className="dropdown-item"
+                style={{ color: '#e53e3e' }}
+                onClick={async () => {
+                  if (window.confirm('Are you sure you want to clear this chat history? This will only clear it for you.')) {
+                    await clearHistory(activeConversation.id);
+                  }
+                  setHeaderMenuOpen(false);
+                }}
+              >
+                Clear History
+              </div>
+              {activeConversation.type === 'group' && isParticipant && (
+                <div
+                  className="dropdown-item"
+                  style={{ color: '#e53e3e' }}
+                  onClick={async () => {
+                    if (window.confirm('Are you sure you want to leave this group?')) {
+                      await leaveGroup(activeConversation.id);
+                    }
+                    setHeaderMenuOpen(false);
+                  }}
+                >
+                  Leave Group
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -801,7 +855,13 @@ export default function ChatWindow() {
         <div ref={messagesEndRef} />
       </div>
 
-      <MessageInput replyingTo={replyingTo} onCancelReply={handleCancelReply} />
+      {isParticipant ? (
+        <MessageInput replyingTo={replyingTo} onCancelReply={handleCancelReply} />
+      ) : (
+        <div className="not-participant-banner" style={{ padding: '16px', textAlign: 'center', backgroundColor: '#f3f4f6', color: '#6b7280', borderTop: '1px solid #e5e7eb' }}>
+          You can't send messages to this group because you're no longer a participant.
+        </div>
+      )}
 
       {/* Image Lightbox */}
       {lightboxImage && (
@@ -1006,6 +1066,81 @@ export default function ChatWindow() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Details Modal */}
+      {detailsModalOpen && (
+        <div className="modal-overlay" onClick={() => setDetailsModalOpen(false)}>
+          <div className="details-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="details-modal-header">
+              <h3>{activeConversation.type === 'group' ? 'Group Details' : 'Contact Info'}</h3>
+              <button className="modal-close-button" onClick={() => setDetailsModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="details-modal-content">
+              {activeConversation.type === 'direct' ? (
+                (() => {
+                  const otherParticipant = activeConversation.participants.find(p => p.id !== user.id) || {};
+                  return (
+                    <div className="direct-details">
+                      <div className="details-avatar large">
+                        {otherParticipant.first_name?.charAt(0) || otherParticipant.email?.charAt(0) || '?'}
+                      </div>
+                      <h2 className="details-name">{`${otherParticipant.first_name || ''} ${otherParticipant.last_name || ''}`.trim() || otherParticipant.email}</h2>
+                      <div className="details-info-row">
+                        <span className="details-label">Email:</span>
+                        <span className="details-value">{otherParticipant.email}</span>
+                      </div>
+                      <div className="details-info-row">
+                        <span className="details-label">Role:</span>
+                        <span className="details-value">{otherParticipant.role}</span>
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="group-details">
+                  <div className="details-avatar large group">
+                    {activeConversation.name?.charAt(0) || 'G'}
+                  </div>
+                  <h2 className="details-name">{activeConversation.name || 'Unnamed Group'}</h2>
+                  
+                  {activeConversation.description && (
+                    <div className="details-description-box">
+                      <div className="details-label">Description</div>
+                      <div className="details-description">{activeConversation.description}</div>
+                    </div>
+                  )}
+
+                  <div className="details-participants-section">
+                    <div className="details-label">
+                      Participants ({activeConversation.participants?.length || 0})
+                    </div>
+                    <div className="details-participants-list">
+                      {activeConversation.participants?.map(p => (
+                        <div key={p.id} className="details-participant-item">
+                          <div className="participant-avatar small">
+                            {p.first_name?.charAt(0) || p.email?.charAt(0)}
+                          </div>
+                          <div className="participant-info">
+                            <div className="participant-name">
+                              {p.id === user.id ? 'You' : `${p.first_name || ''} ${p.last_name || ''}`.trim() || p.email}
+                              {activeConversation.admin?.id === p.id && <span className="admin-badge">Admin</span>}
+                              {activeConversation.created_by?.id === p.id && activeConversation.admin?.id !== p.id && <span className="admin-badge">Creator</span>}
+                            </div>
+                            <div className="participant-role">{p.role}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

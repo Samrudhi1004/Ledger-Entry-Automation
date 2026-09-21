@@ -357,7 +357,7 @@ class MessageBubble extends StatelessWidget {
                       ),
                     if (attachments.isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      ...attachments.map((attachment) => _buildAttachment(attachment)),
+                      ...attachments.map((attachment) => _buildAttachment(context, attachment)),
                     ],
                   ],
                 ),
@@ -427,7 +427,7 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildAttachment(Map<String, dynamic> attachment) {
+  Widget _buildAttachment(BuildContext context, Map<String, dynamic> attachment) {
     final attachmentType = attachment['attachment_type'] as String? ?? '';
     final fileName = attachment['file_name'] as String? ?? '';
     final cloudinaryUrl = attachment['cloudinary_url'] as String?;
@@ -462,20 +462,21 @@ class MessageBubble extends StatelessWidget {
           child: Image.network(
             cloudinaryUrl,
             fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Container(
-              padding: const EdgeInsets.all(8),
-              color: Colors.grey[200],
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.image, size: 20),
-                  const SizedBox(width: 8),
-                  Text(fileName),
-                ],
-              ),
-            );
-          },
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                padding: const EdgeInsets.all(8),
+                color: Colors.grey[200],
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.image, size: 20),
+                    const SizedBox(width: 8),
+                    Text(fileName),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       );
     } else {

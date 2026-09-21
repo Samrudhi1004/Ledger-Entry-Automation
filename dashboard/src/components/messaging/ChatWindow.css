@@ -1183,3 +1183,225 @@
 .context-menu-item.delete-item:hover {
   background-color: #fef2f2;
 }
+
+/* ── Header Dropdown Menu ────────────────────────────── */
+.header-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.5rem;
+  background: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  z-index: 100;
+  min-width: 150px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+
+.header-dropdown-menu .dropdown-item {
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #374151;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.header-dropdown-menu .dropdown-item:hover {
+  background-color: #f3f4f6;
+}
+
+/* ── Details Modal ────────────────────────────── */
+.details-modal {
+  background: white;
+  border-radius: 0.75rem;
+  width: 90%;
+  max-width: 400px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  animation: scaleIn 0.2s ease-out;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.details-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.details-modal-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.details-modal-content {
+  padding: 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.details-avatar.large {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: #e0e7ff;
+  color: #4f46e5;
+  font-size: 2.5rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.details-avatar.large.group {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.details-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 1.5rem 0;
+  text-align: center;
+}
+
+.direct-details {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.details-info-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.details-info-row:last-child {
+  border-bottom: none;
+}
+
+.details-label {
+  font-weight: 500;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.details-value {
+  color: #111827;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.group-details {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.details-description-box {
+  width: 100%;
+  background: #f9fafb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.details-description-box .details-label {
+  margin-bottom: 0.5rem;
+  color: #4b5563;
+}
+
+.details-description {
+  font-size: 0.875rem;
+  color: #111827;
+  line-height: 1.5;
+}
+
+.details-participants-section {
+  width: 100%;
+  text-align: left;
+}
+
+.details-participants-section .details-label {
+  margin-bottom: 0.75rem;
+}
+
+.details-participants-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.details-participant-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  transition: background-color 0.2s;
+}
+
+.details-participant-item:hover {
+  background-color: #f9fafb;
+}
+
+.participant-avatar.small {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e0e7ff;
+  color: #4f46e5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.participant-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.participant-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #111827;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.participant-role {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.admin-badge {
+  background: #dbeafe;
+  color: #2563eb;
+  font-size: 0.625rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-weight: 600;
+}

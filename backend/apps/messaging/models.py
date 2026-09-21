@@ -17,6 +17,7 @@ class Conversation(models.Model):
     # For direct messages: exactly 2 participants
     # For groups: 2+ participants
     participants = models.ManyToManyField('users.User', related_name='conversations')
+    past_participants = models.ManyToManyField('users.User', related_name='past_conversations', blank=True)
 
     # Group chat specific fields
     name = models.CharField(max_length=100, blank=True)  # Group name
@@ -219,3 +220,19 @@ class MessageReaction(models.Model):
 
     def __str__(self):
         return f"{self.user.email} reacted {self.emoji} to message {self.message.id}"
+
+
+class ConversationClearHistory(models.Model):
+    """
+    Track when a user clears history for a conversation.
+    """
+    user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='cleared_conversations')
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='cleared_history')
+    cleared_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'conversation_clear_history'
+        unique_together = [['user', 'conversation']]
+
+    def __str__(self):
+        return f"{self.user.email} cleared {self.conversation.id} at {self.cleared_at}"
