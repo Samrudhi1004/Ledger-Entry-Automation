@@ -722,7 +722,7 @@ class FirstPiecePDFView(APIView):
         from django.http import FileResponse
 
         try:
-            session = InspectionSession.objects.get(session_id=session_id)
+            session = InspectionSession.objects.select_related('part', 'machine', 'template').get(session_id=session_id)
             doc = _service.get_session_document(session_id) or {}
             
             from .pdf_generator import generate_first_piece_pdf
@@ -734,7 +734,14 @@ class FirstPiecePDFView(APIView):
             if not os.path.exists(abs_pdf_path):
                 return Response({'error': 'PDF report file not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-            return FileResponse(open(abs_pdf_path, 'rb'), content_type='application/pdf', filename=f"FirstPiece_Report_{session_id}.pdf")
+            date_str = session.started_at.strftime('%Y-%m-%d') if getattr(session, 'started_at', None) else 'All'
+            shift_str = f"Shift_{session.shift}" if getattr(session, 'shift', None) else "Shift_All"
+            mc_code = session.machine.machine_code.replace('/', '_') if (hasattr(session, 'machine') and session.machine and session.machine.machine_code) else "MCH"
+            part_no = session.part.part_number.replace('/', '_') if (hasattr(session, 'part') and session.part and session.part.part_number) else "PART"
+            prefix = "Setup_Approval_Report" if getattr(session, 'is_setup_approval_only', False) else "FirstPiece_Report"
+            download_filename = f"{prefix}_{date_str}_{shift_str}_{mc_code}_{part_no}.pdf"
+
+            return FileResponse(open(abs_pdf_path, 'rb'), content_type='application/pdf', filename=download_filename)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1025,14 +1032,31 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
         relative_path = generate_daily_production_pdf(report)
         full_path = os.path.join(settings.BASE_DIR, relative_path)
         if os.path.exists(full_path):
-            return FileResponse(open(full_path, 'rb'), content_type='application/pdf', filename=f"DailyProduction_Report_{report.report_id}.pdf")
+            date_str = str(report.date) if getattr(report, 'date', None) else 'All'
+            shift_str = f"Shift_{report.shift}" if getattr(report, 'shift', None) else "Shift_All"
+            mc_code = report.machine.machine_code.replace('/', '_') if (hasattr(report, 'machine') and report.machine and report.machine.machine_code) else 'MCH'
+            part_no = report.part.part_number.replace('/', '_') if (hasattr(report, 'part') and report.part and report.part.part_number) else 'PART'
+            filename = f"DailyProduction_Report_{date_str}_{shift_str}_{mc_code}_{part_no}.pdf"
+            return FileResponse(open(full_path, 'rb'), content_type='application/pdf', filename=filename)
         return Response({"error": "PDF generation failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'])
     def export_excel(self, request):
         qs = self.filter_queryset(self.get_queryset())
+        date_param = request.query_params.get('date', '')
+        shift_param = request.query_params.get('shift', '')
+        machine_param = request.query_params.get('machine__machine_code') or request.query_params.get('machine', '')
+        part_param = request.query_params.get('part__part_number') or request.query_params.get('part', '')
+
+        segments = []
+        if date_param: segments.append(date_param)
+        if shift_param: segments.append(f"Shift_{shift_param}")
+        if machine_param: segments.append(machine_param.replace('/', '_'))
+        if part_param: segments.append(part_param.replace('/', '_'))
+        suffix = f"_{'_'.join(segments)}" if segments else ""
+
         response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="Daily_Production_Reports.csv"'
+        response['Content-Disposition'] = f'attachment; filename="Daily_Production_Reports{suffix}.csv"'
 
         writer = csv.writer(response)
         writer.writerow([
@@ -1398,13 +1422,15 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
         qs = self.filter_queryset(self.get_queryset())
         date_str = request.query_params.get('date', 'All')
         shift_str = request.query_params.get('shift', 'All')
+        machine_code = request.query_params.get('machine__machine_code') or request.query_params.get('machine_code') or request.query_params.get('machine', '')
+        mc_suffix = f"_{machine_code.replace('/', '_')}" if machine_code and machine_code.lower() != 'all' else ""
 
         excel_buffer = generate_downtime_xlsx(qs, date_str, shift_str)
         response = HttpResponse(
             excel_buffer.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        response['Content-Disposition'] = f'attachment; filename="Downtime_Report_{date_str}_{shift_str}.xlsx"'
+        response['Content-Disposition'] = f'attachment; filename="Downtime_Report_{date_str}_Shift_{shift_str}{mc_suffix}.xlsx"'
         return response
 
     @action(detail=False, methods=['get'])
@@ -1412,6 +1438,8 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
         qs = self.filter_queryset(self.get_queryset())
         date_str = request.query_params.get('date', 'All')
         shift_str = request.query_params.get('shift', 'All')
+        machine_code = request.query_params.get('machine__machine_code') or request.query_params.get('machine_code') or request.query_params.get('machine', '')
+        mc_suffix = f"_{machine_code.replace('/', '_')}" if machine_code and machine_code.lower() != 'all' else ""
 
         relative_path = generate_downtime_pdf(qs, date_str, shift_str)
         full_path = os.path.join(settings.BASE_DIR, relative_path)
@@ -1419,7 +1447,7 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
             return FileResponse(
                 open(full_path, 'rb'),
                 content_type='application/pdf',
-                filename=f"Downtime_Report_{date_str}_{shift_str}.pdf"
+                filename=f"Downtime_Report_{date_str}_Shift_{shift_str}{mc_suffix}.pdf"
             )
         return Response({"error": "PDF generation failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

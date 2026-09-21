@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   getDocuments, approveDocument, rejectDocument, getDocumentHistory,
 } from '../api/documentControl';
+import DocumentViewerModal from '../components/document_control/DocumentViewerModal';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 
@@ -171,17 +172,15 @@ function ApproveModal({ doc, onClose, onSuccess }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function DocumentControlApprovalsPage() {
   const { user } = useAuth();
-  if (user && user.role !== 'admin') {
-    return <Navigate to="/document-control" replace />;
-  }
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [approveTarget, setApproveTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
+  const [selectedViewerDoc, setSelectedViewerDoc] = useState(null);
 
   const fetchPending = () => {
     setLoading(true);
-    getDocuments({ status: 'under_review' })
+    getDocuments({ status: 'pending' })
       .then(r => setDocs(Array.isArray(r.data) ? r.data : r.data?.results ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -240,20 +239,31 @@ export default function DocumentControlApprovalsPage() {
             <div key={doc.id} style={{
               background: '#fff', borderRadius: '16px', padding: '22px 24px',
               border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-              borderLeft: '4px solid #f59e0b'
+              borderLeft: doc.status === 'awaiting_approval' ? '4px solid #3b82f6' : '4px solid #f59e0b'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px' }}>
 
                 {/* Left — doc info */}
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
                     <FileText size={16} color="#6366f1" />
                     <span style={{ fontWeight: '700', color: '#0f172a', fontSize: '16px' }}>{doc.title}</span>
                     <span style={{ fontSize: '12px', fontWeight: '700', color: '#6366f1', background: '#e0e7ff', padding: '2px 8px', borderRadius: '20px' }}>
                       {doc.document_number}
                     </span>
                     <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b' }}>
-                      {doc.revision}
+                      Rev {doc.revision ?? '0'}
+                    </span>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      backgroundColor: doc.status === 'awaiting_approval' ? '#eff6ff' : '#fef3c7',
+                      color: doc.status === 'awaiting_approval' ? '#1d4ed8' : '#d97706',
+                      border: `1px solid ${doc.status === 'awaiting_approval' ? '#bfdbfe' : '#fde68a'}`
+                    }}>
+                      {doc.status === 'awaiting_approval' ? 'Awaiting Approval' : 'Under Review'}
                     </span>
                   </div>
 
@@ -263,10 +273,12 @@ export default function DocumentControlApprovalsPage() {
                     </p>
                   )}
 
-                  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                     {[
-                      { icon: '👤', label: `Uploaded by ${doc.uploaded_by_name}` },
-                      { icon: '📅', label: formatDate(doc.created_at) },
+                      { icon: '👤', label: `Uploaded by: ${doc.uploaded_by_name || 'Admin'}` },
+                      { icon: '🔍', label: (doc.reviewed_at || doc.status === 'awaiting_approval') ? `✓ Reviewed by: ${doc.reviewed_by_name || 'Reviewer'}` : `Reviewer: ${doc.reviewed_by_name || 'Not assigned'}` },
+                      { icon: '✍️', label: `Approver: ${doc.approved_by_name || 'Not assigned'}` },
+                      { icon: '📅', label: `Date: ${formatDate(doc.created_at)}` },
                       { icon: '📎', label: doc.file_name || 'No file' },
                     ].map((m, i) => (
                       <span key={i} style={{ fontSize: '12px', color: '#64748b' }}>
@@ -278,21 +290,16 @@ export default function DocumentControlApprovalsPage() {
 
                 {/* Right — actions */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
-                  {doc.cloudinary_url && (
-                    <a
-                      href={doc.cloudinary_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        padding: '8px 14px', borderRadius: '10px', border: '1px solid #e2e8f0',
-                        background: '#f8fafc', color: '#475569', fontSize: '13px', fontWeight: '600',
-                        textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <Download size={14} /> View File
-                    </a>
-                  )}
+                  <button
+                    onClick={() => setSelectedViewerDoc(doc)}
+                    style={{
+                      padding: '8px 14px', borderRadius: '10px', border: '1px solid #c7d2fe',
+                      background: '#e0e7ff', color: '#4338ca', fontSize: '13px', fontWeight: '600',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                    }}
+                  >
+                    <Eye size={14} /> Open in Viewer
+                  </button>
                   <button
                     onClick={() => setApproveTarget(doc)}
                     style={{
@@ -318,6 +325,15 @@ export default function DocumentControlApprovalsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Direct In-App Document Viewer */}
+      {selectedViewerDoc && (
+        <DocumentViewerModal
+          doc={selectedViewerDoc}
+          onClose={() => setSelectedViewerDoc(null)}
+          onUpdate={fetchPending}
+        />
       )}
 
       {/* Modals */}

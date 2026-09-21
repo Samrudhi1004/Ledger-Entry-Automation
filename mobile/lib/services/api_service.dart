@@ -457,7 +457,12 @@ class ApiService {
   }
 
   // Download PDF Report file for Session
-  static Future<String?> downloadSessionPDF(String sessionId) async {
+  static Future<String?> downloadSessionPDF(
+    String sessionId, {
+    String? partNumber,
+    String? machineCode,
+    String? shift,
+  }) async {
     try {
       final response = await authenticatedRequest((headers) => http.get(
         Uri.parse('$baseUrl/inspections/$sessionId/pdf/'),
@@ -466,7 +471,27 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final dir = await getApplicationDocumentsDirectory();
-        final file = File('${dir.path}/FirstPiece_Report_${sessionId.substring(0, 8)}.pdf');
+
+        // Check if server sent a filename in Content-Disposition
+        String? filename;
+        final disposition = response.headers['content-disposition'];
+        if (disposition != null && disposition.contains('filename=')) {
+          final match = RegExp(r'filename="?([^";]+)"?').firstMatch(disposition);
+          if (match != null && match.group(1) != null) {
+            filename = match.group(1)!.trim();
+          }
+        }
+
+        // Fallback to dynamic selection-aware name
+        if (filename == null || filename.isEmpty) {
+          final dateStr = DateTime.now().toIso8601String().substring(0, 10);
+          final cleanMc = (machineCode ?? 'MCH').replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+          final cleanPart = (partNumber ?? 'PART').replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+          final cleanShift = shift ?? 'A';
+          filename = 'FirstPiece_Report_${dateStr}_Shift_${cleanShift}_${cleanMc}_${cleanPart}.pdf';
+        }
+
+        final file = File('${dir.path}/$filename');
         await file.writeAsBytes(response.bodyBytes);
         return file.path;
       }

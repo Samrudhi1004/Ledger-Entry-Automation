@@ -73,7 +73,13 @@ export default function NotificationBell() {
       console.error("Failed to mark notification read", e);
     }
     setIsOpen(false);
-    navigate('/document-control/dcr?tab=action_required');
+    if (notif.action_url) {
+      navigate(notif.action_url);
+    } else if (notif.action_type && notif.action_type.startsWith('DOC_')) {
+      navigate('/document-control/documents');
+    } else {
+      navigate('/document-control/dcr?tab=action_required');
+    }
   };
 
   const handleMarkAllRead = async () => {
