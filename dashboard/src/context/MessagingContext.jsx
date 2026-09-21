@@ -65,6 +65,61 @@ export const MessagingProvider = ({ children }) => {
     }
   }, [user, API_BASE]);
 
+  // Clear history for a conversation
+  const clearHistory = useCallback(async (conversationId) => {
+    if (!user || !conversationId) return false;
+    try {
+      await api.post(`${API_BASE}/messaging/conversations/${conversationId}/clear/`);
+      // Clear messages in UI immediately
+      setMessages([]);
+      return true;
+    } catch (error) {
+      console.error('Failed to clear history:', error);
+      return false;
+    }
+  }, [user, API_BASE]);
+
+  // Leave a group conversation
+  const leaveGroup = useCallback(async (conversationId) => {
+    if (!user || !conversationId) return false;
+    try {
+      await api.delete(`${API_BASE}/messaging/conversations/${conversationId}/`);
+      
+      // Close websocket if it's for the conversation being left
+      if (wsRef.current && wsRef.current.url && wsRef.current.url.includes(`/ws/messaging/${conversationId}/`)) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+
+      // Update local state to reflect that the user is no longer a participant
+      setConversations(prev => prev.map(conv => {
+        if (conv.id === conversationId) {
+          return {
+            ...conv,
+            participants: conv.participants.filter(p => p.id !== user.id),
+            past_participants: [...(conv.past_participants || []), user]
+          };
+        }
+        return conv;
+      }));
+      // If it's the active conversation, update it too
+      setActiveConversation(prev => {
+        if (prev?.id === conversationId) {
+          return {
+            ...prev,
+            participants: prev.participants.filter(p => p.id !== user.id),
+            past_participants: [...(prev.past_participants || []), user]
+          };
+        }
+        return prev;
+      });
+      return true;
+    } catch (error) {
+      console.error('Failed to leave group:', error);
+      return false;
+    }
+  }, [user, API_BASE]);
+
   // Connect to WebSocket
   const connectWebSocket = useCallback((conversationId) => {
     const token = localStorage.getItem('access_token');
@@ -653,6 +708,8 @@ export const MessagingProvider = ({ children }) => {
     updateMessageReactions,
     pinMessage,
     deleteMessage,
+    clearHistory,
+    leaveGroup,
   };
 
   return (

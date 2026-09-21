@@ -44,6 +44,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<dynamic> _participants = [];
   bool _isGroup = false;
   int? _otherUserId;
+  Map<String, dynamic>? _conversationDetails;
 
   @override
   void initState() {
@@ -96,6 +97,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _pinnedMessages = pinned.cast<Map<String, dynamic>>();
       _loading = false;
       if (conv != null) {
+        _conversationDetails = conv;
         _isGroup = conv['type'] == 'group';
         _participants = conv['participants'] as List? ?? [];
         if (!_isGroup) {
@@ -420,11 +422,170 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _showDetails() {
+    if (_conversationDetails == null) return;
+
+    final currentUserId = int.tryParse(Provider.of<AuthProvider>(context, listen: false).userId ?? '0') ?? 0;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          minChildSize: 0.4,
+          expand: false,
+          builder: (context, scrollController) {
+            if (!_isGroup) {
+              final otherUser = _participants.firstWhere((p) => (p['id'] as int?) != currentUserId, orElse: () => null);
+              if (otherUser == null) return const SizedBox();
+              
+              final name = "${otherUser['first_name'] ?? ''} ${otherUser['last_name'] ?? ''}".trim();
+              final displayName = name.isNotEmpty ? name : (otherUser['email'] ?? 'Unknown');
+              
+              return SingleChildScrollView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    CircleAvatar(
+                      radius: 50,
+                      backgroundColor: Colors.indigo.shade100,
+                      child: Text(
+                        displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                        style: TextStyle(fontSize: 40, color: Colors.indigo.shade700, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(displayName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 32),
+                    _buildDetailRow('Email', otherUser['email'] ?? 'N/A'),
+                    const Divider(),
+                    _buildDetailRow('Role', otherUser['role'] ?? 'N/A'),
+                  ],
+                ),
+              );
+            } else {
+              final name = _conversationDetails!['name'] ?? 'Unnamed Group';
+              final desc = _conversationDetails!['description'] as String?;
+              final admin = _conversationDetails!['admin'];
+              final creator = _conversationDetails!['created_by'];
+
+              return SingleChildScrollView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    CircleAvatar(
+                      radius: 50,
+                      backgroundColor: Colors.grey.shade200,
+                      child: Text(
+                        name.isNotEmpty ? name[0].toUpperCase() : 'G',
+                        style: TextStyle(fontSize: 40, color: Colors.grey.shade700, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                    
+                    if (desc != null && desc.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Description', style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                            const SizedBox(height: 8),
+                            Text(desc, style: const TextStyle(fontSize: 16)),
+                          ],
+                        ),
+                      ),
+                    ],
+                    
+                    const SizedBox(height: 24),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Participants (${_participants.length})', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(height: 12),
+                    ..._participants.map((p) {
+                      final pName = "${p['first_name'] ?? ''} ${p['last_name'] ?? ''}".trim();
+                      final pDisp = pName.isNotEmpty ? pName : (p['email'] ?? 'Unknown');
+                      final isYou = (p['id'] as int?) == currentUserId;
+                      final isAdmin = admin != null && admin['id'] == p['id'];
+                      final isCreator = creator != null && creator['id'] == p['id'];
+                      
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.indigo.shade50,
+                          child: Text(
+                            pDisp.isNotEmpty ? pDisp[0].toUpperCase() : '?',
+                            style: TextStyle(color: Colors.indigo.shade700),
+                          ),
+                        ),
+                        title: Row(
+                          children: [
+                            Expanded(child: Text(isYou ? 'You' : pDisp, overflow: TextOverflow.ellipsis)),
+                            if (isAdmin)
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(4)),
+                                child: Text('Admin', style: TextStyle(fontSize: 10, color: Colors.blue.shade800, fontWeight: FontWeight.bold)),
+                              )
+                            else if (isCreator && !isAdmin)
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(4)),
+                                child: Text('Creator', style: TextStyle(fontSize: 10, color: Colors.blue.shade800, fontWeight: FontWeight.bold)),
+                              ),
+                          ],
+                        ),
+                        subtitle: Text(p['role'] ?? ''),
+                      );
+                    }).toList(),
+                  ],
+                ),
+              );
+            }
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Fix: Fall back to 0 (not 1) so we never accidentally treat messages from
     // another real user (id=1) as our own when the session has no persisted userId.
     final currentUserId = int.tryParse(Provider.of<AuthProvider>(context, listen: false).userId ?? '0') ?? 0;
+    final bool isParticipant = _participants.any((p) => p['id'] == currentUserId);
 
     return Scaffold(
       appBar: AppBar(
@@ -433,15 +594,92 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             Text(widget.conversationName, style: const TextStyle(fontSize: 16)),
             if (!_isGroup && _otherUserId != null && _onlineUsers[_otherUserId] == true)
-              const Text('Online', style: TextStyle(fontSize: 12, color: Colors.greenAccent, fontWeight: FontWeight.normal)),
+              const Text('Online', style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.normal)),
           ],
         ),
         actions: [
-          IconButton(
+          PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
-            onPressed: () {
-              // Show conversation options
+            onSelected: (value) async {
+              if (value == 'details') {
+                _showDetails();
+              } else if (value == 'clear') {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Clear History'),
+                    content: const Text('Are you sure you want to clear this chat history? This will only clear it for you.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Clear', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true) {
+                  final success = await _messagingService.clearHistory(widget.conversationId);
+                  if (success) {
+                    setState(() {
+                      _messages.clear();
+                    });
+                  }
+                }
+              } else if (value == 'leave') {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Leave Group'),
+                    content: const Text('Are you sure you want to leave this group?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Leave', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true) {
+                  final success = await _messagingService.leaveGroup(widget.conversationId);
+                  if (success) {
+                    setState(() {
+                      _participants.removeWhere((p) => p['id'] == currentUserId);
+                    });
+                  } else {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failed to leave group')),
+                      );
+                    }
+                  }
+                }
+              }
             },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'details',
+                child: Text(_isGroup ? 'Group Details' : 'Contact Info'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'clear',
+                child: Text('Clear History', style: TextStyle(color: Colors.red)),
+              ),
+              if (_isGroup && isParticipant)
+                const PopupMenuItem<String>(
+                  value: 'leave',
+                  child: Text('Leave Group', style: TextStyle(color: Colors.red)),
+                ),
+            ],
           ),
         ],
       ),
@@ -610,52 +848,64 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
             ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.attach_file),
-                  onPressed: _pickFile,
-                  color: Colors.grey[700],
-                ),
-                IconButton(
-                  icon: const Icon(Icons.image),
-                  onPressed: _pickImage,
-                  color: Colors.grey[700],
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    onChanged: _onTyping,
-                    decoration: const InputDecoration(
-                      hintText: 'Type a message...',
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    ),
-                    maxLines: null,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
+          if (isParticipant)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: _sendMessage,
-                  color: Colors.blue,
-                ),
-              ],
+                ],
+              ),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.attach_file),
+                    onPressed: _pickFile,
+                    color: Colors.grey[700],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.image),
+                    onPressed: _pickImage,
+                    color: Colors.grey[700],
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      onChanged: _onTyping,
+                      decoration: const InputDecoration(
+                        hintText: 'Type a message...',
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                      maxLines: null,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.send),
+                    onPressed: _sendMessage,
+                    color: Colors.blue,
+                  ),
+                ],
+              ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              color: Colors.grey[200],
+              child: const Text(
+                'You can\'t send messages to this group because you\'re no longer a participant.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.black54),
+              ),
             ),
-          ),
         ],
       ),
     );

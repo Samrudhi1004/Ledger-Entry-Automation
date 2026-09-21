@@ -85,6 +85,48 @@ class MessagingService {
     }
   }
 
+  // Clear history for a conversation
+  Future<bool> clearHistory(String conversationId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse('$baseUrl/messaging/conversations/$conversationId/clear/'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print('Failed to clear history: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('Error clearing history: $e');
+      return false;
+    }
+  }
+
+  // Leave group conversation
+  Future<bool> leaveGroup(String conversationId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.delete(
+        Uri.parse('$baseUrl/messaging/conversations/$conversationId/'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 204) {
+        return true;
+      } else {
+        print('Failed to leave group: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('Error leaving group: $e');
+      return false;
+    }
+  }
+
   // Create new conversation
   Future<Map<String, dynamic>?> createConversation({
     required String type,
