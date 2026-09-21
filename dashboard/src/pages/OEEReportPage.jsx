@@ -45,6 +45,8 @@ export default function OEEReportPage() {
   useEffect(() => {
     if (!selectedMachine || !selectedMonth || !selectedYear) return;
     
+    const controller = new AbortController();
+    
     const fetchReportData = async () => {
       try {
         setFetchingData(true);
@@ -54,19 +56,24 @@ export default function OEEReportPage() {
             machine: selectedMachine,
             month: selectedMonth,
             year: selectedYear
-          }
+          },
+          signal: controller.signal
         });
         setReportData(response.data);
       } catch (err) {
+        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
         console.error('Failed to fetch report data:', err);
         setError('Failed to load OEE report data.');
         setReportData(null);
       } finally {
-        setFetchingData(false);
+        if (!controller.signal.aborted) {
+          setFetchingData(false);
+        }
       }
     };
     
     fetchReportData();
+    return () => controller.abort();
   }, [selectedMachine, selectedMonth, selectedYear]);
 
   const handleDownload = async () => {

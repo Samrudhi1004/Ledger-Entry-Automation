@@ -393,8 +393,17 @@ class OEEDataAPIView(APIView):
         reports = DailyProductionReport.objects.filter(
             machine__machine_code=machine_code,
             date__year=year,
-            date__month=month
+            date__month=month,
+            status=DailyProductionReport.Status.SUBMITTED
         ).select_related('downtime_report', 'part').order_by('date', 'shift')
+
+        part_ids = {r.part_id for r in reports if r.part_id}
+        templates = InspectionTemplate.objects.filter(part_id__in=part_ids)
+        template_map = {}
+        for t in templates:
+            template_map[(t.part_id, t.name)] = t
+            if (t.part_id, None) not in template_map:
+                template_map[(t.part_id, None)] = t
 
         data = []
         for report in reports:
@@ -424,7 +433,7 @@ class OEEDataAPIView(APIView):
             pf = dt.power_off if dt and dt.power_off else 0
             
             # Down Time Losses (D)
-            downtime_losses = st + nl + no + mm + ow + pf
+            downtime_losses = dt.total_downtime if dt and dt.total_downtime else (st + nl + no + mm + ow + pf)
             
             # Operating Time (E)
             operating_time = net_available - downtime_losses
@@ -437,10 +446,8 @@ class OEEDataAPIView(APIView):
             
             # Cycle Time (H)
             cycle_time = 0.0
-            if report.part:
-                template = InspectionTemplate.objects.filter(part=report.part, name=report.operation).first()
-                if not template:
-                    template = InspectionTemplate.objects.filter(part=report.part).first()
+            if report.part_id:
+                template = template_map.get((report.part_id, report.operation)) or template_map.get((report.part_id, None))
                 if template and getattr(template, 'cycle_time_mins', 0) > 0:
                     cycle_time = template.cycle_time_mins
                     

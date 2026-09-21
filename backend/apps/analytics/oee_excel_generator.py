@@ -121,8 +121,18 @@ def generate_monthly_oee_excel(machine_code: str, year: int, month: int) -> Byte
     reports = DailyProductionReport.objects.filter(
         machine__machine_code=machine_code,
         date__year=year,
-        date__month=month
+        date__month=month,
+        status=DailyProductionReport.Status.SUBMITTED
     ).select_related('downtime_report', 'part').order_by('date', 'shift')
+
+    from apps.parts.models import InspectionTemplate
+    part_ids = {r.part_id for r in reports if r.part_id}
+    templates = InspectionTemplate.objects.filter(part_id__in=part_ids)
+    template_map = {}
+    for t in templates:
+        template_map[(t.part_id, t.name)] = t
+        if (t.part_id, None) not in template_map:
+            template_map[(t.part_id, None)] = t
 
     current_row = 7
     last_date = None
@@ -144,10 +154,8 @@ def generate_monthly_oee_excel(machine_code: str, year: int, month: int) -> Byte
 
         # Cycle Time
         cycle_time = 0.0
-        if report.part:
-            template = InspectionTemplate.objects.filter(part=report.part, name=report.operation).first()
-            if not template:
-                template = InspectionTemplate.objects.filter(part=report.part).first()
+        if report.part_id:
+            template = template_map.get((report.part_id, report.operation)) or template_map.get((report.part_id, None))
             if template and getattr(template, 'cycle_time_mins', 0) > 0:
                 cycle_time = template.cycle_time_mins
 
@@ -170,8 +178,12 @@ def generate_monthly_oee_excel(machine_code: str, year: int, month: int) -> Byte
         ws.cell(row=current_row, column=5).alignment = center_align
         ws.cell(row=current_row, column=5).border = thin_border
         
-        # F: Down Time Losses (D) -> Sum of ST to PF (G to L)
-        ws.cell(row=current_row, column=6).value = f"=SUM(G{current_row}:L{current_row})"
+        # F: Down Time Losses (D) -> Sum of G to L + hidden fields
+        hidden_downtime = 0
+        if dt:
+            hidden_downtime = (dt.tool_change or 0) + (dt.rework or 0) + (dt.tool_problem or 0)
+            
+        ws.cell(row=current_row, column=6).value = f"=SUM(G{current_row}:L{current_row}) + {hidden_downtime}"
         ws.cell(row=current_row, column=6).alignment = center_align
         ws.cell(row=current_row, column=6).border = thin_border
         
