@@ -76,6 +76,16 @@ class MessagingConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         """Receive message from WebSocket and handle different actions."""
+        # Enforce active-participant authorization for every action
+        is_participant = await self.verify_participant()
+        if not is_participant:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'You are no longer an active participant in this conversation'
+            }))
+            await self.close(code=4003)
+            return
+
         try:
             data = json.loads(text_data)
             action = data.get('action')

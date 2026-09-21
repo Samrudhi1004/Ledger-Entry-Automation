@@ -181,7 +181,20 @@ class ConversationDetailSerializer(ConversationSerializer):
 
     def get_recent_messages(self, obj):
         """Get the 50 most recent messages."""
-        messages = obj.messages.filter(is_deleted=False).order_by('-created_at')[:50]
+        from apps.messaging.models import ConversationClearHistory
+        
+        user = self.context['request'].user
+        queryset = obj.messages.filter(is_deleted=False)
+        
+        clear_history = ConversationClearHistory.objects.filter(
+            user=user,
+            conversation=obj
+        ).first()
+        
+        if clear_history:
+            queryset = queryset.filter(created_at__gt=clear_history.cleared_at)
+            
+        messages = queryset.order_by('-created_at')[:50]
         return MessageSerializer(messages, many=True, context=self.context).data
 
 

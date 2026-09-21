@@ -49,9 +49,13 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Return conversations where the user is an active or past participant."""
+        if getattr(self, 'action', None) in ['list', 'retrieve']:
+            return Conversation.objects.filter(
+                Q(participants=self.request.user) | Q(past_participants=self.request.user)
+            ).distinct().prefetch_related('participants', 'messages')
         return Conversation.objects.filter(
-            Q(participants=self.request.user) | Q(past_participants=self.request.user)
-        ).distinct().prefetch_related('participants', 'messages')
+            participants=self.request.user
+        ).prefetch_related('participants', 'messages')
 
     def get_serializer_class(self):
         """Use detailed serializer for retrieve action."""
@@ -311,13 +315,20 @@ class MessageViewSet(viewsets.ModelViewSet):
         """Return messages from conversations where user is a participant."""
         conversation_id = self.kwargs.get('conversation_pk')
         if conversation_id:
-            # Verify user is active or past participant
-            conversation = get_object_or_404(
-                Conversation.objects.filter(
-                    Q(participants=self.request.user) | Q(past_participants=self.request.user)
-                ).distinct(),
-                id=conversation_id
-            )
+            # Verify user is active or past participant for read-only, otherwise active only
+            if getattr(self, 'action', None) in ['list', 'retrieve']:
+                conversation = get_object_or_404(
+                    Conversation.objects.filter(
+                        Q(participants=self.request.user) | Q(past_participants=self.request.user)
+                    ).distinct(),
+                    id=conversation_id
+                )
+            else:
+                conversation = get_object_or_404(
+                    Conversation,
+                    id=conversation_id,
+                    participants=self.request.user
+                )
             
             queryset = Message.objects.filter(
                 conversation=conversation,

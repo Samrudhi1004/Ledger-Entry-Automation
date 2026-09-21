@@ -84,6 +84,13 @@ export const MessagingProvider = ({ children }) => {
     if (!user || !conversationId) return false;
     try {
       await api.delete(`${API_BASE}/messaging/conversations/${conversationId}/`);
+      
+      // Close websocket if it's for the conversation being left
+      if (wsRef.current && wsRef.current.url && wsRef.current.url.includes(`/ws/messaging/${conversationId}/`)) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+
       // Update local state to reflect that the user is no longer a participant
       setConversations(prev => prev.map(conv => {
         if (conv.id === conversationId) {
