@@ -177,7 +177,13 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
         try:
             user_to_remove = User.objects.get(id=user_id)
+            if not conversation.participants.filter(id=user_id).exists():
+                return Response(
+                    {'error': 'User is not a participant'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             conversation.participants.remove(user_to_remove)
+            conversation.past_participants.add(user_to_remove)
 
             # If removed user was admin, transfer to oldest remaining member
             if conversation.admin == user_to_remove:
