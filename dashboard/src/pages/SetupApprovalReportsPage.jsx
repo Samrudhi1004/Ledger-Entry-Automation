@@ -293,7 +293,15 @@ export default function SetupApprovalReportsPage() {
                             </button>
 
                             <button
-                              onClick={() => downloadInspectionPDF(s.session_id, `Setup_Approval_Report_${s.session_id.slice(0, 8)}.pdf`)}
+                              onClick={() => {
+                                const dateStr = s.started_at ? s.started_at.slice(0, 10) : '';
+                                const mc = (s.machine_code || 'MCH').replace(/[^a-zA-Z0-9_-]/g, '_');
+                                const part = (s.part_number || 'PART').replace(/[^a-zA-Z0-9_-]/g, '_');
+                                const shift = s.shift || 'A';
+                                const trial = s.trial_number ? `_Trial${s.trial_number}` : '';
+                                const fileName = `Setup_Approval_Report_${dateStr}_Shift_${shift}_${mc}_${part}${trial}.pdf`;
+                                downloadInspectionPDF(s.session_id, fileName);
+                              }}
                               style={{ padding: '6px 12px', fontSize: 12, fontWeight: 700, background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#059669', borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
                               title="Download PDF Copy"
                             >

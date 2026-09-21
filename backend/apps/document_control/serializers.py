@@ -35,6 +35,7 @@ class DocumentListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for document list views."""
     doc_level_display = serializers.CharField(source='get_doc_level_display', read_only=True)
     uploaded_by_name  = serializers.SerializerMethodField()
+    reviewed_by_name  = serializers.SerializerMethodField()
     approved_by_name  = serializers.SerializerMethodField()
     file_size_display = serializers.ReadOnlyField()
 
@@ -46,14 +47,18 @@ class DocumentListSerializer(serializers.ModelSerializer):
             'status', 'revision', 'revision_number', 'is_latest_revision',
             'cloudinary_url', 'file_name', 'file_size', 'file_size_display', 'file_type',
             'uploaded_by', 'uploaded_by_name',
-            'approved_by', 'approved_by_name',
-            'effective_date', 'expiry_date',
+            'reviewed_by', 'reviewed_by_name', 'reviewed_at',
+            'approved_by', 'approved_by_name', 'approved_at',
+            'revision_date', 'effective_date', 'expiry_date',
             'created_at', 'updated_at',
         ]
         read_only_fields = fields
 
     def get_uploaded_by_name(self, obj):
         return get_user_display(obj.uploaded_by)
+
+    def get_reviewed_by_name(self, obj):
+        return get_user_display(obj.reviewed_by)
 
     def get_approved_by_name(self, obj):
         return get_user_display(obj.approved_by)
@@ -65,20 +70,15 @@ class DocumentDetailSerializer(DocumentListSerializer):
     revisions            = serializers.SerializerMethodField()
     related_part_name    = serializers.CharField(source='related_part.name', read_only=True, default=None)
     related_machine_name = serializers.CharField(source='related_machine.name', read_only=True, default=None)
-    reviewed_by_name     = serializers.SerializerMethodField()
 
     class Meta(DocumentListSerializer.Meta):
         fields = DocumentListSerializer.Meta.fields + [
             'activities', 'revisions',
             'related_part', 'related_part_name',
             'related_machine', 'related_machine_name',
-            'reviewed_by', 'reviewed_by_name',
             'parent_document',
         ]
         read_only_fields = fields
-
-    def get_reviewed_by_name(self, obj):
-        return get_user_display(obj.reviewed_by)
 
     def get_revisions(self, obj):
         """Return all revisions in this document chain (oldest first)."""
@@ -97,11 +97,18 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
     Used for POST (upload) — accepts multipart/form-data.
     The file payload is handled directly in the view.
     """
+    document_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    revision        = serializers.CharField(required=False, allow_blank=True, default='0')
+    revision_date   = serializers.DateField(required=False, allow_null=True)
+    status          = serializers.CharField(required=False, allow_blank=True, default='draft')
+
     class Meta:
         model = Document
         fields = [
-            'title', 'description', 'doc_level',
+            'document_number', 'title', 'description', 'doc_level',
+            'revision', 'revision_date',
             'effective_date', 'expiry_date',
+            'reviewed_by', 'approved_by', 'status',
             'related_part', 'related_machine',
         ]
 
@@ -294,15 +301,23 @@ class DCRDetailSerializer(DCRListSerializer):
 
 
 class DCRNotificationSerializer(serializers.ModelSerializer):
-    """Serializer for in-app DCR notification bell."""
-    dcr_number = serializers.CharField(source='dcr.dcr_number', read_only=True)
-    document_title = serializers.CharField(source='dcr.document.title', read_only=True)
+    """Serializer for in-app notification bell (both DCRs and Direct Documents)."""
+    dcr_number = serializers.CharField(source='dcr.dcr_number', read_only=True, default='')
+    document_title = serializers.SerializerMethodField()
 
     class Meta:
         model = DCRNotification
         fields = [
-            'id', 'dcr', 'dcr_number', 'document_title',
+            'id', 'dcr', 'dcr_number', 'document', 'document_title',
             'recipient', 'title', 'message', 'action_type',
             'action_url', 'is_read', 'created_at',
         ]
         read_only_fields = fields
+
+    def get_document_title(self, obj):
+        if obj.document:
+            return obj.document.title
+        if obj.dcr and obj.dcr.document:
+            return obj.dcr.document.title
+        return ''
+

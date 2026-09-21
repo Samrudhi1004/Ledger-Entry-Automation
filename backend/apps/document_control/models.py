@@ -21,11 +21,12 @@ class Document(models.Model):
     """
 
     class Status(models.TextChoices):
-        DRAFT        = 'draft',        'Draft'
-        UNDER_REVIEW = 'under_review', 'Under Review'
-        APPROVED     = 'approved',     'Approved'
-        REJECTED     = 'rejected',     'Rejected'
-        OBSOLETE     = 'obsolete',     'Obsolete'
+        DRAFT             = 'draft',             'Draft'
+        UNDER_REVIEW      = 'under_review',      'Under Review'
+        AWAITING_APPROVAL = 'awaiting_approval', 'Awaiting Approval'
+        APPROVED          = 'approved',          'Approved'
+        REJECTED          = 'rejected',          'Rejected'
+        OBSOLETE          = 'obsolete',          'Obsolete'
 
     class Level(models.TextChoices):
         L1 = 'L1', 'L1 — Quality Manual & Policies'
@@ -110,8 +111,11 @@ class Document(models.Model):
     )
 
     # ── Dates ─────────────────────────────────────────────────────────────────
+    revision_date  = models.DateField(null=True, blank=True, help_text="Date of current revision")
     effective_date = models.DateField(null=True, blank=True)
     expiry_date    = models.DateField(null=True, blank=True)
+    reviewed_at    = models.DateTimeField(null=True, blank=True, help_text="Timestamp when review was completed")
+    approved_at    = models.DateTimeField(null=True, blank=True, help_text="Timestamp when document was approved")
     created_at     = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at     = models.DateTimeField(auto_now=True)
 
@@ -328,16 +332,29 @@ class DCRNotification(models.Model):
     """
 
     class ActionType(models.TextChoices):
-        REVIEW_REQUESTED   = 'review_requested',   'Review Requested'
-        APPROVAL_REQUESTED = 'approval_requested', 'Approval Requested'
-        DCR_APPROVED       = 'dcr_approved',       'DCR Approved'
-        DCR_REJECTED       = 'dcr_rejected',       'DCR Rejected'
-        DCR_IMPLEMENTED    = 'dcr_implemented',    'DCR Implemented'
-        GENERAL            = 'general',            'General'
+        REVIEW_REQUESTED       = 'review_requested',       'Review Requested'
+        APPROVAL_REQUESTED     = 'approval_requested',     'Approval Requested'
+        DCR_APPROVED           = 'dcr_approved',           'DCR Approved'
+        DCR_REJECTED           = 'dcr_rejected',           'DCR Rejected'
+        DCR_IMPLEMENTED        = 'dcr_implemented',        'DCR Implemented'
+        DOC_REVIEW_REQUESTED   = 'doc_review_requested',   'Document Review Requested'
+        DOC_APPROVAL_REQUESTED = 'doc_approval_requested', 'Document Approval Requested'
+        DOC_APPROVED           = 'doc_approved',           'Document Approved'
+        DOC_REJECTED           = 'doc_rejected',           'Document Rejected'
+        GENERAL                = 'general',                'General'
 
     dcr = models.ForeignKey(
         DocumentChangeRequest,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='notifications'
+    )
+    document = models.ForeignKey(
+        'Document',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         related_name='notifications'
     )
     recipient = models.ForeignKey(

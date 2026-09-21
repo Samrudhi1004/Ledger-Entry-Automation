@@ -134,7 +134,17 @@ class _ReportSheetScreenState extends State<ReportSheetScreen> {
       const SnackBar(content: Text('⏳ Generating & Downloading official PDF report...'), backgroundColor: Color(0xFF0284C7)),
     );
 
-    final filePath = await ApiService.downloadSessionPDF(sId.toString());
+    final provider = Provider.of<InspectionProvider>(context, listen: false);
+    final partNo = _sessionDoc?['part_number']?.toString() ?? provider.selectedPart?['part_number']?.toString();
+    final mcCode = _sessionDoc?['machine_code']?.toString() ?? provider.selectedMachine?['machine_code']?.toString();
+    final shift = _sessionDoc?['shift']?.toString() ?? provider.shift;
+
+    final filePath = await ApiService.downloadSessionPDF(
+      sId.toString(),
+      partNumber: partNo,
+      machineCode: mcCode,
+      shift: shift,
+    );
 
     if (mounted) {
       setState(() => _isDownloadingPdf = false);

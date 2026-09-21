@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search, Upload, Download, Eye, CheckCircle, XCircle,
   FileText, Filter, RefreshCw, Send, ChevronDown,
   Calendar, Clock, User, Tag, AlertTriangle, X, Paperclip, Edit3
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useCompany } from '../context/CompanyContext';
 import {
   getDocuments, uploadDocument,
   approveDocument, rejectDocument, submitForReview,
-  getDocumentHistory, getDownloadUrl,
+  getDocumentHistory, getDownloadUrl, getAssignableUsers,
 } from '../api/documentControl';
 import DocumentViewerModal from '../components/document_control/DocumentViewerModal';
 import DCRSubmissionModal from '../components/document_control/DCRSubmissionModal';
@@ -19,7 +21,7 @@ import Breadcrumbs from '../components/layout/Breadcrumbs';
 const LEVEL_CONFIG = {
   ALL: { label: 'All Levels', desc: 'Full Document Register' },
   L1:  { label: 'L1: Quality Manual', desc: 'Company Policies & Apex Manual', bg: '#f5f3ff', color: '#7c3aed', border: '#ddd6fe' },
-  L2:  { label: 'L2: SOPs', desc: 'Standard Operating Procedures', bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' },
+  L2:  { label: 'L2: SOPs', desc: 'Standard Operating Procedures / QSP', bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' },
   L3:  { label: 'L3: Work Instructions', desc: 'Machine & Inspection Instructions', bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' },
   L4:  { label: 'L4: Forms & Records', desc: 'Templates, DCRs & Formats', bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
 };
@@ -44,11 +46,12 @@ function LevelBadge({ level }) {
 
 // ── Status Badge ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
-  draft:        { label: 'Draft',        bg: '#f1f5f9', color: '#475569' },
-  under_review: { label: 'Under Review', bg: '#fef3c7', color: '#d97706' },
-  approved:     { label: 'Approved',     bg: '#d1fae5', color: '#059669' },
-  rejected:     { label: 'Rejected',     bg: '#fee2e2', color: '#dc2626' },
-  obsolete:     { label: 'Obsolete',     bg: '#f1f5f9', color: '#94a3b8' },
+  draft:             { label: 'Draft',             bg: '#f1f5f9', color: '#475569' },
+  under_review:      { label: 'Under Review',      bg: '#fef3c7', color: '#d97706' },
+  awaiting_approval: { label: 'Awaiting Approval', bg: '#eff6ff', color: '#1d4ed8' },
+  approved:          { label: 'Approved',          bg: '#d1fae5', color: '#059669' },
+  rejected:          { label: 'Rejected',          bg: '#fee2e2', color: '#dc2626' },
+  obsolete:          { label: 'Obsolete',          bg: '#f1f5f9', color: '#94a3b8' },
 };
 
 function StatusBadge({ status }) {
@@ -66,12 +69,28 @@ function StatusBadge({ status }) {
 // ── Upload Modal ──────────────────────────────────────────────────────────────
 function UploadModal({ onClose, onSuccess }) {
   const [form, setForm] = useState({
-    title: '', description: '', doc_level: 'L2', effective_date: ''
+    title: '',
+    description: '',
+    doc_level: 'L2',
+    document_number: '',
+    revision: '0',
+    revision_date: new Date().toISOString().split('T')[0],
+    effective_date: new Date().toISOString().split('T')[0],
+    reviewed_by: '',
+    approved_by: '',
+    status: 'approved', // 'approved' (Active Master) or 'under_review' (Send for Sign-off)
   });
+  const [users, setUsers] = useState([]);
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const dropRef = useRef();
+
+  useEffect(() => {
+    getAssignableUsers()
+      .then(res => setUsers(res.data || []))
+      .catch(err => console.error("Failed to fetch users", err));
+  }, []);
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -82,16 +101,21 @@ function UploadModal({ onClose, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) return setError('Please select a file.');
-    if (!form.title) return setError('Title is required.');
+    if (!form.title.trim()) return setError('Description / Procedure Title is required.');
     setLoading(true); setError('');
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('title', form.title);
-      fd.append('description', form.description);
-      fd.append('description', form.description);
+      fd.append('title', form.title.trim());
+      if (form.description.trim()) fd.append('description', form.description.trim());
       fd.append('doc_level', form.doc_level);
+      if (form.document_number.trim()) fd.append('document_number', form.document_number.trim());
+      if (form.revision.trim()) fd.append('revision', form.revision.trim());
+      if (form.revision_date) fd.append('revision_date', form.revision_date);
       if (form.effective_date) fd.append('effective_date', form.effective_date);
+      if (form.reviewed_by) fd.append('reviewed_by', form.reviewed_by);
+      if (form.approved_by) fd.append('approved_by', form.approved_by);
+      fd.append('status', form.status);
       await uploadDocument(fd);
       onSuccess();
     } catch (err) {
@@ -107,24 +131,24 @@ function UploadModal({ onClose, onSuccess }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
     }}>
       <div style={{
-        background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '560px',
+        background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '580px',
         boxShadow: '0 25px 60px rgba(0,0,0,0.18)', overflow: 'hidden'
       }}>
         {/* Modal Header */}
         <div style={{
-          padding: '22px 28px 18px', borderBottom: '1px solid #f1f5f9',
+          padding: '20px 26px 16px', borderBottom: '1px solid #f1f5f9',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center'
         }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Upload Document</h2>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>Classify by Quality Level (L1–L4) and upload file</p>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Upload Controlled Document</h2>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>Index of Quality System Procedures & Records</p>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
             <X size={20} color="#94a3b8" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ padding: '24px 28px 28px' }}>
+        <form onSubmit={handleSubmit} style={{ padding: '20px 26px 24px', maxHeight: '82vh', overflowY: 'auto' }}>
           {/* Drag-and-drop zone */}
           <div
             ref={dropRef}
@@ -133,8 +157,8 @@ function UploadModal({ onClose, onSuccess }) {
             onClick={() => document.getElementById('dc-file-input').click()}
             style={{
               border: `2px dashed ${file ? '#6366f1' : '#cbd5e1'}`,
-              borderRadius: '12px', padding: '20px', textAlign: 'center',
-              cursor: 'pointer', marginBottom: '18px',
+              borderRadius: '12px', padding: '16px', textAlign: 'center',
+              cursor: 'pointer', marginBottom: '16px',
               background: file ? 'rgba(99,102,241,0.04)' : '#f8fafc',
               transition: 'all 0.2s ease'
             }}
@@ -142,20 +166,20 @@ function UploadModal({ onClose, onSuccess }) {
             <input id="dc-file-input" type="file" hidden onChange={(e) => setFile(e.target.files[0])} />
             {file ? (
               <div>
-                <Paperclip size={22} color="#6366f1" style={{ marginBottom: '8px' }} />
-                <p style={{ margin: 0, fontWeight: '600', color: '#6366f1', fontSize: '14px' }}>{file.name}</p>
-                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                <Paperclip size={20} color="#6366f1" style={{ marginBottom: '6px' }} />
+                <p style={{ margin: 0, fontWeight: '600', color: '#6366f1', fontSize: '13px' }}>{file.name}</p>
+                <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#94a3b8' }}>
                   {(file.size / 1024 / 1024).toFixed(2)} MB — click to change
                 </p>
               </div>
             ) : (
               <div>
-                <Upload size={24} color="#94a3b8" style={{ marginBottom: '8px' }} />
-                <p style={{ margin: 0, fontSize: '14px', color: '#64748b', fontWeight: '600' }}>
-                  Drag & drop or click to select
+                <Upload size={22} color="#94a3b8" style={{ marginBottom: '6px' }} />
+                <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontWeight: '600' }}>
+                  Drag & drop or click to select file
                 </p>
-                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>
-                  PDF, Images, Word, Excel (Max 50 MB)
+                <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#94a3b8' }}>
+                  PDF, Word, Excel, Images (Max 50 MB)
                 </p>
               </div>
             )}
@@ -170,9 +194,11 @@ function UploadModal({ onClose, onSuccess }) {
             </div>
           )}
 
-          <div style={{ marginBottom: '14px' }}>
+          {/* Level & Doc No Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+            <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
-                Document Level (Hierarchy) *
+                Level *
               </label>
               <select
                 value={form.doc_level}
@@ -183,21 +209,37 @@ function UploadModal({ onClose, onSuccess }) {
                 }}
               >
                 <option value="L1">L1 — Quality Manual & Policy</option>
-                <option value="L2">L2 — Standard Operating Procedure (SOP)</option>
+                <option value="L2">L2 — Standard Operating Procedure (SOP/QSP)</option>
                 <option value="L3">L3 — Work Instruction (WI)</option>
                 <option value="L4">L4 — Form / Format / Checklist</option>
               </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                Doc No. (e.g. QSP-04-01)
+              </label>
+              <input
+                value={form.document_number}
+                onChange={(e) => setForm(p => ({ ...p, document_number: e.target.value }))}
+                placeholder="e.g. QSP-04-01 (or auto-generate)"
+                style={{
+                  width: '100%', padding: '9px 12px', borderRadius: '8px',
+                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
+                }}
+              />
+            </div>
           </div>
 
-          {/* Title */}
+          {/* Description / Procedure Title */}
           <div style={{ marginBottom: '14px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
-              Title *
+              Description (Procedure Title) *
             </label>
             <input
               value={form.title}
               onChange={(e) => setForm(p => ({ ...p, title: e.target.value }))}
-              placeholder="e.g. CNC Spindle Maintenance SOP"
+              placeholder="e.g. Product Safety, Business Planning, Plant Facility..."
               style={{
                 width: '100%', padding: '9px 12px', borderRadius: '8px',
                 border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
@@ -205,36 +247,158 @@ function UploadModal({ onClose, onSuccess }) {
             />
           </div>
 
-          {/* Description */}
-          <div style={{ marginBottom: '14px' }}>
+          {/* Rev. No., Rev. Date & Effective Date Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1.2fr', gap: '10px', marginBottom: '14px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                Rev. No.
+              </label>
+              <input
+                value={form.revision}
+                onChange={(e) => setForm(p => ({ ...p, revision: e.target.value }))}
+                placeholder="0"
+                style={{
+                  width: '100%', padding: '9px 12px', borderRadius: '8px',
+                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                Rev. Date
+              </label>
+              <input
+                type="date"
+                value={form.revision_date}
+                onChange={(e) => setForm(p => ({ ...p, revision_date: e.target.value }))}
+                style={{
+                  width: '100%', padding: '9px 10px', borderRadius: '8px',
+                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                Effective from
+              </label>
+              <input
+                type="date"
+                value={form.effective_date}
+                onChange={(e) => setForm(p => ({ ...p, effective_date: e.target.value }))}
+                style={{
+                  width: '100%', padding: '9px 10px', borderRadius: '8px',
+                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Reviewer & Approver Sign-off Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                Reviewer (Reviewed by)
+              </label>
+              <select
+                value={form.reviewed_by}
+                onChange={(e) => setForm(p => ({ ...p, reviewed_by: e.target.value }))}
+                style={{
+                  width: '100%', padding: '9px 12px', borderRadius: '8px',
+                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: '#fff'
+                }}
+              >
+                <option value="">Select Reviewer (Optional)</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {(u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username} {u.role ? `(${u.role})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                Approver (Approved by)
+              </label>
+              <select
+                value={form.approved_by}
+                onChange={(e) => setForm(p => ({ ...p, approved_by: e.target.value }))}
+                style={{
+                  width: '100%', padding: '9px 12px', borderRadius: '8px',
+                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: '#fff'
+                }}
+              >
+                <option value="">Select Approver (Optional)</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {(u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username} {u.role ? `(${u.role})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Release Workflow Selection */}
+          <div style={{
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '10px',
+            padding: '12px 14px',
+            marginBottom: '14px'
+          }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '8px' }}>
+              Release Workflow Status
+            </label>
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#1e293b' }}>
+                <input
+                  type="radio"
+                  name="doc_status"
+                  value="approved"
+                  checked={form.status === 'approved'}
+                  onChange={() => setForm(p => ({ ...p, status: 'approved' }))}
+                  style={{ accentColor: '#4f46e5' }}
+                />
+                <span style={{ fontWeight: '600' }}>Active Master</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>(Already approved procedure)</span>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#1e293b' }}>
+                <input
+                  type="radio"
+                  name="doc_status"
+                  value="under_review"
+                  checked={form.status === 'under_review'}
+                  onChange={() => setForm(p => ({ ...p, status: 'under_review' }))}
+                  style={{ accentColor: '#4f46e5' }}
+                />
+                <span style={{ fontWeight: '600' }}>Send for Review & Approval</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>(Triggers notifications)</span>
+              </label>
+            </div>
+            <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>
+              {form.status === 'approved'
+                ? 'Document will be immediately registered and active in the Matrix Register.'
+                : 'Assigned Reviewer will be notified via email and in-app bell to review and recommend.'}
+            </p>
+          </div>
+
+          {/* Scope / Remarks (Optional) */}
+          <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
-              Description / Scope
+              Scope / Notes (Optional)
             </label>
             <textarea
               value={form.description}
               onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))}
               rows={2}
-              placeholder="Brief summary of document scope..."
+              placeholder="Brief summary of document scope or applicability..."
               style={{
                 width: '100%', padding: '9px 12px', borderRadius: '8px',
                 border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box',
                 fontFamily: 'inherit'
-              }}
-            />
-          </div>
-
-          {/* Effective Date */}
-          <div style={{ marginBottom: '22px' }}>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
-              Effective Date
-            </label>
-            <input
-              type="date"
-              value={form.effective_date}
-              onChange={(e) => setForm(p => ({ ...p, effective_date: e.target.value }))}
-              style={{
-                width: '100%', padding: '9px 12px', borderRadius: '8px',
-                border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
               }}
             />
           </div>
@@ -260,7 +424,7 @@ function UploadModal({ onClose, onSuccess }) {
                 fontSize: '13px', fontWeight: '700'
               }}
             >
-              {loading ? 'Uploading...' : 'Save & Publish Draft'}
+              {loading ? 'Uploading...' : (form.status === 'approved' ? 'Save & Register Master' : 'Save & Send for Review')}
             </button>
           </div>
         </form>
@@ -272,10 +436,22 @@ function UploadModal({ onClose, onSuccess }) {
 // ── Main Page Component ───────────────────────────────────────────────────────
 export default function DocumentControlDocumentsPage() {
   const { user } = useAuth();
+  const { companyName, logoUrl } = useCompany();
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedLevel, setSelectedLevel] = useState('ALL');
   const [filters, setFilters] = useState({ status: '', search: '' });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const previewId = searchParams.get('preview');
+
+  useEffect(() => {
+    if (previewId && docs.length > 0) {
+      const found = docs.find(d => String(d.id) === String(previewId));
+      if (found) {
+        setSelectedViewerDoc(found);
+      }
+    }
+  }, [previewId, docs]);
 
   // Modals state
   const [showUpload, setShowUpload] = useState(false);
@@ -324,7 +500,24 @@ export default function DocumentControlDocumentsPage() {
     }
   };
 
-  const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  const formatDateDMY = (d) => {
+    if (!d) return '—';
+    try {
+      const parts = String(d).split('T')[0].split('-');
+      if (parts.length === 3 && parts[0].length === 4) {
+        return `${parts[2]}.${parts[1]}.${parts[0]}`;
+      }
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return d;
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}.${month}.${year}`;
+    } catch {
+      return d || '—';
+    }
+  };
+
   const formatSize = (bytes) => {
     if (!bytes) return 'N/A';
     if (bytes < 1024) return `${bytes} B`;
@@ -457,10 +650,84 @@ export default function DocumentControlDocumentsPage() {
         </select>
       </div>
 
+      {/* Matrix Header Banner */}
+      <div style={{
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '16px 16px 0 0',
+        padding: '16px 22px',
+        borderBottom: '2px solid #cbd5e1',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt="Company Logo"
+              style={{ maxHeight: '40px', maxWidth: '130px', objectFit: 'contain' }}
+            />
+          ) : (
+            <div style={{
+              width: '38px', height: '38px', borderRadius: '8px',
+              background: 'linear-gradient(135deg, #4f46e5, #6366f1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontWeight: '800', fontSize: '14px', letterSpacing: '0.5px'
+            }}>
+              {(companyName || 'MM').substring(0, 2).toUpperCase()}
+            </div>
+          )}
+          <div>
+            <div style={{
+              fontSize: '16px',
+              fontWeight: '800',
+              color: '#0f172a',
+              letterSpacing: '0.5px',
+              textTransform: 'uppercase'
+            }}>
+              {companyName ? companyName.toUpperCase() : 'QUALITY MANAGEMENT SYSTEM'}
+            </div>
+            <div style={{
+              fontSize: '12px',
+              fontWeight: '700',
+              color: '#475569',
+              letterSpacing: '0.3px',
+              marginTop: '2px'
+            }}>
+              INDEX OF QUALITY SYSTEM PROCEDURES & APPLICABILITY MATRIX
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{
+            fontSize: '11px',
+            fontWeight: '700',
+            color: '#4f46e5',
+            background: '#eef2ff',
+            border: '1px solid #c7d2fe',
+            padding: '4px 10px',
+            borderRadius: '20px'
+          }}>
+            IATF 16949 / ISO 9001
+          </span>
+          <span style={{
+            fontSize: '12px',
+            color: '#64748b',
+            fontWeight: '600'
+          }}>
+            {docs.length} Procedure{docs.length === 1 ? '' : 's'}
+          </span>
+        </div>
+      </div>
+
       {/* Document Table */}
       <div style={{
-        background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.04)', overflow: 'hidden'
+        background: '#fff', borderRadius: '0 0 16px 16px', border: '1px solid #e2e8f0',
+        borderTop: 'none',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)', overflowX: 'auto'
       }}>
         {loading ? (
           <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>
@@ -482,16 +749,18 @@ export default function DocumentControlDocumentsPage() {
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-                {['Document', 'Level', 'Rev', 'Status', 'Author', 'Effective', 'Size', 'Actions'].map(h => (
-                  <th key={h} style={{
-                    padding: '12px 16px', textAlign: 'left', fontSize: '11px',
-                    fontWeight: '700', color: '#64748b', letterSpacing: '0.5px',
-                    textTransform: 'uppercase', whiteSpace: 'nowrap'
-                  }}>
-                    {h}
-                  </th>
-                ))}
+              <tr style={{ borderBottom: '1px solid #cbd5e1', background: '#f8fafc' }}>
+                <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '50px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Sr.</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '70px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Level</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: '700', color: '#475569', width: '140px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Doc No.</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: '700', color: '#475569', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Description</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '80px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Rev. No.</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '110px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Rev. Date</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '120px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Effective from</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '130px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Reviewed by</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '130px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Approved by</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '100px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Preview</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '140px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -500,100 +769,134 @@ export default function DocumentControlDocumentsPage() {
                   key={doc.id}
                   onClick={() => setSelectedViewerDoc(doc)}
                   style={{
-                    borderBottom: i < docs.length - 1 ? '1px solid #f1f5f9' : 'none',
+                    borderBottom: '1px solid #f1f5f9',
                     cursor: 'pointer',
                     transition: 'background 0.15s'
                   }}
                   onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                   onMouseLeave={e => e.currentTarget.style.background = '#fff'}
                 >
-                  {/* Document Title & Code */}
-                  <td style={{ padding: '14px 16px', maxWidth: '280px' }}>
-                    <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '14px', marginBottom: '2px' }}>
+                  {/* 1. Sr. */}
+                  <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#64748b' }}>
+                    {i + 1}
+                  </td>
+
+                  {/* 2. Level */}
+                  <td style={{ padding: '13px 14px', textAlign: 'center' }}>
+                    <LevelBadge level={doc.doc_level} />
+                  </td>
+
+                  {/* 3. Doc No. */}
+                  <td style={{ padding: '13px 16px', textAlign: 'left' }}>
+                    <span style={{
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                      fontWeight: '700',
+                      color: '#0f172a',
+                      fontSize: '13px',
+                      background: '#f8fafc',
+                      padding: '3px 7px',
+                      borderRadius: '6px',
+                      border: '1px solid #e2e8f0'
+                    }}>
+                      {doc.document_number}
+                    </span>
+                  </td>
+
+                  {/* 4. Description (Procedure Title) */}
+                  <td style={{ padding: '13px 16px', textAlign: 'left' }}>
+                    <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '13px', lineHeight: 1.4 }}>
                       {doc.title}
                     </div>
-                    <div style={{ fontSize: '12px', color: '#4f46e5', fontWeight: '600' }}>
-                      {doc.document_number}
-                    </div>
+                    {doc.description && (
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', lineHeight: 1.3 }}>
+                        {doc.description}
+                      </div>
+                    )}
                     {doc.file_name && (
-                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        📎 {doc.file_name}
+                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
+                        📎 {doc.file_name} <span style={{ color: '#cbd5e1' }}>•</span> {formatSize(doc.file_size)}
                       </div>
                     )}
                   </td>
 
-                  {/* Level Badge */}
-                  <td style={{ padding: '14px 16px' }}>
-                    <LevelBadge level={doc.doc_level} />
+                  {/* 5. Rev. No. */}
+                  <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: '13px', color: '#0f172a', fontWeight: '700' }}>
+                    {doc.revision ?? '0'}
                   </td>
 
-
-                  {/* Revision */}
-                  <td style={{ padding: '14px 16px', fontSize: '13px', color: '#334155', fontWeight: '700' }}>
-                    {doc.revision}
+                  {/* 6. Rev. Date */}
+                  <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: '12px', color: '#334155', whiteSpace: 'nowrap' }}>
+                    {formatDateDMY(doc.revision_date)}
                   </td>
 
-                  {/* Status */}
-                  <td style={{ padding: '14px 16px' }}>
-                    <StatusBadge status={doc.status} />
+                  {/* 7. Effective from */}
+                  <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: '12px', color: '#334155', whiteSpace: 'nowrap' }}>
+                    {formatDateDMY(doc.effective_date)}
                   </td>
 
-                  {/* Author */}
-                  <td style={{ padding: '14px 16px', fontSize: '13px', color: '#64748b' }}>
-                    {doc.uploaded_by_name || 'System'}
+                  {/* 8. Reviewed by */}
+                  <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: '12px', color: '#334155', whiteSpace: 'nowrap' }}>
+                    {doc.reviewed_by_name ? (
+                      <span style={{ fontWeight: '600', color: '#0f172a' }}>{doc.reviewed_by_name}</span>
+                    ) : (
+                      <span style={{ color: '#94a3b8' }}>—</span>
+                    )}
                   </td>
 
-                  {/* Date */}
-                  <td style={{ padding: '14px 16px', fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                    {formatDate(doc.effective_date || doc.created_at)}
+                  {/* 9. Approved by */}
+                  <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: '12px', color: '#334155', whiteSpace: 'nowrap' }}>
+                    {doc.approved_by_name ? (
+                      <span style={{ fontWeight: '600', color: '#0f172a' }}>{doc.approved_by_name}</span>
+                    ) : (
+                      <span style={{ color: '#94a3b8' }}>—</span>
+                    )}
                   </td>
 
-                  {/* Size */}
-                  <td style={{ padding: '14px 16px', fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                    {formatSize(doc.file_size)}
+                  {/* 10. Preview */}
+                  <td style={{ padding: '13px 14px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                    <button
+                      title="Open Document in Viewer"
+                      onClick={() => setSelectedViewerDoc(doc)}
+                      style={{
+                        background: '#e0e7ff', border: 'none', borderRadius: '7px',
+                        padding: '6px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        color: '#4338ca', fontSize: '12px', fontWeight: '600', transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#c7d2fe'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#e0e7ff'}
+                    >
+                      <Eye size={13} /> Preview
+                    </button>
                   </td>
 
-                  {/* Row Actions */}
-                  <td style={{ padding: '14px 16px' }} onClick={e => e.stopPropagation()}>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                      {/* Direct In-App View Eye Button */}
-                      <button
-                        title="Open in Document Viewer"
-                        onClick={() => setSelectedViewerDoc(doc)}
-                        style={{
-                          background: '#e0e7ff', border: 'none', borderRadius: '8px',
-                          padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                          color: '#4338ca', fontSize: '12px', fontWeight: '600'
-                        }}
-                      >
-                        <Eye size={14} /> Open
-                      </button>
+                  {/* 11. Actions */}
+                  <td style={{ padding: '13px 14px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+                      <StatusBadge status={doc.status} />
 
-                      {/* Request DCR Button */}
                       {canRaiseDCR && (
                         <button
                           title="Raise Document Change Request (DCR)"
                           onClick={() => setSelectedDCRDoc(doc)}
                           style={{
-                            background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '8px',
-                            padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                            color: '#6d28d9', fontSize: '12px', fontWeight: '600'
+                            background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '7px',
+                            padding: '5px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                            color: '#6d28d9', fontSize: '11px', fontWeight: '600'
                           }}
                         >
-                          <Edit3 size={13} /> DCR
+                          <Edit3 size={12} /> DCR
                         </button>
                       )}
 
-                      {/* Audit History Log */}
                       <button
                         title="Audit history"
                         onClick={(e) => openHistory(doc, e)}
                         style={{
-                          background: '#f1f5f9', border: 'none', borderRadius: '8px',
-                          padding: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b'
+                          background: '#f1f5f9', border: 'none', borderRadius: '7px',
+                          padding: '5px 7px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', color: '#64748b'
                         }}
                       >
-                        <Clock size={14} />
+                        <Clock size={13} />
                       </button>
                     </div>
                   </td>
@@ -616,7 +919,15 @@ export default function DocumentControlDocumentsPage() {
       {selectedViewerDoc && (
         <DocumentViewerModal
           doc={selectedViewerDoc}
-          onClose={() => setSelectedViewerDoc(null)}
+          onClose={() => {
+            setSelectedViewerDoc(null);
+            if (previewId) {
+              const newParams = new URLSearchParams(searchParams);
+              newParams.delete('preview');
+              setSearchParams(newParams);
+            }
+          }}
+          onUpdate={fetchDocs}
           canRequestDCR={canRaiseDCR}
           onRequestDCR={(docToChange) => setSelectedDCRDoc(docToChange)}
         />

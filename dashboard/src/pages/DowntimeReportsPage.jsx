@@ -240,7 +240,8 @@ export default function DowntimeReportsPage() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `Downtime_Report_${targetDate || 'All'}_Shift_${targetShift || 'All'}.xlsx`);
+      const mcSuffix = machineFilter && machineFilter !== 'All' ? `_${machineFilter.replace(/[^a-zA-Z0-9_-]/g, '_')}` : '';
+      link.setAttribute('download', `Downtime_Report_${targetDate || 'All'}_Shift_${targetShift || 'All'}${mcSuffix}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
@@ -270,7 +271,8 @@ export default function DowntimeReportsPage() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `Downtime_Report_${targetDate || 'All'}_Shift_${targetShift || 'All'}.pdf`);
+      const mcSuffix = machineFilter && machineFilter !== 'All' ? `_${machineFilter.replace(/[^a-zA-Z0-9_-]/g, '_')}` : '';
+      link.setAttribute('download', `Downtime_Report_${targetDate || 'All'}_Shift_${targetShift || 'All'}${mcSuffix}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
