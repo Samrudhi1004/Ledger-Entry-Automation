@@ -24,6 +24,7 @@ import VerifyEmailPage from './pages/VerifyEmailPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import QualityAnalyzerPage from './pages/QualityAnalyzerPage';
+import OEEReportPage from './pages/OEEReportPage';
 import HRModulePage from './pages/HRModulePage';
 import PurchaseModulePage from './pages/PurchaseModulePage';
 import StoreModulePage from './pages/StoreModulePage';
@@ -161,6 +162,14 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <DowntimeReportsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/reports/oee"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <OEEReportPage />
           </ProtectedLayout>
         }
       />

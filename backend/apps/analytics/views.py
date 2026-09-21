@@ -311,3 +311,183 @@ class DailyCompletedReportsView(APIView):
 
         return Response({'reports': reports})
 
+
+class MonthlyOEEReportView(APIView):
+    """
+    GET /api/analytics/oee-report/export/?machine=VMC-19&year=2026&month=9
+    Generates and returns the Monthly OEE Excel Report.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        machine_code = request.query_params.get('machine')
+        year_str = request.query_params.get('year')
+        month_str = request.query_params.get('month')
+
+        if not all([machine_code, year_str, month_str]):
+            return Response(
+                {"error": "machine, year, and month parameters are required."},
+                status=400
+            )
+
+        try:
+            year = int(year_str)
+            month = int(month_str)
+        except ValueError:
+            return Response(
+                {"error": "year and month must be valid integers."},
+                status=400
+            )
+
+        from apps.analytics.oee_excel_generator import generate_monthly_oee_excel
+        from django.http import HttpResponse
+        
+        try:
+            excel_buffer = generate_monthly_oee_excel(machine_code, year, month)
+            
+            response = HttpResponse(
+                excel_buffer,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            filename = f"OEE_Report_{machine_code}_{year}_{month:02d}.xlsx"
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+            
+        except Exception as e:
+            return Response({"error": f"Failed to generate report: {str(e)}"}, status=500)
+
+
+class OEEDataAPIView(APIView):
+    """
+    GET /api/analytics/oee-report/data/?machine=VMC-19&year=2026&month=9
+    Returns the calculated OEE data in JSON format for the frontend viewer.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        machine_code = request.query_params.get('machine')
+        year_str = request.query_params.get('year')
+        month_str = request.query_params.get('month')
+
+        if not all([machine_code, year_str, month_str]):
+            return Response(
+                {"error": "machine, year, and month parameters are required."},
+                status=400
+            )
+
+        try:
+            year = int(year_str)
+            month = int(month_str)
+        except ValueError:
+            return Response(
+                {"error": "year and month must be valid integers."},
+                status=400
+            )
+            
+        from apps.inspections.models import DailyProductionReport
+        from apps.machines.models import Machine
+        from apps.parts.models import InspectionTemplate
+        import calendar
+
+        machine = Machine.objects.filter(machine_code=machine_code).first()
+        reports = DailyProductionReport.objects.filter(
+            machine__machine_code=machine_code,
+            date__year=year,
+            date__month=month,
+            status=DailyProductionReport.Status.SUBMITTED
+        ).select_related('downtime_report', 'part').order_by('date', 'shift')
+
+        part_ids = {r.part_id for r in reports if r.part_id}
+        templates = InspectionTemplate.objects.filter(part_id__in=part_ids)
+        template_map = {}
+        for t in templates:
+            template_map[(t.part_id, t.name)] = t
+            if (t.part_id, None) not in template_map:
+                template_map[(t.part_id, None)] = t
+
+        data = []
+        for report in reports:
+            dt = getattr(report, 'downtime_report', None)
+            
+            # 1. Available Time (A) & Planned Downtime (B)
+            available_time = 480
+            planned_downtime = 60
+            if machine and machine.plant:
+                if hasattr(machine.plant, 'factory') and machine.plant.factory and machine.plant.factory.shift_hours:
+                    fac = machine.plant.factory
+                    available_time = fac.shift_hours * 60
+                    planned_downtime = fac.lunch_break_minutes + fac.tea_break_minutes
+                elif machine.plant.shift_duration_hours:
+                    available_time = machine.plant.shift_duration_hours * 60
+                    planned_downtime = machine.plant.total_break_mins or 0
+
+            # Net Available (C)
+            net_available = available_time - planned_downtime
+            
+            # Downtimes
+            st = dt.setting if dt and dt.setting else 0
+            nl = dt.no_load if dt and dt.no_load else 0
+            no = dt.no_operator if dt and dt.no_operator else 0
+            mm = dt.um if dt and dt.um else 0
+            ow = dt.inspection_wait if dt and dt.inspection_wait else 0
+            pf = dt.power_off if dt and dt.power_off else 0
+            
+            # Down Time Losses (D)
+            downtime_losses = dt.total_downtime if dt and dt.total_downtime else (st + nl + no + mm + ow + pf)
+            
+            # Operating Time (E)
+            operating_time = net_available - downtime_losses
+            
+            # Availability (F)
+            availability = operating_time / net_available if net_available > 0 else 0
+            
+            # Total Qty (G)
+            total_qty = report.jobs_completed or 0
+            
+            # Cycle Time (H)
+            cycle_time = 0.0
+            if report.part_id:
+                template = template_map.get((report.part_id, report.operation)) or template_map.get((report.part_id, None))
+                if template and getattr(template, 'cycle_time_mins', 0) > 0:
+                    cycle_time = template.cycle_time_mins
+                    
+            # Performance Efficiency (I)
+            performance = (total_qty * cycle_time) / operating_time if operating_time > 0 else 0
+            
+            # Rejection (J)
+            rejection = report.incorrect_jobs or 0
+            
+            # Rate of Quality (K)
+            quality_rate = (total_qty - rejection) / total_qty if total_qty > 0 else 0
+            
+            # OEE (L)
+            oee = availability * performance * quality_rate
+            
+            data.append({
+                "id": report.id,
+                "shift": report.shift,
+                "date": report.date.strftime("%Y-%m-%d"),
+                "available_time": available_time,
+                "planned_downtime": planned_downtime,
+                "net_available": net_available,
+                "downtime_losses": downtime_losses,
+                "downtimes": {
+                    "st": st, "nl": nl, "no": no, "mm": mm, "ow": ow, "pf": pf
+                },
+                "operating_time": operating_time,
+                "availability": round(availability * 100, 2),
+                "total_qty": total_qty,
+                "cycle_time": round(cycle_time, 5),
+                "performance": round(performance * 100, 2),
+                "rejection": rejection,
+                "quality_rate": round(quality_rate * 100, 2),
+                "oee": round(oee * 100, 2)
+            })
+
+        return Response({
+            "machine": machine_code,
+            "month": month,
+            "year": year,
+            "month_name": calendar.month_name[month],
+            "data": data
+        })
