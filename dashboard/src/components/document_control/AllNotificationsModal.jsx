@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import {
   Bell,
   Check,
@@ -191,14 +192,14 @@ export default function AllNotificationsModal({ isOpen, onClose, onNotificationU
 
   if (!isOpen) return null;
 
-  return (
+  return ReactDOM.createPortal(
     <div
       style={{
         position: 'fixed',
         inset: 0,
         backgroundColor: 'rgba(15, 23, 42, 0.65)',
         backdropFilter: 'blur(5px)',
-        zIndex: 2500,
+        zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -849,6 +850,7 @@ export default function AllNotificationsModal({ isOpen, onClose, onNotificationU
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
