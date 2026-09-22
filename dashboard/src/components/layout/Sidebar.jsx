@@ -53,6 +53,7 @@ const MODULES = [
     key: 'master_database',
     label: 'Master Database',
     icon: Database,
+    to: '/master-database',
     items: [
       {
         label: 'Master Parameters',
@@ -281,11 +282,13 @@ export default function Sidebar({ pendingCount = 0 }) {
           const ModuleIcon = module.icon;
 
           if (module.to) {
+            const isChildActive = module.items && module.items.some((item) => item.to === location.pathname);
+            const isMasterParamActive = module.key === 'master_database' && location.pathname.startsWith('/parameters');
             return (
               <div key={module.key} className="sidebar-module">
                 <NavLink
                   to={module.to}
-                  className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+                  className={({ isActive }) => `nav-item${isActive || isChildActive || isMasterParamActive ? ' active' : ''}`}
                 >
                   <span className="module-icon">
                     <ModuleIcon size={16} />

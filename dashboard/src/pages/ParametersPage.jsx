@@ -1224,7 +1224,7 @@ export default function ParametersPage() {
       />
 
       <div className="page-content" style={{ padding: '24px', background: '#F8FAFC', minHeight: '100vh' }}>
-        <Breadcrumbs items={[{ label: 'Master Database' }, { label: 'Master Parameters' }]} />
+        <Breadcrumbs items={[{ label: 'Master Database', to: '/master-database' }, { label: 'Master Parameters' }]} />
 
         {/* ── TOP PAGE HEADER BAR ─────────────────────────────── */}
         <div style={{

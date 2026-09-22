@@ -57,8 +57,11 @@ const ROUTE_MAP = {
     { label: 'Calibration', to: '/calibration' },
     { label: 'Annual Calibration Plan' },
   ],
-  '/parameters': [
+  '/master-database': [
     { label: 'Master Database' },
+  ],
+  '/parameters': [
+    { label: 'Master Database', to: '/master-database' },
     { label: 'Master Parameters' },
   ],
   '/quality-analyzer': [{ label: 'Quality Analyzer' }],
