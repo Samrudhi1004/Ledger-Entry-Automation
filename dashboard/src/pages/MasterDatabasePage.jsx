@@ -4,15 +4,14 @@ import {
   Sliders,
   ArrowRight,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import { getParts } from '../api/parts';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 
 export default function MasterDatabasePage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const [partsCount, setPartsCount] = useState(0);
+  const [partsCount, setPartsCount] = useState(null);
+  const [fetchError, setFetchError] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -20,14 +19,47 @@ export default function MasterDatabasePage() {
       .then((res) => {
         const parts = Array.isArray(res.data) ? res.data : (res.data?.results || []);
         setPartsCount(parts.length);
+        setFetchError(false);
       })
       .catch(() => {
-        setPartsCount(0);
+        setFetchError(true);
+        setPartsCount(null);
       })
       .finally(() => {
         setLoading(false);
       });
   }, []);
+
+  const getBadgeInfo = () => {
+    if (loading) {
+      return {
+        text: '• Loading...',
+        bg: '#F1F5F9',
+        color: '#64748B',
+      };
+    }
+    if (fetchError) {
+      return {
+        text: '• Status Unavailable',
+        bg: '#FEF2F2',
+        color: '#DC2626',
+      };
+    }
+    if (typeof partsCount === 'number') {
+      return {
+        text: `• ${partsCount} Active Parts`,
+        bg: '#FFF7ED',
+        color: '#C2410C',
+      };
+    }
+    return {
+      text: '• Active Database',
+      bg: '#FFF7ED',
+      color: '#C2410C',
+    };
+  };
+
+  const badgeInfo = getBadgeInfo();
 
   const masterCards = [
     {
@@ -37,9 +69,9 @@ export default function MasterDatabasePage() {
       iconBg: '#FFF7ED',
       iconColor: '#EA580C',
       to: '/parameters',
-      badge: partsCount > 0 ? `• ${partsCount} Active Parts` : '• Active Database',
-      badgeBg: '#FFF7ED',
-      badgeColor: '#C2410C',
+      badge: badgeInfo.text,
+      badgeBg: badgeInfo.bg,
+      badgeColor: badgeInfo.color,
       actionText: 'Open Master Parameters',
     },
   ];

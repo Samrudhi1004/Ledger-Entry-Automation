@@ -6,12 +6,9 @@ import {
   ClipboardCheck,
   Tag,
   ArrowRight,
-  Upload,
-  FileCheck,
   Clock,
   CheckCircle,
   Edit3,
-  Shield,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getDocuments, getDCRs } from '../api/documentControl';

@@ -5,14 +5,11 @@ import {
   ArrowRight,
   FileSpreadsheet
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 
 export default function DevelopmentModulePage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
 
   const cards = [
     {
