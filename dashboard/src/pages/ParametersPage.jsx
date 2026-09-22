@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AdminParametersView from '../components/parameters/AdminParametersView';
 import {
@@ -11,6 +12,13 @@ import {
   updateTemplate,
   deleteTemplate,
   publishTemplate,
+  submitTemplateReview,
+  reviewTemplateAction,
+  approveTemplateAction,
+  getTemplateDCRs,
+  submitTemplateDCR,
+  reviewTemplateDCR,
+  approveTemplateDCR,
   getTemplateParameters,
   createParameter,
   updateParameter,
@@ -20,6 +28,31 @@ import {
   updateProcessParameter,
   deleteProcessParameter,
 } from '../api/parts';
+import {
+  Shield,
+  FileText,
+  Eye,
+  CheckCircle2,
+  AlertTriangle,
+  UserCheck,
+  Plus,
+  Lock,
+  RefreshCw,
+  X,
+  Clock,
+  Edit3,
+  Trash2,
+  Sliders,
+  ChevronRight,
+  ArrowRight,
+  Ban,
+  Send,
+  Settings,
+  Check,
+  History,
+  FileSpreadsheet,
+} from 'lucide-react';
+import { getUsers } from '../api/users';
 import api from '../api/axios';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Header from '../components/layout/Header';
@@ -41,11 +74,13 @@ const extractErrorMessage = (err, fallback) => {
 
 export default function ParametersPage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const targetOpId = searchParams.get('operation') || searchParams.get('template');
+  const targetPartId = searchParams.get('part');
+  const targetMachineId = searchParams.get('machine');
   const isAdmin = user?.role === 'admin';
+  const [adminTab, setAdminTab] = useState('builder'); // 'builder' or 'audit'
 
-  if (isAdmin) {
-    return <AdminParametersView />;
-  }
   const [machines, setMachines] = useState([]);
   const [selectedMachine, setSelectedMachine] = useState(null);
 
@@ -90,6 +125,64 @@ export default function ParametersPage() {
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
 
+  // Sign-Off Workflow States (Reviewer & Approver Governance)
+  const [assignableUsers, setAssignableUsers] = useState([]);
+
+  const [showSubmitReviewModal, setShowSubmitReviewModal] = useState(false);
+  const [submitReviewForm, setSubmitReviewForm] = useState({
+    assigned_reviewer: '',
+    assigned_approver: '',
+    notes: '',
+  });
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewActionForm, setReviewActionForm] = useState({
+    action: 'recommend', // 'recommend' | 'reject'
+    comments: '',
+  });
+  const [isProcessingReview, setIsProcessingReview] = useState(false);
+
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [approveActionForm, setApproveActionForm] = useState({
+    action: 'approve', // 'approve' | 'reject'
+    comments: '',
+  });
+  const [isProcessingApprove, setIsProcessingApprove] = useState(false);
+
+  // Document Change Request (DCR) States: Form DKI/MR/F/05
+  const [templateDCRs, setTemplateDCRs] = useState([]);
+  const [loadingDCRs, setLoadingDCRs] = useState(false);
+  const [showDCRModal, setShowDCRModal] = useState(false);
+  const [dcrForm, setDcrForm] = useState({
+    change_type: 'modification', // 'modification', 'addition', 'deletion'
+    target_type: 'product', // 'product' or 'process'
+    target_param_id: '',
+    parameter_code: '',
+    parameter_name: '',
+    current_specification: '',
+    proposed_specification: '',
+    basis_for_change: '',
+    assigned_reviewer: '',
+    assigned_approver: '',
+  });
+  const [isSubmittingDCR, setIsSubmittingDCR] = useState(false);
+
+  const [showDCRReviewModal, setShowDCRReviewModal] = useState(false);
+  const [selectedDCR, setSelectedDCR] = useState(null);
+  const [dcrReviewForm, setDcrReviewForm] = useState({
+    action: 'recommend', // 'recommend' | 'reject'
+    remarks: '',
+  });
+  const [isProcessingDCRReview, setIsProcessingDCRReview] = useState(false);
+
+  const [showDCRApproveModal, setShowDCRApproveModal] = useState(false);
+  const [dcrApproveForm, setDcrApproveForm] = useState({
+    action: 'approve', // 'approve' | 'reject'
+    remarks: '',
+  });
+  const [isProcessingDCRApprove, setIsProcessingDCRApprove] = useState(false);
+
   const [viewMode, setViewMode] = useState('blocks'); // 'blocks' | 'table'
   const [ruleMode, setRuleMode] = useState('rule1'); // 'rule1', 'rule2', 'rule3'
   const [showAddParamModal, setShowAddParamModal] = useState(false);
@@ -110,6 +203,46 @@ export default function ParametersPage() {
     control_method: '',
   });
 
+  // Fetch Users for Reviewer / Approver assignments
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const res = await getUsers();
+        const loaded = res.data?.results ?? (Array.isArray(res.data) ? res.data : []);
+        setAssignableUsers(loaded);
+      } catch (err) {
+        console.error('Failed to load assignable users for sign-off workflow:', err);
+      }
+    };
+    fetchUsers();
+  }, []);
+
+  // Fetch DCRs for Selected Template (Form DKI/MR/F/05 Log)
+  const loadTemplateDCRs = useCallback(async () => {
+    if (!selectedTemplate) {
+      setTemplateDCRs([]);
+      return;
+    }
+    setLoadingDCRs(true);
+    try {
+      const res = await getTemplateDCRs(selectedTemplate.id);
+      const data = res.data?.results ?? (Array.isArray(res.data) ? res.data : []);
+      setTemplateDCRs(data);
+    } catch (err) {
+      console.error('Failed to load template DCRs:', err);
+    } finally {
+      setLoadingDCRs(false);
+    }
+  }, [selectedTemplate]);
+
+  useEffect(() => {
+    if (selectedTemplate) {
+      loadTemplateDCRs();
+    } else {
+      setTemplateDCRs([]);
+    }
+  }, [selectedTemplate, loadTemplateDCRs]);
+
   // 1. Fetch Machines
   const loadMachines = useCallback(async () => {
     try {
@@ -117,12 +250,17 @@ export default function ParametersPage() {
       const loaded = res.data?.results ?? (Array.isArray(res.data) ? res.data : []);
       setMachines(loaded);
       if (loaded.length > 0 && !selectedMachine) {
-        setSelectedMachine(loaded[0]);
+        let initial = loaded[0];
+        if (targetMachineId) {
+          const match = loaded.find(m => String(m.id) === String(targetMachineId));
+          if (match) initial = match;
+        }
+        setSelectedMachine(initial);
       }
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to load machines.'));
     }
-  }, [selectedMachine]);
+  }, [selectedMachine, targetMachineId]);
 
   useEffect(() => {
     const init = async () => {
@@ -146,14 +284,19 @@ export default function ParametersPage() {
       const loaded = res.data?.results ?? (Array.isArray(res.data) ? res.data : []);
       setParts(loaded);
       if (loaded.length > 0) {
-        setSelectedPart(loaded[0]);
+        let initial = loaded[0];
+        if (targetPartId) {
+          const match = loaded.find(p => String(p.id) === String(targetPartId) || p.part_number === targetPartId);
+          if (match) initial = match;
+        }
+        setSelectedPart(initial);
       } else {
         setSelectedPart(null);
       }
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to load parts for selected machine.'));
     }
-  }, [selectedMachine]);
+  }, [selectedMachine, targetPartId]);
 
   useEffect(() => {
     loadPartsForMachine();
@@ -173,7 +316,17 @@ export default function ParametersPage() {
       const loaded = res.data?.results ?? (Array.isArray(res.data) ? res.data : []);
       setTemplates(loaded);
       if (loaded.length > 0) {
-        setSelectedTemplate(loaded[0]);
+        setSelectedTemplate(prev => {
+          if (targetOpId) {
+            const match = loaded.find(t => String(t.id) === String(targetOpId));
+            if (match) return match;
+          }
+          if (prev) {
+            const found = loaded.find(t => t.id === prev.id);
+            if (found) return found;
+          }
+          return loaded[0];
+        });
       } else {
         setSelectedTemplate(null);
         setParameters([]);
@@ -181,7 +334,7 @@ export default function ParametersPage() {
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to load operations for selected part.'));
     }
-  }, [selectedPart]);
+  }, [selectedPart, targetOpId]);
 
   useEffect(() => {
     loadTemplates();
@@ -423,6 +576,108 @@ export default function ParametersPage() {
     }
   };
 
+  // ─── Sign-Off Workflow Handlers ───────────────────────────────────────────
+  const handleOpenSubmitReviewModal = () => {
+    if (!selectedTemplate) return;
+    setSubmitReviewForm({
+      assigned_reviewer: selectedTemplate.assigned_reviewer || '',
+      assigned_approver: selectedTemplate.assigned_approver || '',
+      notes: '',
+    });
+    setShowSubmitReviewModal(true);
+  };
+
+  const handleSubmitReview = async (e) => {
+    if (e) e.preventDefault();
+    if (!selectedTemplate) return;
+    setIsSubmittingReview(true);
+    try {
+      setError('');
+      setSuccessMsg('');
+      const res = await submitTemplateReview(selectedTemplate.id, {
+        assigned_reviewer: submitReviewForm.assigned_reviewer || null,
+        assigned_approver: submitReviewForm.assigned_approver || null,
+        notes: submitReviewForm.notes,
+      });
+      setSuccessMsg(res.data?.message || 'Operation submitted for review successfully!');
+      if (res.data?.template) {
+        setSelectedTemplate(res.data.template);
+      }
+      setShowSubmitReviewModal(false);
+      await loadTemplates();
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to submit operation for review.'));
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  const handleOpenReviewModal = () => {
+    if (!selectedTemplate) return;
+    setReviewActionForm({
+      action: 'recommend',
+      comments: '',
+    });
+    setShowReviewModal(true);
+  };
+
+  const handleSubmitReviewAction = async (chosenAction) => {
+    if (!selectedTemplate) return;
+    const actionToUse = chosenAction || reviewActionForm.action;
+    setIsProcessingReview(true);
+    try {
+      setError('');
+      setSuccessMsg('');
+      const res = await reviewTemplateAction(selectedTemplate.id, {
+        action: actionToUse,
+        comments: reviewActionForm.comments,
+      });
+      setSuccessMsg(res.data?.message || 'Review action recorded successfully!');
+      if (res.data?.template) {
+        setSelectedTemplate(res.data.template);
+      }
+      setShowReviewModal(false);
+      await loadTemplates();
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to record review action.'));
+    } finally {
+      setIsProcessingReview(false);
+    }
+  };
+
+  const handleOpenApproveModal = () => {
+    if (!selectedTemplate) return;
+    setApproveActionForm({
+      action: 'approve',
+      comments: '',
+    });
+    setShowApproveModal(true);
+  };
+
+  const handleSubmitApproveAction = async (chosenAction) => {
+    if (!selectedTemplate) return;
+    const actionToUse = chosenAction || approveActionForm.action;
+    setIsProcessingApprove(true);
+    try {
+      setError('');
+      setSuccessMsg('');
+      const res = await approveTemplateAction(selectedTemplate.id, {
+        action: actionToUse,
+        comments: approveActionForm.comments,
+      });
+      setSuccessMsg(res.data?.message || 'Approval action recorded successfully!');
+      if (res.data?.template) {
+        setSelectedTemplate(res.data.template);
+      }
+      setShowApproveModal(false);
+      await loadTemplates();
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to record approval action.'));
+    } finally {
+      setIsProcessingApprove(false);
+    }
+  };
+
   const handleDeleteOperationItem = async (templateId) => {
     if (!window.confirm('Are you sure you want to delete this Operation and all its parameters?')) return;
     try {
@@ -433,6 +688,252 @@ export default function ParametersPage() {
       await loadTemplates();
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to delete operation.'));
+    }
+  };
+
+  // ── Metrics & Gating: All Parameters Filled Check ──
+  const totalConfiguredParams = parameters.length + processParameters.length;
+  const targetRequiredParams = selectedTemplate?.target_parameter_count || 10;
+  const isAllParametersFilled = totalConfiguredParams >= targetRequiredParams && totalConfiguredParams > 0;
+  const isApproved = selectedTemplate?.status === 'approved';
+
+  const handleInitiateSubmitReview = () => {
+    if (!selectedTemplate) return;
+    if (totalConfiguredParams === 0) {
+      setError('Please add at least one Product or Process parameter before submitting for Quality Sign-Off.');
+      return;
+    }
+    handleOpenSubmitReviewModal();
+  };
+
+  // ── Locked State Interception for Approved Templates (DCR Workflow) ──
+  const handleOpenGeneralDCRModal = () => {
+    setDcrForm({
+      change_type: 'modification',
+      target_type: activeParamTab,
+      target_param_id: '',
+      parameter_code: '',
+      parameter_name: '',
+      current_specification: '',
+      proposed_specification: '',
+      basis_for_change: '',
+      assigned_reviewer: selectedTemplate?.assigned_reviewer || '',
+      assigned_approver: selectedTemplate?.assigned_approver || '',
+    });
+    setShowDCRModal(true);
+  };
+
+  const handleOpenAddParamWithLockCheck = () => {
+    if (isApproved) {
+      setDcrForm({
+        change_type: 'addition',
+        target_type: 'product',
+        target_param_id: '',
+        parameter_code: `P${parameters.length + 1}`,
+        parameter_name: '',
+        current_specification: 'New Product Parameter Addition',
+        proposed_specification: '',
+        basis_for_change: '',
+        assigned_reviewer: selectedTemplate?.assigned_reviewer || '',
+        assigned_approver: selectedTemplate?.assigned_approver || '',
+      });
+      setShowDCRModal(true);
+      return;
+    }
+    handleOpenAddParam();
+  };
+
+  const handleOpenAddProcessParamWithLockCheck = () => {
+    if (isApproved) {
+      setDcrForm({
+        change_type: 'addition',
+        target_type: 'process',
+        target_param_id: '',
+        parameter_code: `PR${processParameters.length + 1}`,
+        parameter_name: '',
+        current_specification: 'New Process Parameter Addition',
+        proposed_specification: '',
+        basis_for_change: '',
+        assigned_reviewer: selectedTemplate?.assigned_reviewer || '',
+        assigned_approver: selectedTemplate?.assigned_approver || '',
+      });
+      setShowDCRModal(true);
+      return;
+    }
+    handleOpenAddProcessParam();
+  };
+
+  const handleEditParamWithLockCheck = (p) => {
+    if (isApproved) {
+      setDcrForm({
+        change_type: 'modification',
+        target_type: 'product',
+        target_param_id: p.id,
+        parameter_code: p.parameter_code || `P${p.sequence_order}`,
+        parameter_name: p.parameter_name,
+        current_specification: `Nominal: ${p.nominal_value} ${p.unit}, Tol: +${p.upper_tolerance} / ${p.lower_tolerance} (${p.measurement_type})`,
+        proposed_specification: '',
+        basis_for_change: '',
+        assigned_reviewer: selectedTemplate?.assigned_reviewer || '',
+        assigned_approver: selectedTemplate?.assigned_approver || '',
+      });
+      setShowDCRModal(true);
+      return;
+    }
+    handleOpenEditParam(p);
+  };
+
+  const handleDeleteParamWithLockCheck = (p) => {
+    if (isApproved) {
+      setDcrForm({
+        change_type: 'deletion',
+        target_type: 'product',
+        target_param_id: p.id,
+        parameter_code: p.parameter_code || `P${p.sequence_order}`,
+        parameter_name: p.parameter_name,
+        current_specification: `Nominal: ${p.nominal_value} ${p.unit}, Tol: +${p.upper_tolerance} / ${p.lower_tolerance} (${p.measurement_type})`,
+        proposed_specification: 'Deactivation / Deletion of Parameter',
+        basis_for_change: '',
+        assigned_reviewer: selectedTemplate?.assigned_reviewer || '',
+        assigned_approver: selectedTemplate?.assigned_approver || '',
+      });
+      setShowDCRModal(true);
+      return;
+    }
+    handleDeleteParam(p.id);
+  };
+
+  const handleEditProcessParamWithLockCheck = (pp) => {
+    if (isApproved) {
+      setDcrForm({
+        change_type: 'modification',
+        target_type: 'process',
+        target_param_id: pp.id,
+        parameter_code: pp.parameter_code || `PR${pp.sequence_order}`,
+        parameter_name: pp.parameter_name,
+        current_specification: pp.specification || `Nominal: ${pp.nominal_value} ${pp.unit}, Tol: +${pp.upper_tolerance} / ${pp.lower_tolerance}`,
+        proposed_specification: '',
+        basis_for_change: '',
+        assigned_reviewer: selectedTemplate?.assigned_reviewer || '',
+        assigned_approver: selectedTemplate?.assigned_approver || '',
+      });
+      setShowDCRModal(true);
+      return;
+    }
+    handleOpenEditProcessParam(pp);
+  };
+
+  const handleDeleteProcessParamWithLockCheck = (pp) => {
+    if (isApproved) {
+      setDcrForm({
+        change_type: 'deletion',
+        target_type: 'process',
+        target_param_id: pp.id,
+        parameter_code: pp.parameter_code || `PR${pp.sequence_order}`,
+        parameter_name: pp.parameter_name,
+        current_specification: pp.specification || `Nominal: ${pp.nominal_value} ${pp.unit}, Tol: +${pp.upper_tolerance} / ${pp.lower_tolerance}`,
+        proposed_specification: 'Deactivation / Deletion of Process Parameter',
+        basis_for_change: '',
+        assigned_reviewer: selectedTemplate?.assigned_reviewer || '',
+        assigned_approver: selectedTemplate?.assigned_approver || '',
+      });
+      setShowDCRModal(true);
+      return;
+    }
+    handleDeleteProcessParam(pp);
+  };
+
+  // ── DCR Submission, Review & Approval Actions ──
+  const handleSubmitDCR = async (e) => {
+    e.preventDefault();
+    if (!selectedTemplate) return;
+    setIsSubmittingDCR(true);
+    try {
+      setError('');
+      setSuccessMsg('');
+      const payload = {
+        change_type: dcrForm.change_type,
+        is_process_parameter: dcrForm.target_type === 'process',
+        parameter: (dcrForm.target_type === 'product' && dcrForm.target_param_id) ? dcrForm.target_param_id : null,
+        process_parameter: (dcrForm.target_type === 'process' && dcrForm.target_param_id) ? dcrForm.target_param_id : null,
+        parameter_code: dcrForm.parameter_code,
+        parameter_name: dcrForm.parameter_name,
+        current_specification: dcrForm.current_specification,
+        proposed_specification: dcrForm.proposed_specification,
+        basis_for_change: dcrForm.basis_for_change,
+        assigned_reviewer: dcrForm.assigned_reviewer || null,
+        assigned_approver: dcrForm.assigned_approver || null,
+      };
+      const res = await submitTemplateDCR(selectedTemplate.id, payload);
+      setSuccessMsg(`Document Change Request ${res.data?.dcr_number || ''} submitted successfully!`);
+      setShowDCRModal(false);
+      await loadTemplateDCRs();
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to submit Document Change Request.'));
+    } finally {
+      setIsSubmittingDCR(false);
+    }
+  };
+
+  const handleOpenDCRReviewModal = (dcr) => {
+    setSelectedDCR(dcr);
+    setDcrReviewForm({
+      action: 'recommend',
+      remarks: '',
+    });
+    setShowDCRReviewModal(true);
+  };
+
+  const handleReviewDCRSubmit = async (chosenAction) => {
+    if (!selectedDCR) return;
+    const action = chosenAction || dcrReviewForm.action;
+    setIsProcessingDCRReview(true);
+    try {
+      setError('');
+      setSuccessMsg('');
+      const res = await reviewTemplateDCR(selectedDCR.id, {
+        action,
+        remarks: dcrReviewForm.remarks,
+      });
+      setSuccessMsg(res.data?.message || 'DCR reviewed successfully!');
+      setShowDCRReviewModal(false);
+      await loadTemplateDCRs();
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to review DCR.'));
+    } finally {
+      setIsProcessingDCRReview(false);
+    }
+  };
+
+  const handleOpenDCRApproveModal = (dcr) => {
+    setSelectedDCR(dcr);
+    setDcrApproveForm({
+      action: 'approve',
+      remarks: '',
+    });
+    setShowDCRApproveModal(true);
+  };
+
+  const handleApproveDCRSubmit = async (chosenAction) => {
+    if (!selectedDCR) return;
+    const action = chosenAction || dcrApproveForm.action;
+    setIsProcessingDCRApprove(true);
+    try {
+      setError('');
+      setSuccessMsg('');
+      const res = await approveTemplateDCR(selectedDCR.id, {
+        action,
+        remarks: dcrApproveForm.remarks,
+      });
+      setSuccessMsg(res.data?.message || 'DCR approved and parameter specification updated!');
+      setShowDCRApproveModal(false);
+      await loadTemplateDCRs();
+      await loadParameters();
+      await loadTemplates();
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to approve DCR.'));
+    } finally {
+      setIsProcessingDCRApprove(false);
     }
   };
 
@@ -716,11 +1217,14 @@ export default function ParametersPage() {
     <>
       <Header
         title="Master Database Builder"
-        subtitle="Supervisor Manual Configuration: Machine → Part → Operation → Parameters (P1, P2...)"
+        subtitle={isAdmin 
+          ? "Factory Master Parameters & Inspection Matrix: Machine → Part → Operation → Parameters"
+          : "Supervisor Manual Configuration: Machine → Part → Operation → Parameters (P1, P2...)"
+        }
       />
 
-      <div className="page-content bg-gradient-animated" style={{ padding: '24px', background: '#F1F5F9', minHeight: '100vh' }}>
-        <Breadcrumbs items={user?.role === 'supervisor' ? [{ label: 'Development', to: '/development' }, { label: 'Master Parameters' }] : [{ label: 'Master Parameters' }]} />
+      <div className="page-content" style={{ padding: '24px', background: '#F8FAFC', minHeight: '100vh' }}>
+        <Breadcrumbs items={[{ label: 'Master Database' }, { label: 'Master Parameters' }]} />
 
         {/* ── TOP PAGE HEADER BAR ─────────────────────────────── */}
         <div style={{
@@ -728,7 +1232,8 @@ export default function ParametersPage() {
           background: '#FFFFFF',
           border: '1px solid #E2E8F0',
           borderRadius: 14, padding: '16px 24px', marginBottom: 20,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          flexWrap: 'wrap', gap: 12
         }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.3px' }}>
@@ -738,13 +1243,57 @@ export default function ParametersPage() {
               Master Database & Inspection Parameters Configuration
             </div>
           </div>
-          <span style={{
-            background: '#F0FDF4', border: '1px solid #BBF7D0',
-            color: '#15803D', fontSize: 11, fontWeight: 700, padding: '5px 14px',
-            borderRadius: 20, letterSpacing: '0.5px', textTransform: 'uppercase'
-          }}>
-            Supervisor Access
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {isAdmin && (
+              <div style={{ display: 'flex', background: '#F1F5F9', padding: '4px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('builder')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: adminTab === 'builder' ? '#FFFFFF' : 'transparent',
+                    color: adminTab === 'builder' ? '#2563EB' : '#64748B',
+                    boxShadow: adminTab === 'builder' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sliders size={13} /> Parameter Builder</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('audit')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: adminTab === 'audit' ? '#FFFFFF' : 'transparent',
+                    color: adminTab === 'audit' ? '#2563EB' : '#64748B',
+                    boxShadow: adminTab === 'audit' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><FileSpreadsheet size={13} /> Global Audit List</span>
+                </button>
+              </div>
+            )}
+            <span style={{
+              background: isAdmin ? '#EFF6FF' : '#F0FDF4',
+              border: `1px solid ${isAdmin ? '#BFDBFE' : '#BBF7D0'}`,
+              color: isAdmin ? '#1D4ED8' : '#15803D',
+              fontSize: 11, fontWeight: 700, padding: '5px 14px',
+              borderRadius: 20, letterSpacing: '0.5px', textTransform: 'uppercase'
+            }}>
+              {isAdmin ? 'Admin Master Control' : 'Supervisor Access'}
+            </span>
+          </div>
         </div>
 
         {/* ── ALERTS ──────────────────────────────────────────── */}
@@ -769,6 +1318,13 @@ export default function ParametersPage() {
           </div>
         )}
 
+        {isAdmin && adminTab === 'audit' ? (
+          <AdminParametersView
+            hideTopHeader={true}
+            onSwitchToBuilder={() => setAdminTab('builder')}
+          />
+        ) : (
+          <>
         {/* ── 1. CONFIGURATION (HIERARCHY SELECTORS) ───────────── */}
         <div style={{
           background: '#FFFFFF',
@@ -784,65 +1340,65 @@ export default function ParametersPage() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
 
-            {/* STEP 1 — MACHINE */}
-            <div style={{ background: '#F8FAFC', border: '1.5px solid #BAE6FD', borderRadius: 10, padding: 14 }}>
+            {/* 1. MACHINE */}
+            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#0284C7', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                  STEP 1 — MACHINE
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  1. Machine
                 </div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {selectedMachine && (
                     <>
-                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: 6, color: '#475569', cursor: 'pointer' }} onClick={() => handleOpenEditMachine(selectedMachine)}>Edit</button>
-                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeleteMachine(selectedMachine.id)}>Delete</button>
+                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 5, color: '#334155', cursor: 'pointer' }} onClick={() => handleOpenEditMachine(selectedMachine)}>Edit</button>
+                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#FFFFFF', border: '1px solid #FECACA', borderRadius: 5, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeleteMachine(selectedMachine.id)}>Delete</button>
                     </>
                   )}
-                  <button style={{ padding: '2px 8px', fontSize: 11, background: '#EFF6FF', border: '1px solid #BAE6FD', borderRadius: 6, color: '#0284C7', cursor: 'pointer', fontWeight: 700 }} onClick={handleOpenAddMachine}>+ New</button>
+                  <button style={{ padding: '2px 8px', fontSize: 11, background: '#0F172A', border: '1px solid #0F172A', borderRadius: 5, color: '#FFFFFF', cursor: 'pointer', fontWeight: 600 }} onClick={handleOpenAddMachine}>+ New</button>
                 </div>
               </div>
               <select
                 style={{
                   width: '100%', background: '#FFFFFF', border: '1px solid #CBD5E1',
-                  borderRadius: 8, padding: '9px 12px', color: '#1E293B',
+                  borderRadius: 6, padding: '8px 12px', color: '#0F172A',
                   fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none'
                 }}
                 value={selectedMachine?.id || ''}
                 onChange={(e) => { const m = machines.find((mach) => mach.id === parseInt(e.target.value)); setSelectedMachine(m); }}
               >
                 {machines.map((m) => (
-                  <option key={m.id} value={m.id}>{m.machine_code} — {m.name}</option>
+                  <option key={m.id} value={m.id}>{m.machine_code} : {m.name}</option>
                 ))}
               </select>
             </div>
 
-            {/* STEP 2 — PART */}
-            <div style={{ background: '#F8FAFC', border: '1.5px solid #E9D5FF', borderRadius: 10, padding: 14 }}>
+            {/* 2. PART */}
+            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#7C3AED', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                  STEP 2 — PART {selectedMachine ? `[${selectedMachine.machine_code}]` : ''}
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  2. Part {selectedMachine ? `(${selectedMachine.machine_code})` : ''}
                 </div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {selectedPart && (
                     <>
-                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: 6, color: '#475569', cursor: 'pointer' }} onClick={() => handleOpenEditPart(selectedPart)}>Edit</button>
-                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeletePartItem(selectedPart.part_number)}>Delete</button>
+                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 5, color: '#334155', cursor: 'pointer' }} onClick={() => handleOpenEditPart(selectedPart)}>Edit</button>
+                      <button style={{ padding: '2px 8px', fontSize: 11, background: '#FFFFFF', border: '1px solid #FECACA', borderRadius: 5, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeletePartItem(selectedPart.part_number)}>Delete</button>
                     </>
                   )}
-                  <button style={{ padding: '2px 8px', fontSize: 11, background: '#F5F3FF', border: '1px solid #E9D5FF', borderRadius: 6, color: '#7C3AED', cursor: 'pointer', fontWeight: 700 }} onClick={handleOpenAddPart}>+ New</button>
+                  <button style={{ padding: '2px 8px', fontSize: 11, background: '#0F172A', border: '1px solid #0F172A', borderRadius: 5, color: '#FFFFFF', cursor: 'pointer', fontWeight: 600 }} onClick={handleOpenAddPart}>+ New</button>
                 </div>
               </div>
               {parts.length > 0 ? (
                 <select
                   style={{
                     width: '100%', background: '#FFFFFF', border: '1px solid #CBD5E1',
-                    borderRadius: 8, padding: '9px 12px', color: '#1E293B',
+                    borderRadius: 6, padding: '8px 12px', color: '#0F172A',
                     fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none'
                   }}
                   value={selectedPart?.part_number || ''}
                   onChange={(e) => { const p = parts.find((pt) => pt.part_number === e.target.value); setSelectedPart(p); }}
                 >
                   {parts.map((p) => (
-                    <option key={p.id} value={p.part_number}>{p.part_number} — {p.part_name}</option>
+                    <option key={p.id} value={p.part_number}>{p.part_number} : {p.part_name}</option>
                   ))}
                 </select>
               ) : (
@@ -850,18 +1406,18 @@ export default function ParametersPage() {
               )}
             </div>
 
-            {/* STEP 3 — OPERATION */}
-            <div style={{ background: '#F8FAFC', border: '1.5px solid #BBF7D0', borderRadius: 10, padding: 14 }}>
+            {/* 3. OPERATION */}
+            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                  STEP 3 — OPERATION {selectedPart ? `[${selectedPart.part_number}]` : ''}
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  3. Operation {selectedPart ? `(${selectedPart.part_number})` : ''}
                 </div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {selectedTemplate && (
-                    <button style={{ padding: '2px 8px', fontSize: 11, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeleteOperationItem(selectedTemplate.id)}>Delete</button>
+                    <button style={{ padding: '2px 8px', fontSize: 11, background: '#FFFFFF', border: '1px solid #FECACA', borderRadius: 5, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeleteOperationItem(selectedTemplate.id)}>Delete</button>
                   )}
                   {selectedPart && (
-                    <button style={{ padding: '2px 8px', fontSize: 11, background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 6, color: '#059669', cursor: 'pointer', fontWeight: 700 }} onClick={() => setShowAddOpModal(true)}>+ New</button>
+                    <button style={{ padding: '2px 8px', fontSize: 11, background: '#0F172A', border: '1px solid #0F172A', borderRadius: 5, color: '#FFFFFF', cursor: 'pointer', fontWeight: 600 }} onClick={() => setShowAddOpModal(true)}>+ New</button>
                   )}
                 </div>
               </div>
@@ -869,14 +1425,16 @@ export default function ParametersPage() {
                 <select
                   style={{
                     width: '100%', background: '#FFFFFF', border: '1px solid #CBD5E1',
-                    borderRadius: 8, padding: '9px 12px', color: '#1E293B',
+                    borderRadius: 6, padding: '8px 12px', color: '#0F172A',
                     fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none'
                   }}
                   value={selectedTemplate?.id || ''}
                   onChange={(e) => { const t = templates.find((tmpl) => tmpl.id === parseInt(e.target.value)); setSelectedTemplate(t); }}
                 >
                   {templates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name ? t.name : t.inspection_type.toUpperCase()} (v{t.version})</option>
+                    <option key={t.id} value={t.id}>
+                      {t.name ? t.name : t.inspection_type.toUpperCase()} (v{t.version}) [{t.status_display || (t.status ? t.status.toUpperCase() : 'DRAFT')}]
+                    </option>
                   ))}
                 </select>
               ) : (
@@ -908,26 +1466,67 @@ export default function ParametersPage() {
               </div>
               {selectedTemplate ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ background: '#EFF6FF', border: '1px solid #BAE6FD', color: '#0284C7', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
-                    {selectedMachine?.machine_code}
-                  </span>
-                  <span style={{ color: '#CBD5E1', fontSize: 14 }}>›</span>
-                  <span style={{ background: '#F5F3FF', border: '1px solid #E9D5FF', color: '#7C3AED', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
-                    {selectedPart?.part_number}
-                  </span>
-                  <span style={{ color: '#CBD5E1', fontSize: 14 }}>›</span>
-                  <span style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#059669', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{selectedMachine?.machine_code}</span>
+                  <span style={{ color: '#94A3B8', fontSize: 13 }}>/</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{selectedPart?.part_number}</span>
+                  <span style={{ color: '#94A3B8', fontSize: 13 }}>/</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>
                     {selectedTemplate?.name || selectedTemplate?.inspection_type.toUpperCase()}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>
+                    (v{selectedTemplate?.version})
+                  </span>
+
+                  {/* Clean Industrial Status Badge */}
+                  <span style={{
+                    padding: '3px 9px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background:
+                      selectedTemplate.status === 'approved' ? '#F0FDF4' :
+                      selectedTemplate.status === 'reviewed' ? '#EFF6FF' :
+                      selectedTemplate.status === 'under_review' ? '#FFFBEB' :
+                      selectedTemplate.status === 'rejected' ? '#FEF2F2' : '#F8FAFC',
+                    color:
+                      selectedTemplate.status === 'approved' ? '#166534' :
+                      selectedTemplate.status === 'reviewed' ? '#1E40AF' :
+                      selectedTemplate.status === 'under_review' ? '#92400E' :
+                      selectedTemplate.status === 'rejected' ? '#991B1B' : '#475569',
+                    border: `1px solid ${
+                      selectedTemplate.status === 'approved' ? '#BBF7D0' :
+                      selectedTemplate.status === 'reviewed' ? '#BFDBFE' :
+                      selectedTemplate.status === 'under_review' ? '#FDE68A' :
+                      selectedTemplate.status === 'rejected' ? '#FECACA' : '#E2E8F0'
+                    }`
+                  }}>
+                    <span style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      backgroundColor:
+                        selectedTemplate.status === 'approved' ? '#16A34A' :
+                        selectedTemplate.status === 'reviewed' ? '#2563EB' :
+                        selectedTemplate.status === 'under_review' ? '#D97706' :
+                        selectedTemplate.status === 'rejected' ? '#DC2626' : '#64748B'
+                    }} />
+                    {selectedTemplate.status === 'approved' ? 'Approved & Live' :
+                     selectedTemplate.status === 'reviewed' ? 'Reviewed' :
+                     selectedTemplate.status === 'under_review' ? `Under Review (${selectedTemplate.assigned_reviewer_name || 'Reviewer'})` :
+                     selectedTemplate.status === 'rejected' ? 'Rejected' : 'Draft'}
                   </span>
                 </div>
               ) : (
-                <p style={{ margin: 0, fontSize: 13, color: '#94A3B8' }}>Select Machine → Part → Operation above to manage parameters.</p>
+                <p style={{ margin: 0, fontSize: 13, color: '#94A3B8' }}>Select Machine / Part / Operation above to manage parameters.</p>
               )}
             </div>
 
-            {/* Right Side: Single Dynamic Action Button & View Switcher */}
+            {/* Right Side: Action Toolbar & View Switcher */}
             {selectedTemplate && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 {/* View Mode Switcher */}
                 {((activeParamTab === 'product' && parameters.length > 0) || (activeParamTab === 'process' && processParameters.length > 0)) && (
                   <div style={{ display: 'flex', background: '#F1F5F9', borderRadius: 8, padding: 3, border: '1px solid #CBD5E1', gap: 2 }}>
@@ -939,7 +1538,7 @@ export default function ParametersPage() {
                         background: viewMode === 'blocks' ? '#0F172A' : 'transparent',
                         color: viewMode === 'blocks' ? '#FFFFFF' : '#64748B',
                       }}
-                    >⊞ Blocks</button>
+                    >Blocks</button>
                     <button
                       onClick={() => setViewMode('table')}
                       style={{
@@ -948,80 +1547,272 @@ export default function ParametersPage() {
                         background: viewMode === 'table' ? '#0F172A' : 'transparent',
                         color: viewMode === 'table' ? '#FFFFFF' : '#64748B',
                       }}
-                    >≡ Table</button>
+                    >Table</button>
                   </div>
                 )}
 
-                {/* SINGLE DYNAMIC ACTION BUTTON */}
+                {/* Add Parameter Button */}
                 {activeParamTab === 'product' ? (
-                  <>{isAdmin ? null : <button
-                    onClick={handleOpenAddParam}
+                  <button
+                    type="button"
+                    onClick={handleOpenAddParamWithLockCheck}
                     style={{
-                      padding: '9px 18px', fontWeight: 700, borderRadius: 10, fontSize: 12.5,
-                      background: 'linear-gradient(135deg, #0284C7 0%, #0EA5E9 100%)',
-                      border: 'none', color: '#fff', cursor: 'pointer',
-                      boxShadow: '0 4px 12px rgba(2, 132, 199, 0.35)',
+                      padding: '8px 14px', fontWeight: 600, borderRadius: 6, fontSize: 12.5,
+                      background: '#0F172A',
+                      border: '1px solid #0F172A', color: '#FFFFFF', cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
                       display: 'flex', alignItems: 'center', gap: 6,
                     }}
                   >
-                    <span>📏 + Add Product Parameter</span>
-                  </button>}</>
+                    {isApproved ? <Lock size={13} /> : <Plus size={13} />}
+                    <span>{isApproved ? 'Request Product Parameter (DCR)' : 'Add Product Parameter'}</span>
+                  </button>
                 ) : (
-                  <>{isAdmin ? null : <button
-                    onClick={handleOpenAddProcessParam}
+                  <button
+                    type="button"
+                    onClick={handleOpenAddProcessParamWithLockCheck}
                     style={{
-                      padding: '9px 18px', fontWeight: 700, borderRadius: 10, fontSize: 12.5,
-                      background: 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)',
-                      border: 'none', color: '#fff', cursor: 'pointer',
-                      boxShadow: '0 4px 12px rgba(79, 70, 229, 0.35)',
+                      padding: '8px 14px', fontWeight: 600, borderRadius: 6, fontSize: 12.5,
+                      background: '#0F172A',
+                      border: '1px solid #0F172A', color: '#FFFFFF', cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
                       display: 'flex', alignItems: 'center', gap: 6,
                     }}
                   >
-                    <span>⚙️ + Add Process Parameter</span>
-                  </button>}</>
+                    {isApproved ? <Lock size={13} /> : <Plus size={13} />}
+                    <span>{isApproved ? 'Request Process Parameter (DCR)' : 'Add Process Parameter'}</span>
+                  </button>
+                )}
+
+                {/* Streamlined Submit Button for Draft / Initial / Rejected state */}
+                {(!selectedTemplate.status || selectedTemplate.status === 'draft' || selectedTemplate.status === 'rejected') && (
+                  <button
+                    type="button"
+                    onClick={handleInitiateSubmitReview}
+                    title="Submit configured parameters for reviewer and approver sign-off"
+                    style={{
+                      padding: '8px 16px',
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      fontSize: 12.5,
+                      background: '#2563EB',
+                      border: '1px solid #1D4ED8',
+                      color: '#FFFFFF',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <Send size={13} />
+                    <span>Submit</span>
+                  </button>
+                )}
+
+                {/* Review & Recommend Button for Under Review state */}
+                {(selectedTemplate.status === 'under_review' || (isAdmin && selectedTemplate.status !== 'approved')) && selectedTemplate.status !== 'reviewed' && (
+                  <button
+                    type="button"
+                    onClick={handleOpenReviewModal}
+                    title="Review parameter specifications and submit recommendation"
+                    style={{
+                      padding: '8px 16px',
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      fontSize: 12.5,
+                      background: '#D97706',
+                      border: '1px solid #B45309',
+                      color: '#FFFFFF',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <Eye size={13} />
+                    <span>Review</span>
+                  </button>
+                )}
+
+                {/* Final Approve Button for Reviewed state */}
+                {(selectedTemplate.status === 'reviewed' || (isAdmin && selectedTemplate.status !== 'approved' && selectedTemplate.status !== 'draft')) && (
+                  <button
+                    type="button"
+                    onClick={handleOpenApproveModal}
+                    title="Final authorization and publish to mobile shop floor"
+                    style={{
+                      padding: '8px 16px',
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      fontSize: 12.5,
+                      background: '#15803D',
+                      border: '1px solid #166534',
+                      color: '#FFFFFF',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <CheckCircle2 size={13} />
+                    <span>Approve</span>
+                  </button>
+                )}
+
+                {/* Post-Approval DCR Button */}
+                {selectedTemplate.status === 'approved' && (
+                  <button
+                    type="button"
+                    onClick={handleOpenGeneralDCRModal}
+                    title="Raise Document Change Request (Form DKI/MR/F/05) for locked parameters"
+                    style={{
+                      padding: '8px 14px',
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      fontSize: 12.5,
+                      background: '#0F172A',
+                      border: '1px solid #0F172A',
+                      color: '#FFFFFF',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <FileText size={13} />
+                    <span>Initiate DCR</span>
+                  </button>
                 )}
               </div>
             )}
           </div>
 
+          {/* Rejection Notice Banner (if rejected) */}
+          {selectedTemplate?.status === 'rejected' && (
+            <div style={{
+              margin: '14px 24px 0 24px',
+              background: '#FEF2F2',
+              border: '1px solid #FCA5A5',
+              borderRadius: 8,
+              padding: '10px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              fontSize: 12.5,
+              color: '#991B1B'
+            }}>
+              <AlertTriangle size={16} color="#DC2626" />
+              <div>
+                <strong>Revisions Requested:</strong> {selectedTemplate.rejection_reason || 'Please correct parameter ranges and re-submit.'}
+              </div>
+            </div>
+          )}
+
+
           {/* TWO SEPARATED CATEGORY TABS (PRODUCT vs PROCESS ONLY) */}
           {selectedTemplate && (
             <div style={{
-              display: 'flex', alignItems: 'center', padding: '12px 24px',
-              background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', gap: 12
+              display: 'flex', alignItems: 'center', padding: '10px 24px',
+              background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', gap: 8
             }}>
               <button
+                type="button"
                 onClick={() => setActiveParamTab('product')}
                 style={{
-                  padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                  border: activeParamTab === 'product' ? '1.5px solid #0284C7' : '1px solid #CBD5E1',
-                  background: activeParamTab === 'product' ? '#EFF6FF' : '#FFFFFF',
-                  color: activeParamTab === 'product' ? '#0284C7' : '#475569',
-                  boxShadow: activeParamTab === 'product' ? '0 2px 6px rgba(2,132,199,0.15)' : 'none',
+                  padding: '7px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  border: activeParamTab === 'product' ? '1px solid #0F172A' : '1px solid #CBD5E1',
+                  background: activeParamTab === 'product' ? '#0F172A' : '#FFFFFF',
+                  color: activeParamTab === 'product' ? '#FFFFFF' : '#475569',
+                  boxShadow: activeParamTab === 'product' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
                   display: 'flex', alignItems: 'center', gap: 8,
                 }}
               >
-                <span>📏 Product Parameters</span>
-                <span style={{ background: activeParamTab === 'product' ? '#0284C7' : '#94A3B8', color: '#FFF', padding: '1px 8px', borderRadius: 10, fontSize: 10 }}>
+                <Sliders size={14} />
+                <span>Product Parameters</span>
+                <span style={{
+                  background: activeParamTab === 'product' ? '#334155' : '#F1F5F9',
+                  color: activeParamTab === 'product' ? '#FFFFFF' : '#475569',
+                  border: activeParamTab === 'product' ? 'none' : '1px solid #E2E8F0',
+                  padding: '1px 7px', borderRadius: 10, fontSize: 11, fontWeight: 700
+                }}>
                   {parameters.length}
                 </span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setActiveParamTab('process')}
                 style={{
-                  padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                  border: activeParamTab === 'process' ? '1.5px solid #4F46E5' : '1px solid #CBD5E1',
-                  background: activeParamTab === 'process' ? '#EEF2FF' : '#FFFFFF',
-                  color: activeParamTab === 'process' ? '#4F46E5' : '#475569',
-                  boxShadow: activeParamTab === 'process' ? '0 2px 6px rgba(79,70,229,0.15)' : 'none',
+                  padding: '7px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  border: activeParamTab === 'process' ? '1px solid #0F172A' : '1px solid #CBD5E1',
+                  background: activeParamTab === 'process' ? '#0F172A' : '#FFFFFF',
+                  color: activeParamTab === 'process' ? '#FFFFFF' : '#475569',
+                  boxShadow: activeParamTab === 'process' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
                   display: 'flex', alignItems: 'center', gap: 8,
                 }}
               >
-                <span>⚙️ Process Parameters</span>
-                <span style={{ background: activeParamTab === 'process' ? '#4F46E5' : '#94A3B8', color: '#FFF', padding: '1px 8px', borderRadius: 10, fontSize: 10 }}>
+                <Settings size={14} />
+                <span>Process Parameters</span>
+                <span style={{
+                  background: activeParamTab === 'process' ? '#334155' : '#F1F5F9',
+                  color: activeParamTab === 'process' ? '#FFFFFF' : '#475569',
+                  border: activeParamTab === 'process' ? 'none' : '1px solid #E2E8F0',
+                  padding: '1px 7px', borderRadius: 10, fontSize: 11, fontWeight: 700
+                }}>
                   {processParameters.length}
                 </span>
+              </button>
+            </div>
+          )}
+
+          {/* Governance Locked Notice for Approved Templates */}
+          {selectedTemplate && isApproved && (
+            <div style={{
+              background: '#F8FAFC',
+              borderBottom: '1px solid #E2E8F0',
+              borderLeft: '4px solid #0F172A',
+              padding: '12px 24px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 12
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Lock size={16} color="#0F172A" />
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0F172A' }}>
+                    Specification Sheet Locked: Formal Quality Control (Form DKI/MR/F/05)
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#64748B', marginTop: 1 }}>
+                    This operation template has undergone final sign-off. Direct parameter edits are disabled. All modifications, additions, and deletions are routed via Document Change Requests.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenGeneralDCRModal}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  background: '#0F172A',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <FileText size={13} />
+                <span>Initiate DCR</span>
               </button>
             </div>
           )}
@@ -1049,9 +1840,23 @@ export default function ParametersPage() {
               {parameters.length === 0 ? (
                 <div style={{ padding: '50px 40px', textAlign: 'center' }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: '#1E293B', marginBottom: 4 }}>No Product Parameters Configured</div>
-                  <div style={{ fontSize: 12, color: '#64748B' }}>
-                    Click "+ Add Product Parameter" in the header toolbar above to define quality inspection rules.
+                  <div style={{ fontSize: 12, color: '#64748B', marginBottom: 16 }}>
+                    Click "+ Add Product Parameter" in the header toolbar above or below to define quality inspection rules.
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleOpenAddParamWithLockCheck}
+                    style={{
+                      padding: '9px 18px', fontWeight: 600, borderRadius: 6, fontSize: 13,
+                      background: '#0F172A',
+                      border: '1px solid #0F172A', color: '#FFFFFF', cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    {isApproved ? <Lock size={14} /> : <Plus size={14} />}
+                    <span>{isApproved ? 'Request Product Parameter (DCR)' : 'Add Product Parameter'}</span>
+                  </button>
                 </div>
               ) : viewMode === 'blocks' ? (
                 /* Block Grid */
@@ -1061,50 +1866,46 @@ export default function ParametersPage() {
                       const mtype = (p.measurement_type || '').toLowerCase();
                       const isVisual = mtype === 'visual';
                       const isLimit  = mtype === 'max_limit' || mtype === 'min_limit' || mtype === 'surface';
-                      const borderColor = isVisual ? '#059669' : isLimit ? '#D97706' : '#0284C7';
-                      const ruleLabel  = isVisual ? 'Rule 2 — Visual YES/NO' : isLimit ? 'Rule 3 — Limit' : 'Rule 1 — Range';
-                      const ruleTagBg  = isVisual ? '#F0FDF4' : isLimit ? '#FFFBEB' : '#EFF6FF';
-                      const ruleTagColor = isVisual ? '#059669' : isLimit ? '#B45309' : '#0284C7';
-                      const ruleTagBorder = isVisual ? '#BBF7D0' : isLimit ? '#FDE68A' : '#BAE6FD';
+                      const ruleLabel  = isVisual ? 'Rule 2: Visual YES/NO' : isLimit ? 'Rule 3: Limit' : 'Rule 1: Range';
 
                       return (
                         <div key={p.id} style={{
                           background: '#FFFFFF',
                           border: `1px solid ${p.is_critical ? '#FECACA' : '#E2E8F0'}`,
-                          borderLeft: `4px solid ${p.is_critical ? '#DC2626' : borderColor}`,
-                          borderRadius: 12,
-                          boxShadow: '0 2px 8px rgba(15,23,42,0.06)',
+                          borderLeft: `4px solid ${p.is_critical ? '#DC2626' : '#0F172A'}`,
+                          borderRadius: 8,
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                           display: 'flex', flexDirection: 'column',
                           overflow: 'hidden',
                         }}>
                           {/* Card Header */}
                           <div style={{
-                            padding: '13px 16px 10px',
+                            padding: '12px 14px 10px',
                             background: p.is_critical ? '#FFF5F5' : '#FAFBFC',
                             borderBottom: '1px solid #F1F5F9',
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={{
                                 background: '#0F172A', color: '#FFFFFF',
-                                padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800, letterSpacing: '0.4px'
+                                padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: '0.3px'
                               }}>P{p.sequence_order || (i + 1)}</span>
                               <span style={{
-                                background: ruleTagBg, color: ruleTagColor, border: `1px solid ${ruleTagBorder}`,
-                                padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700
+                                background: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0',
+                                padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600
                               }}>{ruleLabel}</span>
                             </div>
                             {p.is_critical && (
                               <span style={{
                                 background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA',
-                                padding: '3px 9px', borderRadius: 20, fontSize: 10, fontWeight: 800
+                                padding: '2px 7px', borderRadius: 4, fontSize: 10, fontWeight: 700
                               }}>CRITICAL</span>
                             )}
                           </div>
 
                           {/* Card Body */}
-                          <div style={{ padding: '14px 16px', flex: 1 }}>
-                            <div style={{ fontSize: 15, fontWeight: 800, color: '#0F172A', marginBottom: 14, letterSpacing: '-0.2px' }}>
+                          <div style={{ padding: '14px', flex: 1 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>
                               {p.parameter_name}
                             </div>
 
@@ -1112,103 +1913,113 @@ export default function ParametersPage() {
                               <>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: 6, marginBottom: 10 }}>
                                   <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>Upper Tol</div>
+                                    <div style={{ fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>Upper Tol</div>
                                     <div style={{
-                                      background: '#EFF6FF', border: '1px solid #BAE6FD', borderRadius: 8,
-                                      padding: '8px 4px', fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#0284C7'
+                                      background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6,
+                                      padding: '6px 4px', fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#0F172A'
                                     }}>+{p.upper_tolerance}</div>
                                   </div>
                                   <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>Nominal</div>
+                                    <div style={{ fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>Nominal</div>
                                     <div style={{
-                                      background: '#F8FAFC', border: '2px solid #CBD5E1', borderRadius: 8,
-                                      padding: '8px 4px', fontFamily: 'monospace', fontSize: 14, fontWeight: 800, color: '#0F172A'
-                                    }}>{p.nominal_value} <span style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>{p.unit}</span></div>
+                                      background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 6,
+                                      padding: '6px 4px', fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#0F172A'
+                                    }}>{p.nominal_value} <span style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>{p.unit}</span></div>
                                   </div>
                                   <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>Lower Tol</div>
+                                    <div style={{ fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>Lower Tol</div>
                                     <div style={{
-                                      background: '#EFF6FF', border: '1px solid #BAE6FD', borderRadius: 8,
-                                      padding: '8px 4px', fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#0284C7'
+                                      background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6,
+                                      padding: '6px 4px', fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#0F172A'
                                     }}>{p.lower_tolerance}</div>
                                   </div>
                                 </div>
 
                                 <div style={{
-                                  background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8,
-                                  padding: '8px 12px', marginBottom: 12, textAlign: 'center',
-                                  fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: '#059669'
+                                  background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6,
+                                  padding: '7px 12px', marginBottom: 10, textAlign: 'center',
+                                  fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#0F172A'
                                 }}>
-                                  Allowed: {p.lower_limit} – {p.upper_limit} {p.unit}
+                                  Allowed: {p.lower_limit} to {p.upper_limit} {p.unit}
                                 </div>
                               </>
                             )}
 
                             {isVisual && (
                               <div style={{
-                                background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8,
-                                padding: '12px', marginBottom: 12, textAlign: 'center'
+                                background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6,
+                                padding: '10px', marginBottom: 10, textAlign: 'center'
                               }}>
-                                <div style={{ fontSize: 13, fontWeight: 800, color: '#059669' }}>VISUAL CHECK</div>
-                                <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>Operator records PASS / FAIL</div>
-                                <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 8 }}>
-                                  <span style={{ background: '#059669', color: '#fff', padding: '3px 14px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>YES = PASS</span>
-                                  <span style={{ background: '#DC2626', color: '#fff', padding: '3px 14px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>NO = FAIL</span>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>VISUAL INSPECTION</div>
+                                <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>Operator records PASS / FAIL</div>
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 6 }}>
+                                  <span style={{ background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', padding: '2px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>YES = PASS</span>
+                                  <span style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA', padding: '2px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>NO = FAIL</span>
                                 </div>
                               </div>
                             )}
 
                             {isLimit && (
                               <div style={{
-                                background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8,
-                                padding: '10px 12px', marginBottom: 12, textAlign: 'center'
+                                background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6,
+                                padding: '8px 10px', marginBottom: 10, textAlign: 'center'
                               }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: '#B45309' }}>
-                                  {mtype === 'min_limit' ? `≥ Minimum: ${p.nominal_value} ${p.unit}` : `≤ Maximum: ${p.nominal_value} ${p.unit}`}
+                                <div style={{ fontSize: 12, fontWeight: 600, color: '#0F172A' }}>
+                                  {mtype === 'min_limit' ? `Minimum: ${p.nominal_value} ${p.unit}` : `Maximum: ${p.nominal_value} ${p.unit}`}
                                 </div>
                               </div>
                             )}
 
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                               {p.measurement_technique && (
-                                <span style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569', padding: '3px 9px', borderRadius: 20, fontSize: 10, fontWeight: 600 }}>
+                                <span style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 500 }}>
                                   {p.measurement_technique}
                                 </span>
                               )}
                               {p.sample_size && (
-                                <span style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#059669', padding: '3px 9px', borderRadius: 20, fontSize: 10, fontWeight: 600 }}>
+                                <span style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 500 }}>
                                   {p.sample_size}
                                 </span>
                               )}
                               {p.control_method && (
-                                <span style={{ background: '#F5F3FF', border: '1px solid #E9D5FF', color: '#7C3AED', padding: '3px 9px', borderRadius: 20, fontSize: 10, fontWeight: 600 }}>
+                                <span style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 500 }}>
                                   {p.control_method}
                                 </span>
                               )}
                             </div>
                           </div>
 
-                          {/* Card Footer — Actions */}
+                          {/* Card Footer: Actions */}
                           <div style={{
-                            padding: '10px 16px', borderTop: '1px solid #F1F5F9',
-                            display: 'flex', justifyContent: 'flex-end', gap: 8, background: '#FAFBFC'
+                            padding: '8px 14px', borderTop: '1px solid #F1F5F9',
+                            display: 'flex', justifyContent: 'flex-end', gap: 6, background: '#FAFBFC'
                           }}>
-                            <>{isAdmin ? null : <button
-                              onClick={() => handleOpenEditParam(p)}
+                            <button
+                              type="button"
+                              onClick={() => handleEditParamWithLockCheck(p)}
                               style={{
-                                padding: '6px 14px', fontSize: 12, fontWeight: 600,
-                                background: '#EFF6FF', border: '1px solid #BAE6FD',
-                                borderRadius: 7, color: '#0284C7', cursor: 'pointer'
+                                padding: '5px 12px', fontSize: 12, fontWeight: 600,
+                                background: '#FFFFFF', border: '1px solid #CBD5E1',
+                                borderRadius: 5, color: '#334155', cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: 4
                               }}
-                            >Edit</button>}</>
-                            <>{isAdmin ? null : <button
-                              onClick={() => handleDeleteParam(p.id)}
+                            >
+                              {isApproved && <Lock size={11} />}
+                              <span>{isApproved ? 'Change (DCR)' : 'Edit'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteParamWithLockCheck(p)}
                               style={{
-                                padding: '6px 12px', fontSize: 12, fontWeight: 600,
-                                background: '#FEF2F2', border: '1px solid #FECACA',
-                                borderRadius: 7, color: '#DC2626', cursor: 'pointer'
+                                padding: '5px 12px', fontSize: 12, fontWeight: 600,
+                                background: '#FFFFFF', border: '1px solid #FECACA',
+                                borderRadius: 5, color: '#DC2626', cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: 4
                               }}
-                            >Delete</button>}</>
+                            >
+                              {isApproved && <Lock size={11} />}
+                              <span>{isApproved ? 'Delete (DCR)' : 'Delete'}</span>
+                            </button>
                           </div>
                         </div>
                       );
@@ -1237,31 +2048,45 @@ export default function ParametersPage() {
                           borderBottom: '1px solid #F1F5F9',
                         }}>
                           <td style={{ padding: '13px 16px', color: '#94A3B8', fontWeight: 700, fontSize: 13 }}>P{p.sequence_order}</td>
-                          <td style={{ padding: '13px 16px', fontWeight: 700, color: '#0F172A', fontSize: 14, borderLeft: '3px solid #0284C7' }}>
+                          <td style={{ padding: '13px 16px', fontWeight: 700, color: '#0F172A', fontSize: 13.5, borderLeft: '3px solid #0F172A' }}>
                             {p.parameter_name}
                           </td>
-                          <td style={{ padding: '13px 16px', fontWeight: 700, color: '#334155', fontFamily: 'monospace', fontSize: 13 }}>{p.nominal_value}</td>
-                          <td style={{ padding: '13px 16px', color: '#0284C7', fontWeight: 600, fontFamily: 'monospace', fontSize: 13 }}>+{p.upper_tolerance} / {p.lower_tolerance}</td>
+                          <td style={{ padding: '13px 16px', fontWeight: 700, color: '#1E293B', fontFamily: 'monospace', fontSize: 13 }}>{p.nominal_value}</td>
+                          <td style={{ padding: '13px 16px', color: '#334155', fontWeight: 600, fontFamily: 'monospace', fontSize: 13 }}>+{p.upper_tolerance} / {p.lower_tolerance}</td>
                           <td style={{ padding: '13px 16px' }}>
-                            <span style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#059669', padding: '4px 10px', borderRadius: 8, fontWeight: 700, fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                              {p.lower_limit} – {p.upper_limit} {p.unit}
+                            <span style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#0F172A', padding: '3px 8px', borderRadius: 4, fontWeight: 600, fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                              {p.lower_limit} to {p.upper_limit} {p.unit}
                             </span>
                           </td>
                           <td style={{ padding: '13px 16px', color: '#64748B', fontWeight: 600, fontSize: 12 }}>{p.unit}</td>
                           <td style={{ padding: '13px 16px' }}>
-                            <span style={{ background: '#EFF6FF', color: '#0284C7', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, textTransform: 'capitalize', border: '1px solid #BAE6FD' }}>
+                            <span style={{ background: '#F8FAFC', color: '#475569', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500, textTransform: 'capitalize', border: '1px solid #E2E8F0' }}>
                               {p.measurement_type}
                             </span>
                           </td>
                           <td style={{ padding: '13px 16px' }}>
                             {p.is_critical
-                              ? <span style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>CRITICAL</span>
-                              : <span style={{ background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0', padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 500 }}>Normal</span>}
+                              ? <span style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '2px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 700 }}>CRITICAL</span>
+                              : <span style={{ background: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0', padding: '2px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 500 }}>Normal</span>}
                           </td>
                           <td style={{ padding: '13px 16px', textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                              <button onClick={() => handleOpenEditParam(p)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#EFF6FF', border: '1px solid #BAE6FD', borderRadius: 7, color: '#0284C7', cursor: 'pointer' }}>Edit</button>
-                              <button onClick={() => handleDeleteParam(p.id)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, color: '#DC2626', cursor: 'pointer' }}>Delete</button>
+                            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleEditParamWithLockCheck(p)}
+                                style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 5, color: '#334155', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              >
+                                {isApproved && <Lock size={11} />}
+                                <span>{isApproved ? 'Change (DCR)' : 'Edit'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteParamWithLockCheck(p)}
+                                style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, background: '#FFFFFF', border: '1px solid #FECACA', borderRadius: 5, color: '#DC2626', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              >
+                                {isApproved && <Lock size={11} />}
+                                <span>{isApproved ? 'Delete (DCR)' : 'Delete'}</span>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1288,9 +2113,23 @@ export default function ParametersPage() {
               {processParameters.length === 0 ? (
                 <div style={{ padding: '50px 40px', textAlign: 'center' }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: '#1E293B', marginBottom: 4 }}>No Process Parameters Configured</div>
-                  <div style={{ fontSize: 12, color: '#64748B' }}>
-                    Click "+ Add Process Parameter" in the header toolbar above to configure machine setup checks (RPM, Feed, Tool Offset, Coolant, etc.).
+                  <div style={{ fontSize: 12, color: '#64748B', marginBottom: 16 }}>
+                    Click "+ Add Process Parameter" in the header toolbar above or below to configure machine setup checks (RPM, Feed, Tool Offset, Coolant, etc.).
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleOpenAddProcessParamWithLockCheck}
+                    style={{
+                      padding: '9px 18px', fontWeight: 600, borderRadius: 6, fontSize: 13,
+                      background: '#0F172A',
+                      border: '1px solid #0F172A', color: '#FFFFFF', cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    {isApproved ? <Lock size={14} /> : <Plus size={14} />}
+                    <span>{isApproved ? 'Request Process Parameter (DCR)' : 'Add Process Parameter'}</span>
+                  </button>
                 </div>
               ) : viewMode === 'blocks' ? (
                 /* Block Grid View for Process Parameters */
@@ -1303,95 +2142,105 @@ export default function ParametersPage() {
                       return (
                         <div key={pp.id} style={{
                           background: '#FFFFFF',
-                          border: '1px solid #C7D2FE',
-                          borderLeft: '4px solid #4F46E5',
-                          borderRadius: 12,
-                          boxShadow: '0 2px 8px rgba(79,70,229,0.06)',
+                          border: '1px solid #E2E8F0',
+                          borderLeft: '4px solid #334155',
+                          borderRadius: 8,
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                           display: 'flex', flexDirection: 'column',
                           overflow: 'hidden',
                         }}>
                           {/* Card Header */}
                           <div style={{
-                            padding: '13px 16px 10px',
-                            background: '#EEF2FF',
-                            borderBottom: '1px solid #E0E7FF',
+                            padding: '12px 14px 10px',
+                            background: '#FAFBFC',
+                            borderBottom: '1px solid #F1F5F9',
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={{
-                                background: '#4338CA', color: '#FFFFFF',
-                                padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800, fontFamily: 'monospace'
+                                background: '#334155', color: '#FFFFFF',
+                                padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, fontFamily: 'monospace'
                               }}>{pp.parameter_code}</span>
                               <span style={{
-                                background: '#E0E7FF', color: '#4338CA', border: '1px solid #C7D2FE',
-                                padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, textTransform: 'uppercase'
+                                background: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0',
+                                padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600, textTransform: 'uppercase'
                               }}>{pp.data_type || 'NUMERIC'}</span>
                             </div>
                             <span style={{
-                              background: '#F5F3FF', color: '#7C3AED', border: '1px solid #E9D5FF',
-                              padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700
+                              background: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0',
+                              padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600
                             }}>1PC SETUP ONLY</span>
                           </div>
 
                           {/* Card Body */}
-                          <div style={{ padding: '14px 16px', flex: 1 }}>
-                            <div style={{ fontSize: 15, fontWeight: 800, color: '#0F172A', marginBottom: 12, letterSpacing: '-0.2px' }}>
+                          <div style={{ padding: '14px', flex: 1 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>
                               {pp.parameter_name}
                             </div>
 
                             {/* Specification / Expected Box */}
                             <div style={{
-                              background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8,
-                              padding: '10px 12px', marginBottom: 10
+                              background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6,
+                              padding: '8px 12px', marginBottom: 10
                             }}>
-                              <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: 2 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', marginBottom: 2 }}>
                                 Expected Spec / Value
                               </div>
-                              <div style={{ fontSize: 14, fontWeight: 800, color: '#1E1B4B', fontFamily: 'monospace' }}>
-                                {pp.specification || '—'} {pp.unit ? <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>{pp.unit}</span> : ''}
+                              <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', fontFamily: 'monospace' }}>
+                                {pp.specification || '-'} {pp.unit ? <span style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>{pp.unit}</span> : ''}
                               </div>
                             </div>
 
-                            {/* Range / Allowed Limits Pill */}
+                            {/* Range / Allowed Limits */}
                             {isNumeric && hasLimits && (
                               <div style={{
-                                background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8,
-                                padding: '8px 12px', marginBottom: 10, textAlign: 'center',
-                                fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: '#059669'
+                                background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6,
+                                padding: '7px 12px', marginBottom: 10, textAlign: 'center',
+                                fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#0F172A'
                               }}>
-                                Allowed Range: {pp.lower_limit} – {pp.upper_limit} {pp.unit || ''}
+                                Allowed Range: {pp.lower_limit} to {pp.upper_limit} {pp.unit || ''}
                               </div>
                             )}
 
                             {/* Info Tag */}
-                            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                              <span style={{ background: '#EEF2FF', color: '#4338CA', padding: '3px 9px', borderRadius: 20, fontSize: 10, fontWeight: 600 }}>
+                            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                              <span style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', color: '#475569', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 500 }}>
                                 Inspector Check (1PC#1, #2, #3)
                               </span>
                             </div>
                           </div>
 
-                          {/* Card Footer — Actions */}
+                          {/* Card Footer: Actions */}
                           <div style={{
-                            padding: '10px 16px', borderTop: '1px solid #F1F5F9',
-                            display: 'flex', justifyContent: 'flex-end', gap: 8, background: '#FAFBFC'
+                            padding: '8px 14px', borderTop: '1px solid #F1F5F9',
+                            display: 'flex', justifyContent: 'flex-end', gap: 6, background: '#FAFBFC'
                           }}>
-                            <>{isAdmin ? null : <button
-                              onClick={() => handleOpenEditProcessParam(pp)}
+                            <button
+                              type="button"
+                              onClick={() => handleEditProcessParamWithLockCheck(pp)}
                               style={{
-                                padding: '6px 14px', fontSize: 12, fontWeight: 600,
-                                background: '#EEF2FF', border: '1px solid #C7D2FE',
-                                borderRadius: 7, color: '#4338CA', cursor: 'pointer'
+                                padding: '5px 12px', fontSize: 12, fontWeight: 600,
+                                background: '#FFFFFF', border: '1px solid #CBD5E1',
+                                borderRadius: 5, color: '#334155', cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: 4
                               }}
-                            >Edit</button>}</>
-                            <>{isAdmin ? null : <button
-                              onClick={() => handleDeleteProcessParam(pp)}
+                            >
+                              {isApproved && <Lock size={11} />}
+                              <span>{isApproved ? 'Change (DCR)' : 'Edit'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteProcessParamWithLockCheck(pp)}
                               style={{
-                                padding: '6px 12px', fontSize: 12, fontWeight: 600,
-                                background: '#FEF2F2', border: '1px solid #FECACA',
-                                borderRadius: 7, color: '#DC2626', cursor: 'pointer'
+                                padding: '5px 12px', fontSize: 12, fontWeight: 600,
+                                background: '#FFFFFF', border: '1px solid #FECACA',
+                                borderRadius: 5, color: '#DC2626', cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: 4
                               }}
-                            >Delete</button>}</>
+                            >
+                              {isApproved && <Lock size={11} />}
+                              <span>{isApproved ? 'Delete (DCR)' : 'Delete'}</span>
+                            </button>
                           </div>
                         </div>
                       );
@@ -1416,24 +2265,38 @@ export default function ParametersPage() {
                     <tbody>
                       {processParameters.map((pp, i) => (
                         <tr key={pp.id} style={{ background: i % 2 === 0 ? '#FFFFFF' : '#F8FAFC', borderBottom: '1px solid #F1F5F9' }}>
-                          <td style={{ padding: '12px 16px', fontWeight: 800, color: '#4338CA', fontSize: 13, fontFamily: 'monospace' }}>{pp.parameter_code}</td>
+                          <td style={{ padding: '12px 16px', fontWeight: 700, color: '#334155', fontSize: 13, fontFamily: 'monospace' }}>{pp.parameter_code}</td>
                           <td style={{ padding: '12px 16px', fontWeight: 700, color: '#0F172A', fontSize: 13.5 }}>{pp.parameter_name}</td>
                           <td style={{ padding: '12px 16px' }}>
-                            <span style={{ background: '#EEF2FF', border: '1px solid #C7D2FE', color: '#4338CA', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                            <span style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>
                               {pp.data_type}
                             </span>
                           </td>
-                          <td style={{ padding: '12px 16px', color: '#64748B', fontSize: 12, fontWeight: 600 }}>{pp.unit || '—'}</td>
-                          <td style={{ padding: '12px 16px', fontWeight: 700, color: '#1E293B', fontSize: 13 }}>{pp.specification || '—'}</td>
-                          <td style={{ padding: '12px 16px', color: '#059669', fontFamily: 'monospace', fontSize: 12.5, fontWeight: 600 }}>
+                          <td style={{ padding: '12px 16px', color: '#64748B', fontSize: 12, fontWeight: 600 }}>{pp.unit || '-'}</td>
+                          <td style={{ padding: '12px 16px', fontWeight: 700, color: '#1E293B', fontSize: 13 }}>{pp.specification || '-'}</td>
+                          <td style={{ padding: '12px 16px', color: '#0F172A', fontFamily: 'monospace', fontSize: 12.5, fontWeight: 600 }}>
                             {pp.data_type === 'numeric' && pp.lower_limit != null && pp.upper_limit != null
-                              ? `${pp.lower_limit} – ${pp.upper_limit} ${pp.unit}`
-                              : '—'}
+                              ? `${pp.lower_limit} to ${pp.upper_limit} ${pp.unit}`
+                              : '-'}
                           </td>
                           <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                              <button onClick={() => handleOpenEditProcessParam(pp)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 7, color: '#4338CA', cursor: 'pointer' }}>Edit</button>
-                              <button onClick={() => handleDeleteProcessParam(pp)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, color: '#DC2626', cursor: 'pointer' }}>Delete</button>
+                            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleEditProcessParamWithLockCheck(pp)}
+                                style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 5, color: '#334155', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              >
+                                {isApproved && <Lock size={11} />}
+                                <span>{isApproved ? 'Change (DCR)' : 'Edit'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteProcessParamWithLockCheck(pp)}
+                                style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, background: '#FFFFFF', border: '1px solid #FECACA', borderRadius: 5, color: '#DC2626', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              >
+                                {isApproved && <Lock size={11} />}
+                                <span>{isApproved ? 'Delete (DCR)' : 'Delete'}</span>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1446,6 +2309,165 @@ export default function ParametersPage() {
           )}
         </div>
 
+
+        {/* ── 2.5 DOCUMENT CHANGE REQUESTS (DCR LOG - FORM DKI/MR/F/05) ── */}
+        {selectedTemplate && (
+          <div style={{
+            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14,
+            padding: '20px 24px', marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <FileText size={18} color="#0F172A" />
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                    Document Change Requests (DCR Log: Form DKI/MR/F/05)
+                  </h3>
+                  <span style={{ background: '#F1F5F9', border: '1px solid #CBD5E1', color: '#475569', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
+                    {templateDCRs.length} Recorded
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: '#64748B', marginTop: 3 }}>
+                  Mandatory engineering & quality change control procedure for approved inspection sheets.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenGeneralDCRModal}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                  background: '#0F172A', color: '#FFFFFF', border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 6px rgba(15,23,42,0.15)'
+                }}
+              >
+                <Plus size={14} />
+                <span>Initiate DCR (Form DKI/MR/F/05)</span>
+              </button>
+            </div>
+
+            {loadingDCRs ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#64748B', fontSize: 12.5 }}>
+                Loading change requests...
+              </div>
+            ) : templateDCRs.length === 0 ? (
+              <div style={{ padding: '28px 20px', textAlign: 'center', background: '#F8FAFC', borderRadius: 10, border: '1px dashed #CBD5E1' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 3 }}>
+                  No Document Change Requests Filed
+                </div>
+                <div style={{ fontSize: 11.5, color: '#94A3B8' }}>
+                  This operation is currently operating under baseline revision. Any future modifications to approved parameters will be logged here.
+                </div>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto', border: '1px solid #E2E8F0', borderRadius: 10 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', textAlign: 'left', color: '#64748B', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                      <th style={{ padding: '10px 14px' }}>DCR Number</th>
+                      <th style={{ padding: '10px 14px' }}>Date</th>
+                      <th style={{ padding: '10px 14px' }}>Type</th>
+                      <th style={{ padding: '10px 14px' }}>Parameter</th>
+                      <th style={{ padding: '10px 14px' }}>Current Specification</th>
+                      <th style={{ padding: '10px 14px' }}>Proposed Specification</th>
+                      <th style={{ padding: '10px 14px' }}>Basis for Change</th>
+                      <th style={{ padding: '10px 14px' }}>Raised By</th>
+                      <th style={{ padding: '10px 14px' }}>Status</th>
+                      <th style={{ padding: '10px 14px', textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {templateDCRs.map((dcr) => (
+                      <tr key={dcr.id} style={{ borderBottom: '1px solid #F1F5F9', background: '#FFFFFF' }}>
+                        <td style={{ padding: '11px 14px', fontWeight: 700, color: '#0F172A', fontFamily: 'monospace' }}>
+                          {dcr.dcr_number}
+                        </td>
+                        <td style={{ padding: '11px 14px', color: '#64748B', whiteSpace: 'nowrap' }}>
+                          {dcr.created_at ? new Date(dcr.created_at).toLocaleDateString() : '-'}
+                        </td>
+                        <td style={{ padding: '11px 14px' }}>
+                          <span style={{
+                            padding: '2px 8px', borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+                            background: dcr.change_type === 'addition' ? '#EFF6FF' : dcr.change_type === 'deletion' ? '#FEF2F2' : '#F5F3FF',
+                            color: dcr.change_type === 'addition' ? '#1D4ED8' : dcr.change_type === 'deletion' ? '#DC2626' : '#6D28D9',
+                            border: `1px solid ${dcr.change_type === 'addition' ? '#BFDBFE' : dcr.change_type === 'deletion' ? '#FECACA' : '#DDD6FE'}`
+                          }}>
+                            {dcr.change_type}
+                          </span>
+                        </td>
+                        <td style={{ padding: '11px 14px', fontWeight: 600, color: '#1E293B' }}>
+                          {dcr.parameter_code ? `[${dcr.parameter_code}] ` : ''}{dcr.parameter_name || 'N/A'}
+                          {dcr.is_process_parameter && (
+                            <span style={{ marginLeft: 6, fontSize: 10, color: '#4F46E5', fontWeight: 700 }}>PROCESS</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '11px 14px', color: '#64748B', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={dcr.current_specification}>
+                          {dcr.current_specification || '-'}
+                        </td>
+                        <td style={{ padding: '11px 14px', fontWeight: 600, color: '#0F172A', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={dcr.proposed_specification}>
+                          {dcr.proposed_specification || '-'}
+                        </td>
+                        <td style={{ padding: '11px 14px', color: '#475569', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={dcr.basis_for_change}>
+                          {dcr.basis_for_change || '-'}
+                        </td>
+                        <td style={{ padding: '11px 14px', color: '#64748B', whiteSpace: 'nowrap' }}>
+                          {dcr.raised_by_name || 'System'}
+                        </td>
+                        <td style={{ padding: '11px 14px' }}>
+                          <span style={{
+                            padding: '2px 8px', borderRadius: 12, fontSize: 10.5, fontWeight: 700,
+                            background:
+                              dcr.status === 'approved' ? '#DCFCE7' :
+                              dcr.status === 'reviewed' ? '#E0E7FF' :
+                              dcr.status === 'rejected' ? '#FEE2E2' : '#FEF3C7',
+                            color:
+                              dcr.status === 'approved' ? '#15803D' :
+                              dcr.status === 'reviewed' ? '#4338CA' :
+                              dcr.status === 'rejected' ? '#B91C1C' : '#B45309',
+                            border: `1px solid ${
+                              dcr.status === 'approved' ? '#BBF7D0' :
+                              dcr.status === 'reviewed' ? '#C7D2FE' :
+                              dcr.status === 'rejected' ? '#FCA5A5' : '#FDE68A'
+                            }`
+                          }}>
+                            {dcr.status_display || dcr.status.toUpperCase()}
+                          </span>
+                        </td>
+                        <td style={{ padding: '11px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                            {(dcr.status === 'submitted' || dcr.status === 'awaiting_review') && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDCRReviewModal(dcr)}
+                                style={{
+                                  padding: '4px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6,
+                                  background: '#FFFBEB', border: '1px solid #FDE68A', color: '#B45309', cursor: 'pointer'
+                                }}
+                              >
+                                Review
+                              </button>
+                            )}
+                            {(dcr.status === 'reviewed' || (isAdmin && dcr.status !== 'approved' && dcr.status !== 'rejected')) && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDCRApproveModal(dcr)}
+                                style={{
+                                  padding: '4px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6,
+                                  background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#15803D', cursor: 'pointer'
+                                }}
+                              >
+                                Approve
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── 3. CONFIGURATION STATUS CARD ────────────────────────── */}
         {selectedTemplate && (() => {
@@ -1491,14 +2513,11 @@ export default function ParametersPage() {
                 </div>
               </div>
 
-              <div style={{ width: '100%', height: 8, background: '#E2E8F0', borderRadius: 20, overflow: 'hidden' }}>
+              <div style={{ width: '100%', height: 6, background: '#E2E8F0', borderRadius: 4, overflow: 'hidden' }}>
                 <div style={{
-                  width: `${pct}%`, height: '100%', borderRadius: 20,
-                  background: complete
-                    ? 'linear-gradient(90deg, #059669, #34D399)'
-                    : 'linear-gradient(90deg, #0284C7, #38BDF8)',
-                  transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-                  boxShadow: complete ? '0 0 8px rgba(5,150,105,0.3)' : '0 0 8px rgba(2,132,199,0.3)'
+                  width: `${pct}%`, height: '100%', borderRadius: 4,
+                  background: complete ? '#15803D' : '#0F172A',
+                  transition: 'width 0.3s ease'
                 }} />
               </div>
             </div>
@@ -1521,45 +2540,117 @@ export default function ParametersPage() {
 
               <div style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '14px 20px', borderRadius: 12, flexWrap: 'wrap', gap: 14,
-                background: isPublished ? '#F0FDF4' : '#EFF6FF',
-                border: `1px solid ${isPublished ? '#86EFAC' : '#93C5FD'}`,
+                padding: '14px 18px', borderRadius: 8, flexWrap: 'wrap', gap: 14,
+                background: '#F8FAFC',
+                border: '1px solid #E2E8F0',
               }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: isPublished ? '#15803D' : '#1E40AF' }}>
-                      Status: {isPublished ? 'Dispatched & Live' : 'Ready to Dispatch'}
+                    <span style={{
+                      fontSize: 13.5, fontWeight: 700,
+                      color: '#0F172A'
+                    }}>
+                      Status: {(isPublished || selectedTemplate?.status === 'approved') ? 'Dispatched & Live on Mobile' :
+                               selectedTemplate?.status === 'reviewed' ? 'Reviewed: Ready for Final Sign-Off' :
+                               selectedTemplate?.status === 'under_review' ? 'Under Review: Quality Check in Progress' :
+                               selectedTemplate?.status === 'rejected' ? 'Rejected: Modifications Required' : 'Draft: Pending Review Submission'}
                     </span>
                     <span style={{
-                      padding: '2px 9px', borderRadius: 12, fontSize: 11, fontWeight: 700,
-                      background: isPublished ? '#DCFCE7' : '#DBEAFE',
-                      color: isPublished ? '#16A34A' : '#2563EB',
-                      border: `1px solid ${isPublished ? '#BBF7D0' : '#BFDBFE'}`
+                      padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+                      background: '#F1F5F9',
+                      color: '#475569',
+                      border: '1px solid #E2E8F0'
                     }}>
-                      {selectedMachine?.machine_code || 'CNC-01'} · Operator & Quality Inspector
+                      {selectedMachine?.machine_code || 'CNC-01'} : Operator & Quality Inspector
                     </span>
                   </div>
-                  <div style={{ fontSize: 12, color: isPublished ? '#166534' : '#3B82F6', marginTop: 4 }}>
-                    {isPublished
-                      ? `All configured parameters are active on shop floor mobile devices for ${selectedPart?.part_number}.`
-                      : `Click Dispatch to broadcast configured parameters to shop floor mobile devices.`}
+                  <div style={{
+                    fontSize: 12,
+                    color: '#64748B',
+                    marginTop: 4
+                  }}>
+                    {(isPublished || selectedTemplate?.status === 'approved')
+                      ? `All configured parameters are authorized and live on shop floor mobile devices for ${selectedPart?.part_number}.`
+                      : selectedTemplate?.status === 'reviewed'
+                      ? `Parameters reviewed and recommended. Final sign-off will automatically broadcast parameters to mobile devices.`
+                      : selectedTemplate?.status === 'under_review'
+                      ? `Template is currently under review by ${selectedTemplate.assigned_reviewer_name || 'assigned reviewer'}.`
+                      : selectedTemplate?.status === 'rejected'
+                      ? `Modifications requested: "${selectedTemplate.rejection_reason || 'See review notes'}". Please correct and resubmit.`
+                      : `Submit this operation for 3-tier sign-off to authorize broadcast to mobile shop floor.`}
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setShowPublishModal(true)}
-                  style={{
-                    padding: '9px 20px', fontWeight: 800, borderRadius: 10, fontSize: 13,
-                    background: isPublished
-                      ? 'linear-gradient(135deg, #15803D 0%, #16A34A 100%)'
-                      : 'linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)',
-                    color: '#fff', border: 'none', cursor: 'pointer',
-                    boxShadow: isPublished ? '0 3px 10px rgba(22,163,74,0.3)' : '0 3px 10px rgba(37,99,235,0.3)',
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  <span>{isPublished ? 'Re-Dispatch to Mobile' : 'Publish & Dispatch to Mobile'}</span>
-                </button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {/* Primary context button depending on status */}
+                  {selectedTemplate?.status === 'reviewed' ? (
+                    <button
+                      type="button"
+                      onClick={handleOpenApproveModal}
+                      style={{
+                        padding: '8px 18px', fontWeight: 600, borderRadius: 6, fontSize: 13,
+                        background: '#15803D',
+                        border: '1px solid #166534',
+                        color: '#FFFFFF', cursor: 'pointer',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>Final Approve & Dispatch</span>
+                    </button>
+                  ) : selectedTemplate?.status === 'under_review' ? (
+                    <button
+                      type="button"
+                      onClick={handleOpenReviewModal}
+                      style={{
+                        padding: '8px 18px', fontWeight: 600, borderRadius: 6, fontSize: 13,
+                        background: '#D97706',
+                        border: '1px solid #B45309',
+                        color: '#FFFFFF', cursor: 'pointer',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <Eye size={14} />
+                      <span>Review & Recommend</span>
+                    </button>
+                  ) : (!selectedTemplate?.status || selectedTemplate?.status === 'draft' || selectedTemplate?.status === 'rejected') ? (
+                    <button
+                      type="button"
+                      onClick={handleInitiateSubmitReview}
+                      title={isAllParametersFilled ? "Submit for quality review" : `Configure all ${targetRequiredParams} parameters before submitting`}
+                      style={{
+                        padding: '8px 18px', fontWeight: 600, borderRadius: 6, fontSize: 13,
+                        background: isAllParametersFilled ? '#2563EB' : '#94A3B8',
+                        border: isAllParametersFilled ? '1px solid #1D4ED8' : '1px solid #94A3B8',
+                        color: '#FFFFFF', cursor: 'pointer',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <FileText size={14} />
+                      <span>Submit for Quality Sign-Off ({totalConfiguredParams}/{targetRequiredParams})</span>
+                    </button>
+                  ) : null}
+
+                  {/* Direct Publish / Re-Dispatch button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPublishModal(true)}
+                    style={{
+                      padding: '8px 16px', fontWeight: 600, borderRadius: 6, fontSize: 12.5,
+                      background: '#FFFFFF',
+                      color: '#334155',
+                      border: '1px solid #CBD5E1',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    <RefreshCw size={13} />
+                    <span>{(isPublished || selectedTemplate?.status === 'approved') ? 'Re-Dispatch to Mobile' : 'Direct Dispatch (Admin)'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -2154,7 +3245,7 @@ export default function ParametersPage() {
         {showPublishModal && (
           <div className="modal-overlay" onClick={() => !isPublishing && setShowPublishModal(false)}>
             <div className="modal-content" style={{ maxWidth: 520, borderRadius: 16, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header" style={{ background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)', color: '#fff', padding: '16px 20px' }}>
+              <div className="modal-header" style={{ background: '#0F172A', color: '#fff', padding: '16px 20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div>
                     <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F8FAFC' }}>Publish & Dispatch to Mobile</h3>
@@ -2277,10 +3368,10 @@ export default function ParametersPage() {
                   disabled={isPublishing || parameters.length === 0}
                   onClick={handlePublishTemplate}
                   style={{
-                    padding: '10px 22px', fontWeight: 800, borderRadius: 8, fontSize: 13,
-                    background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                    color: '#fff', border: 'none', cursor: isPublishing ? 'wait' : 'pointer',
-                    boxShadow: '0 4px 12px rgba(2, 132, 199, 0.35)',
+                    padding: '9px 20px', fontWeight: 600, borderRadius: 6, fontSize: 13,
+                    background: '#0F172A',
+                    color: '#fff', border: '1px solid #0F172A', cursor: isPublishing ? 'wait' : 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
                     display: 'flex', alignItems: 'center', gap: 8,
                   }}
                 >
@@ -2294,6 +3385,826 @@ export default function ParametersPage() {
                       <span>Confirm & Dispatch Now</span>
                     </>
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal: Submit Template for Quality Review ── */}
+        {showSubmitReviewModal && (
+          <div className="modal-overlay" onClick={() => !isSubmittingReview && setShowSubmitReviewModal(false)}>
+            <div className="modal-content" style={{ maxWidth: 520, borderRadius: 16, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header" style={{ background: '#0F172A', color: '#fff', padding: '16px 20px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <FileText size={18} />
+                    <span>Submit for Quality Review</span>
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 11.5, color: '#94A3B8' }}>Assign Reviewer & Approver for 3-Tier Sign-Off</p>
+                </div>
+                {!isSubmittingReview && (
+                  <button type="button" className="btn-close" style={{ color: '#fff' }} onClick={() => setShowSubmitReviewModal(false)}>×</button>
+                )}
+              </div>
+
+              <form onSubmit={handleSubmitReview}>
+                <div className="modal-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* Scope Summary Box */}
+                  <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '12px 16px', fontSize: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <div><strong style={{ color: '#64748B' }}>Part:</strong> {selectedPart?.part_number}</div>
+                      <div><strong style={{ color: '#64748B' }}>Operation:</strong> {selectedTemplate?.name || selectedTemplate?.inspection_type} (v{selectedTemplate?.version})</div>
+                      <div><strong style={{ color: '#64748B' }}>Product Parameters:</strong> {parameters.length}</div>
+                      <div><strong style={{ color: '#64748B' }}>Process Parameters:</strong> {processParameters.length}</div>
+                    </div>
+                  </div>
+
+                  {/* Select Reviewer */}
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: 12.5 }}>
+                      Assigned Reviewer (Quality Inspector / Supervisor)
+                    </label>
+                    <select
+                      className="form-input"
+                      value={submitReviewForm.assigned_reviewer}
+                      onChange={(e) => setSubmitReviewForm({ ...submitReviewForm, assigned_reviewer: e.target.value })}
+                      style={{ fontSize: 13 }}
+                    >
+                      <option value="">Select Quality Reviewer</option>
+                      {assignableUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
+                        </option>
+                      ))}
+                    </select>
+                    <small style={{ color: '#0369A1', fontSize: 11, marginTop: 4, display: 'block', fontWeight: 600 }}>
+                      An automated email and in-app notification will be dispatched to the selected reviewer.
+                    </small>
+                  </div>
+
+                  {/* Select Approver */}
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: 12.5 }}>
+                      Assigned Approver (Quality Head / Admin)
+                    </label>
+                    <select
+                      className="form-input"
+                      value={submitReviewForm.assigned_approver}
+                      onChange={(e) => setSubmitReviewForm({ ...submitReviewForm, assigned_approver: e.target.value })}
+                      style={{ fontSize: 13 }}
+                    >
+                      <option value="">Select Final Approver</option>
+                      {assignableUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
+                        </option>
+                      ))}
+                    </select>
+                    <small style={{ color: '#0369A1', fontSize: 11, marginTop: 4, display: 'block', fontWeight: 600 }}>
+                      An automated notification and advance email will be dispatched to the selected approver.
+                    </small>
+                  </div>
+
+                  {/* Submission Notes */}
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: 12.5 }}>
+                      Submission Remarks / Notes (Optional)
+                    </label>
+                    <textarea
+                      rows={3}
+                      className="form-input"
+                      placeholder="e.g. Dimensions updated according to latest revision C drawing. Please verify."
+                      value={submitReviewForm.notes}
+                      onChange={(e) => setSubmitReviewForm({ ...submitReviewForm, notes: e.target.value })}
+                      style={{ resize: 'vertical', fontSize: 12.5 }}
+                    />
+                  </div>
+                </div>
+
+                <div className="modal-footer" style={{ padding: '14px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={isSubmittingReview}
+                    onClick={() => setShowSubmitReviewModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={isSubmittingReview || (parameters.length === 0 && processParameters.length === 0)}
+                    style={{
+                      background: '#2563EB',
+                      border: '1px solid #1D4ED8',
+                      borderRadius: 6,
+                      display: 'flex', alignItems: 'center', gap: 6
+                    }}
+                  >
+                    {isSubmittingReview ? 'Submitting...' : 'Confirm Submission'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal: Review & Recommend / Reject ── */}
+        {showReviewModal && (
+          <div className="modal-overlay" onClick={() => !isProcessingReview && setShowReviewModal(false)}>
+            <div className="modal-content" style={{ maxWidth: 520, borderRadius: 16, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header" style={{ background: '#0F172A', color: '#fff', padding: '16px 20px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Eye size={18} />
+                    <span>Review Inspection Template</span>
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 11.5, color: '#94A3B8' }}>Stage 2: Recommend for final approval or request revisions</p>
+                </div>
+                {!isProcessingReview && (
+                  <button type="button" className="btn-close" style={{ color: '#fff' }} onClick={() => setShowReviewModal(false)}>×</button>
+                )}
+              </div>
+
+              <div className="modal-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Summary */}
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '12px 16px', fontSize: 12 }}>
+                  <div><strong>Operation:</strong> {selectedTemplate?.name || selectedTemplate?.inspection_type} · <strong>Part:</strong> {selectedPart?.part_number}</div>
+                  <div style={{ marginTop: 4, color: '#64748B' }}>
+                    Prepared by {selectedTemplate?.created_by_name || 'Creator'} · {parameters.length} Product + {processParameters.length} Process parameters
+                  </div>
+                </div>
+
+                {/* Review Action Selection */}
+                <div>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 8, display: 'block' }}>
+                    Review Decision *
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div
+                      onClick={() => setReviewActionForm({ ...reviewActionForm, action: 'recommend' })}
+                      style={{
+                        border: `2px solid ${reviewActionForm.action === 'recommend' ? '#10B981' : '#E2E8F0'}`,
+                        background: reviewActionForm.action === 'recommend' ? '#F0FDF4' : '#FFFFFF',
+                        borderRadius: 10,
+                        padding: '12px 14px',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <CheckCircle2 size={22} color="#059669" style={{ margin: '0 auto 4px auto' }} />
+                      <div style={{ fontSize: 13, fontWeight: 800, color: reviewActionForm.action === 'recommend' ? '#15803D' : '#0F172A' }}>
+                        Recommend
+                      </div>
+                      <div style={{ fontSize: 10.5, color: '#64748B', marginTop: 2 }}>
+                        Approve parameters & send to Final Sign-off
+                      </div>
+                    </div>
+
+                    <div
+                      onClick={() => setReviewActionForm({ ...reviewActionForm, action: 'reject' })}
+                      style={{
+                        border: `2px solid ${reviewActionForm.action === 'reject' ? '#EF4444' : '#E2E8F0'}`,
+                        background: reviewActionForm.action === 'reject' ? '#FEF2F2' : '#FFFFFF',
+                        borderRadius: 10,
+                        padding: '12px 14px',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <X size={22} color="#DC2626" style={{ margin: '0 auto 4px auto' }} />
+                      <div style={{ fontSize: 13, fontWeight: 800, color: reviewActionForm.action === 'reject' ? '#B91C1C' : '#0F172A' }}>
+                        Request Changes
+                      </div>
+                      <div style={{ fontSize: 10.5, color: '#64748B', marginTop: 2 }}>
+                        Reject and send back to draft
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Remarks textarea */}
+                <div>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12.5 }}>
+                    {reviewActionForm.action === 'reject' ? 'Reason for Rejection *' : 'Review Remarks / Inspection Notes'}
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="form-input"
+                    placeholder={
+                      reviewActionForm.action === 'reject'
+                        ? 'Please specify what tolerances or parameters need correction...'
+                        : 'e.g. Dimensions verified against drawing rev C. Recommended for final approval.'
+                    }
+                    value={reviewActionForm.comments}
+                    onChange={(e) => setReviewActionForm({ ...reviewActionForm, comments: e.target.value })}
+                    style={{ resize: 'vertical', fontSize: 12.5 }}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ padding: '14px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={isProcessingReview}
+                  onClick={() => setShowReviewModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isProcessingReview || (reviewActionForm.action === 'reject' && !reviewActionForm.comments.trim())}
+                  onClick={() => handleSubmitReviewAction(reviewActionForm.action)}
+                  style={{
+                    padding: '8px 20px',
+                    borderRadius: 8,
+                    fontWeight: 800,
+                    fontSize: 13,
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#fff',
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    background: reviewActionForm.action === 'recommend' ? '#15803D' : '#DC2626'
+                  }}
+                >
+                  {isProcessingReview ? 'Processing...' : reviewActionForm.action === 'recommend' ? 'Confirm & Recommend' : 'Reject & Return'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal: Final Approve & Dispatch ── */}
+        {showApproveModal && (
+          <div className="modal-overlay" onClick={() => !isProcessingApprove && setShowApproveModal(false)}>
+            <div className="modal-content" style={{ maxWidth: 520, borderRadius: 16, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header" style={{ background: '#0F172A', color: '#fff', padding: '16px 20px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Shield size={18} />
+                    <span>Final Quality Sign-Off & Dispatch</span>
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 11.5, color: '#94A3B8' }}>Stage 3: Authorize master parameters and broadcast to shop floor</p>
+                </div>
+                {!isProcessingApprove && (
+                  <button type="button" className="btn-close" style={{ color: '#fff' }} onClick={() => setShowApproveModal(false)}>×</button>
+                )}
+              </div>
+
+              <div className="modal-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Audit summary */}
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '12px 16px', fontSize: 12 }}>
+                  <div><strong>Operation:</strong> {selectedTemplate?.name || selectedTemplate?.inspection_type} · <strong>Part:</strong> {selectedPart?.part_number}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                    <div><strong style={{ color: '#64748B' }}>1. Prepared By:</strong> {selectedTemplate?.created_by_name || 'Creator'}</div>
+                    <div><strong style={{ color: '#64748B' }}>2. Reviewed By:</strong> {selectedTemplate?.reviewed_by_name || 'Reviewer'}</div>
+                  </div>
+                  {selectedTemplate?.review_comments && (
+                    <div style={{ marginTop: 6, fontStyle: 'italic', color: '#334155' }}>
+                      Reviewer Note: "{selectedTemplate.review_comments}"
+                    </div>
+                  )}
+                </div>
+
+                {/* Approve Decision Selection */}
+                <div>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 8, display: 'block' }}>
+                    Approval Decision *
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div
+                      onClick={() => setApproveActionForm({ ...approveActionForm, action: 'approve' })}
+                      style={{
+                        border: `2px solid ${approveActionForm.action === 'approve' ? '#059669' : '#E2E8F0'}`,
+                        background: approveActionForm.action === 'approve' ? '#ECFDF5' : '#FFFFFF',
+                        borderRadius: 10,
+                        padding: '12px 14px',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <CheckCircle2 size={22} color="#059669" style={{ margin: '0 auto 4px auto' }} />
+                      <div style={{ fontSize: 13, fontWeight: 800, color: approveActionForm.action === 'approve' ? '#047857' : '#0F172A' }}>
+                        Approve & Publish
+                      </div>
+                      <div style={{ fontSize: 10.5, color: '#64748B', marginTop: 2 }}>
+                        Authorize and dispatch to mobile shop floor
+                      </div>
+                    </div>
+
+                    <div
+                      onClick={() => setApproveActionForm({ ...approveActionForm, action: 'reject' })}
+                      style={{
+                        border: `2px solid ${approveActionForm.action === 'reject' ? '#EF4444' : '#E2E8F0'}`,
+                        background: approveActionForm.action === 'reject' ? '#FEF2F2' : '#FFFFFF',
+                        borderRadius: 10,
+                        padding: '12px 14px',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <X size={22} color="#DC2626" style={{ margin: '0 auto 4px auto' }} />
+                      <div style={{ fontSize: 13, fontWeight: 800, color: approveActionForm.action === 'reject' ? '#B91C1C' : '#0F172A' }}>
+                        Reject & Return
+                      </div>
+                      <div style={{ fontSize: 10.5, color: '#64748B', marginTop: 2 }}>
+                        Send back for correction
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Approval Comments */}
+                <div>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12.5 }}>
+                    {approveActionForm.action === 'reject' ? 'Reason for Rejection *' : 'Approval Comments / Sign-Off Remarks'}
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="form-input"
+                    placeholder={
+                      approveActionForm.action === 'reject'
+                        ? 'Please specify why this operation template is rejected...'
+                        : 'e.g. Master parameters approved for production run. Authorized for mobile checklist.'
+                    }
+                    value={approveActionForm.comments}
+                    onChange={(e) => setApproveActionForm({ ...approveActionForm, comments: e.target.value })}
+                    style={{ resize: 'vertical', fontSize: 12.5 }}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ padding: '14px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={isProcessingApprove}
+                  onClick={() => setShowApproveModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isProcessingApprove || (approveActionForm.action === 'reject' && !approveActionForm.comments.trim())}
+                  onClick={() => handleSubmitApproveAction(approveActionForm.action)}
+                  style={{
+                    padding: '8px 20px',
+                    borderRadius: 8,
+                    fontWeight: 800,
+                    fontSize: 13,
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#fff',
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    background: approveActionForm.action === 'approve' ? '#15803D' : '#DC2626'
+                  }}
+                >
+                  {isProcessingApprove ? 'Processing...' : approveActionForm.action === 'approve' ? 'Authorize & Publish Now' : 'Reject & Return'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal: Initiate Document Change Request (DCR - Form DKI/MR/F/05) ── */}
+        {showDCRModal && (
+          <div className="modal-overlay" onClick={() => !isSubmittingDCR && setShowDCRModal(false)}>
+            <div className="modal-content" style={{ maxWidth: 580, borderRadius: 16, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header" style={{ background: '#0F172A', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <FileText size={18} color="#38BDF8" />
+                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F8FAFC' }}>
+                      Document Change Request (DCR)
+                    </h3>
+                    <span style={{ background: '#1E293B', border: '1px solid #334155', color: '#38BDF8', padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700 }}>
+                      Form DKI/MR/F/05
+                    </span>
+                  </div>
+                  <p style={{ margin: '4px 0 0 0', fontSize: 11.5, color: '#94A3B8' }}>
+                    Engineering & Quality Change Governance for Approved Inspection Sheets
+                  </p>
+                </div>
+                {!isSubmittingDCR && (
+                  <button type="button" className="btn-close" style={{ color: '#fff' }} onClick={() => setShowDCRModal(false)}>×</button>
+                )}
+              </div>
+
+              <form onSubmit={handleSubmitDCR}>
+                <div className="modal-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {/* Context header */}
+                  <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '10px 14px', fontSize: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                      <div><span style={{ color: '#64748B' }}>Part Number:</span> <strong>{selectedPart?.part_number}</strong></div>
+                      <div><span style={{ color: '#64748B' }}>Operation:</span> <strong>{selectedTemplate?.name || selectedTemplate?.inspection_type} (v{selectedTemplate?.version})</strong></div>
+                      <div><span style={{ color: '#64748B' }}>Status:</span> <strong style={{ color: '#15803D' }}>Approved & Active</strong></div>
+                      <div><span style={{ color: '#64748B' }}>Doc Control:</span> <strong>DKI/MR/F/05</strong></div>
+                    </div>
+                  </div>
+
+                  {/* Change Type Selection */}
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>Change Type *</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                      {[
+                        { id: 'modification', label: 'Modification', desc: 'Update limits/tol' },
+                        { id: 'addition', label: 'Addition', desc: 'New parameter' },
+                        { id: 'deletion', label: 'Deletion', desc: 'Remove parameter' }
+                      ].map((t) => (
+                        <div
+                          key={t.id}
+                          onClick={() => setDcrForm({ ...dcrForm, change_type: t.id })}
+                          style={{
+                            border: `2px solid ${dcrForm.change_type === t.id ? '#0284C7' : '#E2E8F0'}`,
+                            background: dcrForm.change_type === t.id ? '#EFF6FF' : '#FFFFFF',
+                            borderRadius: 8, padding: '10px', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s'
+                          }}
+                        >
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: dcrForm.change_type === t.id ? '#0284C7' : '#0F172A' }}>{t.label}</div>
+                          <div style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>{t.desc}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Target Parameter selection if modification or deletion */}
+                  {dcrForm.change_type !== 'addition' ? (
+                    <div>
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>Target Parameter to Change / Delete *</label>
+                      <select
+                        className="form-input"
+                        value={dcrForm.target_param_id ? `${dcrForm.target_type}:${dcrForm.target_param_id}` : ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val) {
+                            setDcrForm({ ...dcrForm, target_param_id: '', parameter_code: '', parameter_name: '', current_specification: '' });
+                            return;
+                          }
+                          const [type, id] = val.split(':');
+                          const numericId = parseInt(id);
+                          if (type === 'product') {
+                            const found = parameters.find(p => p.id === numericId);
+                            if (found) {
+                              setDcrForm({
+                                ...dcrForm,
+                                target_type: 'product',
+                                target_param_id: numericId,
+                                parameter_code: found.parameter_code || `P${found.sequence_order}`,
+                                parameter_name: found.parameter_name,
+                                current_specification: `Nominal: ${found.nominal_value} ${found.unit}, Tol: +${found.upper_tolerance} / ${found.lower_tolerance} (${found.measurement_type})`,
+                                proposed_specification: dcrForm.change_type === 'deletion' ? 'Parameter Deletion Requested' : dcrForm.proposed_specification
+                              });
+                            }
+                          } else {
+                            const found = processParameters.find(p => p.id === numericId);
+                            if (found) {
+                              setDcrForm({
+                                ...dcrForm,
+                                target_type: 'process',
+                                target_param_id: numericId,
+                                parameter_code: found.parameter_code || `PR${found.sequence_order}`,
+                                parameter_name: found.parameter_name,
+                                current_specification: found.specification || `Nominal: ${found.nominal_value} ${found.unit}, Tol: +${found.upper_tolerance} / ${found.lower_tolerance}`,
+                                proposed_specification: dcrForm.change_type === 'deletion' ? 'Process Parameter Deletion Requested' : dcrForm.proposed_specification
+                              });
+                            }
+                          }
+                        }}
+                        required
+                        style={{ fontSize: 13 }}
+                      >
+                        <option value="">Select Existing Parameter</option>
+                        <optgroup label="Product Parameters">
+                          {parameters.map(p => (
+                            <option key={`product:${p.id}`} value={`product:${p.id}`}>
+                              [P{p.sequence_order}] {p.parameter_name} ({p.nominal_value} {p.unit})
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Process Parameters">
+                          {processParameters.map(pp => (
+                            <option key={`process:${pp.id}`} value={`process:${pp.id}`}>
+                              [PR{pp.sequence_order}] {pp.parameter_name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+                      <div>
+                        <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>Parameter Category *</label>
+                        <select
+                          className="form-input"
+                          value={dcrForm.target_type}
+                          onChange={(e) => setDcrForm({ ...dcrForm, target_type: e.target.value })}
+                          style={{ fontSize: 12.5 }}
+                        >
+                          <option value="product">Product Parameter</option>
+                          <option value="process">Process Parameter</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>New Parameter Name *</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="e.g. Outer Diameter Step 2"
+                          value={dcrForm.parameter_name}
+                          onChange={(e) => setDcrForm({ ...dcrForm, parameter_name: e.target.value })}
+                          required
+                          style={{ fontSize: 12.5 }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Current Specification (Read Only) */}
+                  {dcrForm.change_type !== 'addition' && (
+                    <div>
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>Current Approved Specification (Read Only)</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={dcrForm.current_specification || '-'}
+                        readOnly
+                        style={{ background: '#F1F5F9', color: '#475569', fontSize: 12 }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Proposed Specification */}
+                  {dcrForm.change_type !== 'deletion' && (
+                    <div>
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>Proposed Specification & Tolerance Details *</label>
+                      <textarea
+                        rows={2}
+                        className="form-input"
+                        placeholder="e.g. Nominal: 12.50 mm, Upper Tol: +0.05, Lower Tol: -0.05, Technique: Micrometer"
+                        value={dcrForm.proposed_specification}
+                        onChange={(e) => setDcrForm({ ...dcrForm, proposed_specification: e.target.value })}
+                        required
+                        style={{ fontSize: 12.5, resize: 'vertical' }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Basis for Change / Reason */}
+                  <div>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>Basis for Change / Engineering Reason *</label>
+                    <textarea
+                      rows={2}
+                      className="form-input"
+                      placeholder="e.g. Customer Engineering Change Notice (ECN-2026-88), tool wear compensation, or drawing revision C."
+                      value={dcrForm.basis_for_change}
+                      onChange={(e) => setDcrForm({ ...dcrForm, basis_for_change: e.target.value })}
+                      required
+                      style={{ fontSize: 12.5, resize: 'vertical' }}
+                    />
+                  </div>
+
+                  {/* Reviewer & Approver assignment */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>Quality Reviewer *</label>
+                      <select
+                        className="form-input"
+                        value={dcrForm.assigned_reviewer}
+                        onChange={(e) => setDcrForm({ ...dcrForm, assigned_reviewer: e.target.value })}
+                        required
+                        style={{ fontSize: 12.5 }}
+                      >
+                        <option value="">Select Reviewer</option>
+                        {assignableUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>Quality Approver *</label>
+                      <select
+                        className="form-input"
+                        value={dcrForm.assigned_approver}
+                        onChange={(e) => setDcrForm({ ...dcrForm, assigned_approver: e.target.value })}
+                        required
+                        style={{ fontSize: 12.5 }}
+                      >
+                        <option value="">Select Approver</option>
+                        {assignableUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="modal-footer" style={{ padding: '14px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                  <button type="button" className="btn btn-ghost" disabled={isSubmittingDCR} onClick={() => setShowDCRModal(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={isSubmittingDCR || !dcrForm.basis_for_change.trim()}
+                    style={{ background: '#0F172A', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}
+                  >
+                    {isSubmittingDCR ? 'Submitting DCR...' : 'Submit DCR (Form DKI/MR/F/05)'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal: Review DCR (Form DKI/MR/F/05) ── */}
+        {showDCRReviewModal && selectedDCR && (
+          <div className="modal-overlay" onClick={() => !isProcessingDCRReview && setShowDCRReviewModal(false)}>
+            <div className="modal-content" style={{ maxWidth: 520, borderRadius: 16, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header" style={{ background: '#0F172A', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Eye size={18} /> Review Document Change Request
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 11.5, color: '#94A3B8' }}>
+                    {selectedDCR.dcr_number} · Form DKI/MR/F/05
+                  </p>
+                </div>
+                {!isProcessingDCRReview && (
+                  <button type="button" className="btn-close" style={{ color: '#fff' }} onClick={() => setShowDCRReviewModal(false)}>×</button>
+                )}
+              </div>
+
+              <div className="modal-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '12px 14px', fontSize: 12 }}>
+                  <div style={{ marginBottom: 4 }}><strong>Parameter:</strong> {selectedDCR.parameter_code ? `[${selectedDCR.parameter_code}] ` : ''}{selectedDCR.parameter_name}</div>
+                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Change Type:</span> <strong style={{ textTransform: 'uppercase' }}>{selectedDCR.change_type}</strong></div>
+                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Current Spec:</span> {selectedDCR.current_specification || 'N/A'}</div>
+                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Proposed Spec:</span> <strong style={{ color: '#0F172A' }}>{selectedDCR.proposed_specification || 'N/A'}</strong></div>
+                  <div><span style={{ color: '#64748B' }}>Basis for Change:</span> {selectedDCR.basis_for_change}</div>
+                </div>
+
+                <div>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 8, display: 'block' }}>
+                    Review Decision *
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div
+                      onClick={() => setDcrReviewForm({ ...dcrReviewForm, action: 'recommend' })}
+                      style={{
+                        border: `2px solid ${dcrReviewForm.action === 'recommend' ? '#10B981' : '#E2E8F0'}`,
+                        background: dcrReviewForm.action === 'recommend' ? '#F0FDF4' : '#FFFFFF',
+                        borderRadius: 8, padding: '10px', cursor: 'pointer', textAlign: 'center'
+                      }}
+                    >
+                      <CheckCircle2 size={20} color="#059669" style={{ margin: '0 auto 4px auto' }} />
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: dcrReviewForm.action === 'recommend' ? '#15803D' : '#0F172A' }}>Recommend</div>
+                      <div style={{ fontSize: 10, color: '#64748B' }}>Forward to Approver</div>
+                    </div>
+                    <div
+                      onClick={() => setDcrReviewForm({ ...dcrReviewForm, action: 'reject' })}
+                      style={{
+                        border: `2px solid ${dcrReviewForm.action === 'reject' ? '#EF4444' : '#E2E8F0'}`,
+                        background: dcrReviewForm.action === 'reject' ? '#FEF2F2' : '#FFFFFF',
+                        borderRadius: 8, padding: '10px', cursor: 'pointer', textAlign: 'center'
+                      }}
+                    >
+                      <X size={20} color="#DC2626" style={{ margin: '0 auto 4px auto' }} />
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: dcrReviewForm.action === 'reject' ? '#B91C1C' : '#0F172A' }}>Reject</div>
+                      <div style={{ fontSize: 10, color: '#64748B' }}>Deny change request</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12.5 }}>Review Remarks *</label>
+                  <textarea
+                    rows={3}
+                    className="form-input"
+                    placeholder={dcrReviewForm.action === 'reject' ? 'State reason for rejecting change...' : 'State review remarks or verification of drawing / instrument...'}
+                    value={dcrReviewForm.remarks}
+                    onChange={(e) => setDcrReviewForm({ ...dcrReviewForm, remarks: e.target.value })}
+                    style={{ fontSize: 12.5, resize: 'vertical' }}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ padding: '14px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button type="button" className="btn btn-ghost" disabled={isProcessingDCRReview} onClick={() => setShowDCRReviewModal(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isProcessingDCRReview || (dcrReviewForm.action === 'reject' && !dcrReviewForm.remarks.trim())}
+                  onClick={() => handleReviewDCRSubmit(dcrReviewForm.action)}
+                  style={{
+                    padding: '8px 20px', borderRadius: 8, fontWeight: 800, fontSize: 13, border: 'none', cursor: 'pointer', color: '#fff',
+                    background: dcrReviewForm.action === 'recommend' ? '#059669' : '#DC2626'
+                  }}
+                >
+                  {isProcessingDCRReview ? 'Processing...' : dcrReviewForm.action === 'recommend' ? 'Confirm & Recommend' : 'Reject DCR'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal: Approve DCR (Form DKI/MR/F/05) ── */}
+        {showDCRApproveModal && selectedDCR && (
+          <div className="modal-overlay" onClick={() => !isProcessingDCRApprove && setShowDCRApproveModal(false)}>
+            <div className="modal-content" style={{ maxWidth: 520, borderRadius: 16, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header" style={{ background: '#0F172A', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Shield size={18} /> Final Sign-Off & Implement DCR
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 11.5, color: '#94A3B8' }}>
+                    {selectedDCR.dcr_number} · Approving will automatically update parameter specifications
+                  </p>
+                </div>
+                {!isProcessingDCRApprove && (
+                  <button type="button" className="btn-close" style={{ color: '#fff' }} onClick={() => setShowDCRApproveModal(false)}>×</button>
+                )}
+              </div>
+
+              <div className="modal-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '12px 14px', fontSize: 12 }}>
+                  <div style={{ marginBottom: 4 }}><strong>Parameter:</strong> {selectedDCR.parameter_code ? `[${selectedDCR.parameter_code}] ` : ''}{selectedDCR.parameter_name}</div>
+                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Change Type:</span> <strong style={{ textTransform: 'uppercase' }}>{selectedDCR.change_type}</strong></div>
+                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Proposed Specification:</span> <strong style={{ color: '#047857' }}>{selectedDCR.proposed_specification || 'N/A'}</strong></div>
+                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Reviewer Remarks:</span> {selectedDCR.review_remarks || 'None'}</div>
+                </div>
+
+                <div>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 8, display: 'block' }}>
+                    Approval Decision *
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div
+                      onClick={() => setDcrApproveForm({ ...dcrApproveForm, action: 'approve' })}
+                      style={{
+                        border: `2px solid ${dcrApproveForm.action === 'approve' ? '#059669' : '#E2E8F0'}`,
+                        background: dcrApproveForm.action === 'approve' ? '#ECFDF5' : '#FFFFFF',
+                        borderRadius: 8, padding: '10px', cursor: 'pointer', textAlign: 'center'
+                      }}
+                    >
+                      <CheckCircle2 size={20} color="#059669" style={{ margin: '0 auto 4px auto' }} />
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: dcrApproveForm.action === 'approve' ? '#047857' : '#0F172A' }}>Authorize & Implement</div>
+                      <div style={{ fontSize: 10, color: '#64748B' }}>Apply changes to live template</div>
+                    </div>
+                    <div
+                      onClick={() => setDcrApproveForm({ ...dcrApproveForm, action: 'reject' })}
+                      style={{
+                        border: `2px solid ${dcrApproveForm.action === 'reject' ? '#EF4444' : '#E2E8F0'}`,
+                        background: dcrApproveForm.action === 'reject' ? '#FEF2F2' : '#FFFFFF',
+                        borderRadius: 8, padding: '10px', cursor: 'pointer', textAlign: 'center'
+                      }}
+                    >
+                      <X size={20} color="#DC2626" style={{ margin: '0 auto 4px auto' }} />
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: dcrApproveForm.action === 'reject' ? '#B91C1C' : '#0F172A' }}>Reject</div>
+                      <div style={{ fontSize: 10, color: '#64748B' }}>Deny change request</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12.5 }}>Approval Comments *</label>
+                  <textarea
+                    rows={3}
+                    className="form-input"
+                    placeholder={dcrApproveForm.action === 'reject' ? 'State reason for rejection...' : 'State approval comments or authorization reference...'}
+                    value={dcrApproveForm.remarks}
+                    onChange={(e) => setDcrApproveForm({ ...dcrApproveForm, remarks: e.target.value })}
+                    style={{ fontSize: 12.5, resize: 'vertical' }}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ padding: '14px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button type="button" className="btn btn-ghost" disabled={isProcessingDCRApprove} onClick={() => setShowDCRApproveModal(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isProcessingDCRApprove || (dcrApproveForm.action === 'reject' && !dcrApproveForm.remarks.trim())}
+                  onClick={() => handleApproveDCRSubmit(dcrApproveForm.action)}
+                  style={{
+                    padding: '8px 20px', borderRadius: 8, fontWeight: 800, fontSize: 13, border: 'none', cursor: 'pointer', color: '#fff',
+                    background: dcrApproveForm.action === 'approve' ? '#059669' : '#DC2626'
+                  }}
+                >
+                  {isProcessingDCRApprove ? 'Processing...' : dcrApproveForm.action === 'approve' ? 'Authorize & Implement' : 'Reject DCR'}
                 </button>
               </div>
             </div>
@@ -2617,6 +4528,8 @@ export default function ParametersPage() {
               </form>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </>

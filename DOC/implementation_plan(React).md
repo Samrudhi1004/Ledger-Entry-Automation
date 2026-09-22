@@ -1,11 +1,11 @@
-# React Supervisor Dashboard — Implementation Plan
+# React Supervisor Dashboard : Implementation Plan
 
 ## Overview
 
 A **Vite + React** web dashboard for supervisors to monitor factory floor inspections in real-time.
 It connects to the Django backend via **REST APIs** (JWT auth) and **WebSocket** (live events).
 
-The dashboard is for **supervisors and quality engineers** only — operators use the Flutter mobile app.
+The dashboard is for **supervisors and quality engineers** only : operators use the Flutter mobile app.
 
 ---
 
@@ -92,7 +92,7 @@ dashboard/
 
 ---
 
-## Pages — Detailed Design
+## Pages : Detailed Design
 
 ### 1. Login Page
 - Dark, premium card form (username + password)
@@ -100,7 +100,7 @@ dashboard/
 - Redirects to Dashboard on success
 
 ### 2. Dashboard Page (Main)
-**Top Row — 5 KPI Stat Cards:**
+**Top Row : 5 KPI Stat Cards:**
 - Total Inspections Today
 - ✅ Approved
 - ❌ Rejected
@@ -108,12 +108,12 @@ dashboard/
 - 🔴 OOC Count (with red glow if > 0)
 
 **Middle Row:**
-- Left: **Live Inspection Feed** — card per active session, shows machine, part, operator, progress bar, OOC badge. WebSocket updates in real-time.
-- Right: **7-Day OOC Trend** — Recharts line chart
+- Left: **Live Inspection Feed** : card per active session, shows machine, part, operator, progress bar, OOC badge. WebSocket updates in real-time.
+- Right: **7-Day OOC Trend** : Recharts line chart
 
 **Bottom Row:**
-- **Shift Donut Chart** — approved/rejected/pending breakdown
-- **Recent Alerts** — list of latest OOC/critical fail events from WebSocket
+- **Shift Donut Chart** : approved/rejected/pending breakdown
+- **Recent Alerts** : list of latest OOC/critical fail events from WebSocket
 
 ### 3. Pending Review Page
 - Table of all `pending_review` sessions
@@ -168,17 +168,17 @@ dashboard/
 
 ```
 Step 1: Vite project scaffold + install deps
-Step 2: index.css — full design system
-Step 3: api/ layer — Axios + all endpoint modules
+Step 2: index.css : full design system
+Step 3: api/ layer : Axios + all endpoint modules
 Step 4: AuthContext + LoginPage
 Step 5: Layout (Sidebar + Header)
-Step 6: DashboardPage — stat cards + live feed + OOC trend chart
-Step 7: WebSocketContext — connect to ws/dashboard/<plant_id>/
+Step 6: DashboardPage : stat cards + live feed + OOC trend chart
+Step 7: WebSocketContext : connect to ws/dashboard/<plant_id>/
 Step 8: PendingReviewPage + Review Modal
-Step 9: SessionDetailPage — full measurement table
-Step 10: AnalyticsPage — charts + report
+Step 9: SessionDetailPage : full measurement table
+Step 10: AnalyticsPage : charts + report
 Step 11: MachineDetailPage
-Step 12: Polish — animations, responsive, error states
+Step 12: Polish : animations, responsive, error states
 ```
 
 ---
@@ -186,13 +186,13 @@ Step 12: Polish — animations, responsive, error states
 ## Open Questions
 
 > [!IMPORTANT]
-> **Backend URL** — What is your Django dev server URL? Default is `http://127.0.0.1:8000`. Should I use that?
+> **Backend URL** : What is your Django dev server URL? Default is `http://127.0.0.1:8000`. Should I use that?
 
 > [!IMPORTANT]
-> **Where to scaffold?** — The `dashboard/` folder at `e:\Liha_Tech_Project1\Ledger_entry_automation\dashboard\` is currently empty. Should I create the Vite project there?
+> **Where to scaffold?** : The `dashboard/` folder at `e:\Liha_Tech_Project1\Ledger_entry_automation\dashboard\` is currently empty. Should I create the Vite project there?
 
 > [!NOTE]
-> **Plant ID** — For the WebSocket and live feed, the supervisor needs to select a plant. Should the plant be auto-selected based on their profile, or should there be a plant selector dropdown?
+> **Plant ID** : For the WebSocket and live feed, the supervisor needs to select a plant. Should the plant be auto-selected based on their profile, or should there be a plant selector dropdown?
 
 > [!NOTE]
-> **Shift selector** — The shift summary API takes a shift param (A/B/C). Should there be a shift tab/toggle on the dashboard, or default to the current shift based on time of day?
+> **Shift selector** : The shift summary API takes a shift param (A/B/C). Should there be a shift tab/toggle on the dashboard, or default to the current shift based on time of day?

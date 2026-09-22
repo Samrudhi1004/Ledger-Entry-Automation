@@ -1,8 +1,8 @@
 """
 Validation Engine + Inspection Service.
 
-ToleranceValidator  — checks if a measured value is within tolerance.
-InspectionService   — orchestrates session creation, measurement recording,
+ToleranceValidator  : checks if a measured value is within tolerance.
+InspectionService   : orchestrates session creation, measurement recording,
                       MongoDB document management, and WebSocket notifications.
 """
 
@@ -279,7 +279,7 @@ class InspectionService:
         # H4 FIX: Wrap existence check + create in an atomic transaction with a
         # row-level lock. Without this, two simultaneous POST /start/ requests for
         # the same machine+part+shift both read "no session exists" and both create
-        # one — resulting in duplicate sessions and split/corrupt measurement data.
+        # one : resulting in duplicate sessions and split/corrupt measurement data.
         #
         # select_for_update() holds a DB lock on matching rows for the duration of
         # the transaction. The second request blocks until the first commits, then
@@ -312,7 +312,7 @@ class InspectionService:
             if existing_session and not (actual_inspection_type == 'first_piece' and trial_number > 1 and not parent_session_id):
                 return existing_session
 
-            # No existing session — safe to create now (lock still held)
+            # No existing session : safe to create now (lock still held)
             session_id     = uuid.uuid4()
 
             parent_session = None
@@ -348,7 +348,7 @@ class InspectionService:
 
             initial_recorded_count = len(initial_measurements)
 
-            # 1. Create PostgreSQL session (inside atomic block — lock held until commit)
+            # 1. Create PostgreSQL session (inside atomic block : lock held until commit)
             session = InspectionSession.objects.create(
                 session_id           = session_id,
                 part                 = part,
@@ -992,7 +992,7 @@ class InspectionService:
         doc['trial_number'] = session_obj.trial_number or 1
         doc['shift'] = session_obj.shift or 'I'
 
-        # Timestamps — essential for report date display
+        # Timestamps : essential for report date display
         doc['started_at'] = session_obj.started_at.isoformat() if session_obj.started_at else None
         completed_at = getattr(session_obj, 'completed_at', None)
         doc['completed_at'] = completed_at.isoformat() if completed_at else None
@@ -1100,7 +1100,7 @@ class InspectionService:
             # ── Authoritative override pass ───────────────────────────────────
             # Each first-piece session's own parameter_summary is the ground-truth
             # for that trial.  Raw measurements inside the (root/final) session doc
-            # carry copies for ALL trials – those copies can overwrite earlier
+            # carry copies for ALL trials - those copies can overwrite earlier
             # trials' correct out_of_spec values.  We fix that by re-applying
             # each trial's own parameter_summary on top of meas_dict.
             for fp_s in fp_sessions:

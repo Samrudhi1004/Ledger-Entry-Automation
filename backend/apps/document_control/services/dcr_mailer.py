@@ -142,7 +142,7 @@ def notify_dcr_submitted(dcr):
                 action_url=action_url,
                 action_text="Open DCR for Review"
             )
-            text = f"DCR {dcr.dcr_number} has been assigned to you for review.\nDocument: {dcr.document.document_number} — {dcr.document.title}\nRaised by: {req_name}\nLink: {action_url}"
+            text = f"DCR {dcr.dcr_number} has been assigned to you for review.\nDocument: {dcr.document.document_number} : {dcr.document.title}\nRaised by: {req_name}\nLink: {action_url}"
             _send_async_email(subject, text, html, [user.email])
 
 
@@ -163,7 +163,7 @@ def notify_dcr_reviewed(dcr):
     DCRNotification.objects.create(
         dcr=dcr,
         recipient=approver,
-        title=f"DCR {dcr.dcr_number} reviewed — awaiting your approval",
+        title=f"DCR {dcr.dcr_number} reviewed : awaiting your approval",
         message=f"{rev_name} completed the CFT review for {dcr.document.document_number}. Ready for final authorization.",
         action_type=DCRNotification.ActionType.APPROVAL_REQUESTED,
         action_url=action_url,
@@ -180,8 +180,8 @@ def notify_dcr_reviewed(dcr):
             "Reviewed By": rev_name,
             "Review Remark": dcr.review_remark,
             "Implementation Date": str(dcr.implementation_date or 'Immediate'),
-            "CFT Remarks": dcr.cft_remarks or "—",
-            "Calibrator Remarks": dcr.calibrator_remarks or "—",
+            "CFT Remarks": dcr.cft_remarks or "-",
+            "Calibrator Remarks": dcr.calibrator_remarks or "-",
         }
         html = _render_email_template(
             header_title="DCR Ready For Final Approval",

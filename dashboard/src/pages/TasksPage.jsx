@@ -130,7 +130,7 @@ const STATUS_CONFIG = {
 };
 
 function getDeadlineInfo(deadlineStr, status) {
-  if (!deadlineStr) return { label: '—', urgent: false, overdue: false };
+  if (!deadlineStr) return { label: '-', urgent: false, overdue: false };
   const now = new Date();
   const dl = new Date(deadlineStr);
   const diffMs = dl - now;

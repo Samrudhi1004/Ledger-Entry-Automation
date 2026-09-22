@@ -333,7 +333,7 @@ The repository includes a ready-to-use [`build.sh`](file:///e:/Liha_Tech_Project
 
 ### Option B: VPS Deployment (Hetzner / DigitalOcean / AWS EC2)
 For zero cold-starts and maximum Whisper inference speed on dedicated CPU:
-- **Recommended VPS Specs:** 2–4 vCPUs, 4GB–8GB RAM, Ubuntu 22.04 LTS.
+- **Recommended VPS Specs:** 2-4 vCPUs, 4GB-8GB RAM, Ubuntu 22.04 LTS.
 - **Service Stack:** Nginx (Reverse Proxy + Let's Encrypt SSL) + Daphne (ASGI) + PostgreSQL + MongoDB + Redis.
 
 ---

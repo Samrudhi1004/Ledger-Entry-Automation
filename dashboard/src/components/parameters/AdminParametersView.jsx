@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { getAllParameters, getAllProcessParameters } from '../../api/parts';
-import { Search, Filter, Calendar, User, Settings2 } from 'lucide-react';
+import { Search, Filter, Calendar, User, Settings2, Sliders } from 'lucide-react';
+import Breadcrumbs from '../layout/Breadcrumbs';
 
-export default function AdminParametersView() {
+export default function AdminParametersView({ hideTopHeader = false, onSwitchToBuilder }) {
   const [allParams, setAllParams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
@@ -87,16 +88,34 @@ export default function AdminParametersView() {
   });
 
   return (
-    <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: '#0F172A', margin: 0, letterSpacing: '-0.5px' }}>
-          Global Parameters List
-        </h1>
-        <p style={{ color: '#64748B', fontSize: 14, margin: '4px 0 0 0' }}>
-          Combined read-only view of all Product and Process parameters created by Supervisors.
-        </p>
-      </div>
+    <div style={{ padding: hideTopHeader ? '0' : '24px', maxWidth: 1400, margin: '0 auto' }}>
+      {!hideTopHeader && (
+        <>
+          <Breadcrumbs items={[{ label: 'Master Database' }, { label: 'Master Parameters' }]} />
+          {/* Header */}
+          <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h1 style={{ fontSize: 24, fontWeight: 800, color: '#0F172A', margin: 0, letterSpacing: '-0.5px' }}>
+                Global Parameters List
+              </h1>
+              <p style={{ color: '#64748B', fontSize: 14, margin: '4px 0 0 0' }}>
+                Combined read-only view of all Product and Process parameters created by Supervisors.
+              </p>
+            </div>
+            {onSwitchToBuilder && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={onSwitchToBuilder}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <Sliders size={16} />
+                <span>Parameter Builder Sheet</span>
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Advanced Filters Panel */}
       <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: 20, marginBottom: 24 }}>
@@ -218,20 +237,20 @@ export default function AdminParametersView() {
                   <tr key={`${p.id}-${index}`} style={{ borderBottom: '1px solid #F1F5F9', transition: 'background 0.15s' }}>
                     <td style={{ padding: '14px 16px' }}>
                       <span style={{ 
-                        background: p.param_type === 'Product' ? '#EFF6FF' : '#EEF2FF', 
-                        color: p.param_type === 'Product' ? '#0284C7' : '#4F46E5', 
-                        padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: p.param_type === 'Product' ? '1px solid #BAE6FD' : '1px solid #C7D2FE'
+                        background: '#F8FAFC', 
+                        color: '#334155', 
+                        padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, border: '1px solid #E2E8F0'
                       }}>
                         {p.param_type}
                       </span>
                     </td>
                     <td style={{ padding: '14px 16px' }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{p.machine_code || '—'}</div>
-                      <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{p.part_number || '—'}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{p.machine_code || '-'}</div>
+                      <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{p.part_number || '-'}</div>
                     </td>
                     <td style={{ padding: '14px 16px' }}>
-                      <span style={{ background: '#F1F5F9', color: '#475569', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>
-                        {p.template_name || '—'}
+                      <span style={{ background: '#F1F5F9', color: '#475569', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: '1px solid #E2E8F0' }}>
+                        {p.template_name || '-'}
                       </span>
                     </td>
                     <td style={{ padding: '14px 16px' }}>
@@ -239,16 +258,16 @@ export default function AdminParametersView() {
                       <div style={{ fontSize: 11, color: '#64748B', marginTop: 2, fontFamily: 'monospace' }}>{p.parameter_code}</div>
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: 13, fontWeight: 600, color: '#0F172A' }}>
-                      {p.nominal_value != null ? `${p.nominal_value} ${p.unit || ''}` : p.specification || '—'}
+                      {p.nominal_value != null ? `${p.nominal_value} ${p.unit || ''}` : p.specification || '-'}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: 13, color: '#64748B' }}>
-                      {p.upper_tolerance != null ? `+${p.upper_tolerance} / -${p.lower_tolerance}` : '—'}
+                      {p.upper_tolerance != null ? `+${p.upper_tolerance} / -${p.lower_tolerance}` : '-'}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: 13, color: '#64748B' }}>
-                      {p.created_by_name || '—'}
+                      {p.created_by_name || '-'}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: 12, color: '#64748B' }}>
-                      {p.created_at || '—'}
+                      {p.created_at || '-'}
                     </td>
                   </tr>
                 ))

@@ -46,12 +46,12 @@ export default function DocumentControlPage() {
 
   const moduleCards = [
     {
-      title: 'Document Register (L1–L4)',
+      title: 'Document Register (L1 : L4)',
       icon: FolderOpen,
       iconBg: 'rgba(99, 102, 241, 0.12)',
       iconColor: '#4f46e5',
       to: '/document-control/documents',
-      badge: 'L1–L4 Hierarchy',
+      badge: 'L1 : L4 Hierarchy',
       badgeBg: '#e0e7ff',
       badgeColor: '#4338ca',
       primary: true,

@@ -46,7 +46,7 @@ class BatchMeasureSerializer(serializers.Serializer):
     Accepts all measurements for one physical piece in a single POST.
 
     The inspector fills every parameter on the form screen and taps
-    'Submit Piece' — this serializer validates the entire payload before
+    'Submit Piece' : this serializer validates the entire payload before
     the view hands it off to InspectionService for field-level validation.
     """
     measurements = SingleMeasurementSerializer(many=True)
@@ -106,13 +106,13 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
         if obj.operator:
             name = obj.operator.get_full_name().strip()
             return name if name else obj.operator.username
-        return '—'
+        return '-'
 
     def get_supervisor_name(self, obj):
         if obj.supervisor:
             name = obj.supervisor.get_full_name().strip()
             return name if name else obj.supervisor.username
-        return '—'
+        return '-'
 
     def get_template_id(self, obj):
         if obj.template_id:
@@ -127,7 +127,7 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
         val = getattr(obj, 'template_name', None)
         if val and str(val).strip():
             return str(val).strip()
-        # Do NOT fire a new DB query here — return None instead
+        # Do NOT fire a new DB query here : return None instead
         return None
 
     def get_template_version(self, obj):
@@ -145,7 +145,7 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
         return 'Inspector'
 
     def get_rejected_parameters(self, obj):
-        # Read directly from document_payload JSONB — no extra DB query
+        # Read directly from document_payload JSONB : no extra DB query
         try:
             doc = obj.document_payload or {}
             rej = doc.get('rejected_parameters', [])
@@ -187,7 +187,7 @@ class DailyProductionReportSerializer(serializers.ModelSerializer):
         if obj.operator:
             name = obj.operator.get_full_name().strip()
             return name if name else obj.operator.username
-        return '—'
+        return '-'
 
     def validate(self, attrs):
         jobs_completed = attrs.get('jobs_completed', 0)
@@ -249,7 +249,7 @@ class DowntimeReportSerializer(serializers.ModelSerializer):
         if obj.production_report and obj.production_report.operator:
             name = obj.production_report.operator.get_full_name().strip()
             return name if name else obj.production_report.operator.username
-        return '—'
+        return '-'
 
     def get_operator_name(self, obj):
         return self.get_operator(obj)
@@ -334,7 +334,7 @@ class JHInspectionRecordSerializer(serializers.ModelSerializer):
         if obj.operator:
             name = obj.operator.get_full_name().strip()
             return name if name else obj.operator.username
-        return '—'
+        return '-'
 
 
 class JHSubmitItemResultInputSerializer(serializers.Serializer):

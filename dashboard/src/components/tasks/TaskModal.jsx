@@ -173,7 +173,7 @@ export default function TaskModal({ isOpen, onClose, onTaskCreated }) {
           {/* Step 1: Select Role */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">
-              Step 1 — Filter by Role
+              Step 1 : Filter by Role
             </label>
             <select
               value={roleFilter}
@@ -195,7 +195,7 @@ export default function TaskModal({ isOpen, onClose, onTaskCreated }) {
           {/* Step 2: Select Person */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">
-              Step 2 — Select Person *
+              Step 2 : Select Person *
             </label>
             <select
               name="allocated_to"

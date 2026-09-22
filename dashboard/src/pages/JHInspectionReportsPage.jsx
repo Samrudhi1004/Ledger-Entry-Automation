@@ -931,7 +931,7 @@ export default function JHInspectionReportsPage() {
                   <span>Correction Done</span>
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span style={{ color: '#CBD5E1', fontWeight: 'bold' }}>—</span>
+                  <span style={{ color: '#CBD5E1', fontWeight: 'bold' }}>-</span>
                   <span>No Shift Log</span>
                 </span>
               </div>
@@ -1189,7 +1189,7 @@ export default function JHInspectionReportsPage() {
                                         color: '#CBD5E1',
                                       }}
                                     >
-                                      —
+                                      -
                                     </td>
                                   );
                                 }
@@ -1393,7 +1393,7 @@ export default function JHInspectionReportsPage() {
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
                             {res.remark && <div><strong style={{ color: '#DC2626' }}>Issue:</strong> {res.remark}</div>}
                             {res.action_taken && <div><strong style={{ color: '#D97706' }}>Action:</strong> {res.action_taken}</div>}
-                            {!res.remark && !res.action_taken && <span style={{ color: '#94A3B8' }}>—</span>}
+                            {!res.remark && !res.action_taken && <span style={{ color: '#94A3B8' }}>-</span>}
                           </td>
                         </tr>
                       );

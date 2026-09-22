@@ -2,7 +2,7 @@
 WebSocket Consumer for the live inspection dashboard.
 
 Groups:
-  plant_<plant_id>  — all supervisors watching a specific plant's live feed
+  plant_<plant_id>  : all supervisors watching a specific plant's live feed
 
 Events received from InspectionService:
   - measurement_recorded   → show live measurement + status
@@ -33,12 +33,12 @@ class InspectionConsumer(AsyncWebsocketConsumer):
         self.group_name = f"plant_{self.plant_id}"
         self.authenticated = False   # will be flipped to True after token validation
 
-        # Accept the connection first — we validate token in the first receive() message.
+        # Accept the connection first : we validate token in the first receive() message.
         # The client has 10 seconds to send { type: 'authenticate', token: '...' } before
         # we close it automatically (handled on the frontend via immediate send on onopen).
         await self.accept()
 
-        # Send connection acknowledgement (same as before — Flutter/React expect this)
+        # Send connection acknowledgement (same as before : Flutter/React expect this)
         await self.send(text_data=json.dumps({
             'type':    'connected',
             'message': f'Connected to plant {self.plant_id} live dashboard. Send auth token.',
@@ -70,7 +70,7 @@ class InspectionConsumer(AsyncWebsocketConsumer):
                 await self._reject_auth('Invalid or expired token.')
                 return
 
-            # Token is valid — join the broadcast group
+            # Token is valid : join the broadcast group
             self.authenticated = True
             self.scope['user'] = user
             await self.channel_layer.group_add(self.group_name, self.channel_name)
@@ -93,7 +93,7 @@ class InspectionConsumer(AsyncWebsocketConsumer):
         if msg_type == 'ping':
             await self.send(text_data=json.dumps({'type': 'pong'}))
 
-    # ── Broadcast handlers — called by channel_layer.group_send ───────────
+    # ── Broadcast handlers : called by channel_layer.group_send ───────────
     async def inspection_event(self, event):
         """
         Handles all inspection events pushed by InspectionService.

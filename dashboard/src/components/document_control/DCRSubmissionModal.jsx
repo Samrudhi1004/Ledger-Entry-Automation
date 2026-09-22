@@ -240,7 +240,7 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
                       <option value="">-- Choose Document to Change --</option>
                       {docsList.map(d => (
                         <option key={d.id} value={d.id}>
-                          {d.document_number} — {d.title} (Rev: {d.revision})
+                          {d.document_number} : {d.title} (Rev: {d.revision})
                         </option>
                       ))}
                     </select>

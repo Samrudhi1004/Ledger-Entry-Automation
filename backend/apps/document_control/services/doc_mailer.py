@@ -22,7 +22,7 @@ def notify_doc_review_requested(doc):
 
     reviewer = doc.reviewed_by
     title = f"Review Requested: {doc.document_number}"
-    msg = f"You have been assigned to review controlled document {doc.document_number} — {doc.title}."
+    msg = f"You have been assigned to review controlled document {doc.document_number} : {doc.title}."
 
     DCRNotification.objects.create(
         document=doc,
@@ -62,7 +62,7 @@ def notify_doc_approval_requested(doc):
 
     approver = doc.approved_by
     title = f"Approval Requested: {doc.document_number}"
-    msg = f"Document {doc.document_number} — {doc.title} has been reviewed and requires your final approval."
+    msg = f"Document {doc.document_number} : {doc.title} has been reviewed and requires your final approval."
 
     DCRNotification.objects.create(
         document=doc,
@@ -106,7 +106,7 @@ def notify_doc_approved(doc):
         recipients.append(doc.reviewed_by)
 
     title = f"Document Approved: {doc.document_number}"
-    msg = f"Controlled document {doc.document_number} — {doc.title} (Rev {doc.revision}) has been approved and is now active."
+    msg = f"Controlled document {doc.document_number} : {doc.title} (Rev {doc.revision}) has been approved and is now active."
 
     for user in recipients:
         DCRNotification.objects.create(
@@ -150,7 +150,7 @@ def notify_doc_rejected(doc, reason=""):
 
     uploader = doc.uploaded_by
     title = f"Document Rejected: {doc.document_number}"
-    msg = f"Controlled document {doc.document_number} — {doc.title} was rejected. Reason: {reason or 'No reason provided'}"
+    msg = f"Controlled document {doc.document_number} : {doc.title} was rejected. Reason: {reason or 'No reason provided'}"
 
     DCRNotification.objects.create(
         document=doc,

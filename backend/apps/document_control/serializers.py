@@ -94,7 +94,7 @@ class DocumentDetailSerializer(DocumentListSerializer):
 
 class DocumentCreateSerializer(serializers.ModelSerializer):
     """
-    Used for POST (upload) — accepts multipart/form-data.
+    Used for POST (upload) : accepts multipart/form-data.
     The file payload is handled directly in the view.
     """
     document_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)

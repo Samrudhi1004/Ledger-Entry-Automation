@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 ========================================================================================
-INSPECTION HUB — DEEP-DOWN MODULE-BY-MODULE TEST SUITE
+INSPECTION HUB : DEEP-DOWN MODULE-BY-MODULE TEST SUITE
 ========================================================================================
 Covers the entire factory lifecycle across 14 independent operational modules:
   1. Auth & Role-Based Access Control (RBAC: Admin, Supervisor, Inspector, Operator, Calibrator)

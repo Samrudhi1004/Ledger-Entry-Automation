@@ -212,7 +212,7 @@ export default function UsersPage() {
     setSuccessBannerMsg('');
     setPageErrorBannerMsg('');
 
-    // Optimistically update local state immediately — row moves to correct position right away
+    // Optimistically update local state immediately : row moves to correct position right away
     setUsers(prev => sortUsers(
       prev.map(u => u.id === userObj.id ? { ...u, is_active: targetActive } : u)
     ));
@@ -345,8 +345,8 @@ export default function UsersPage() {
                       <td className="font-mono font-bold text-blue">{u.employee_id || `EMP-${u.id}`}</td>
                       <td>{u.full_name || u.username}</td>
                       <td className="font-mono">{u.username}</td>
-                      <td className="text-xs">{u.email || '—'}</td>
-                      <td className="text-xs font-mono">{u.phone || '—'}</td>
+                      <td className="text-xs">{u.email || '-'}</td>
+                      <td className="text-xs font-mono">{u.phone || '-'}</td>
                       <td>
                         <span className={`badge ${getRoleBadgeClass(u.role)}`}>
                           {getRoleLabel(u.role)}

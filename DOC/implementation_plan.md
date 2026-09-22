@@ -1,4 +1,4 @@
-# Voice-Driven Machine Inspection & Ledger Automation — Backend Implementation Plan
+# Voice-Driven Machine Inspection & Ledger Automation : Backend Implementation Plan
 
 ## Overview
 
@@ -35,7 +35,7 @@ Phase 8: analytics/        → reports, trends, OOC alerts
 
 ---
 
-## Phase 1 — Foundation
+## Phase 1 : Foundation
 
 ### [MODIFY] requirements.txt
 Add all new dependencies:
@@ -78,7 +78,7 @@ Pillow                   # image handling (optional)
 - Wrap Django with `ProtocolTypeRouter` for HTTP + WebSocket
 
 ### [NEW] config/db.py
-- `get_mongo_db()` — returns PyMongo database connection (singleton pattern)
+- `get_mongo_db()` : returns PyMongo database connection (singleton pattern)
 
 ### [MODIFY] .env
 Add:
@@ -101,7 +101,7 @@ OPENAI_API_KEY=       # for later when switching to API
 
 ---
 
-## Phase 2 — `apps/users/`
+## Phase 2 : `apps/users/`
 
 ### [MODIFY] apps/users/models.py
 ```python
@@ -134,7 +134,7 @@ class User(AbstractUser):
 
 ---
 
-## Phase 3 — `apps/machines/`
+## Phase 3 : `apps/machines/`
 
 ### [MODIFY] apps/machines/models.py
 ```python
@@ -165,9 +165,9 @@ class Machine(Model):
 
 ---
 
-## Phase 4 — `apps/parts/`
+## Phase 4 : `apps/parts/`
 
-This is the most critical app — it holds the **inspection template** (what parameters to measure and their tolerances).
+This is the most critical app : it holds the **inspection template** (what parameters to measure and their tolerances).
 
 ### [MODIFY] apps/parts/models.py
 ```python
@@ -190,7 +190,7 @@ class InspectionParameter(Model):
     upper_limit             # nominal + upper_tolerance
     lower_limit             # nominal + lower_tolerance
     measurement_type        # [dimensional, visual, weight]
-    is_critical             # bool — triggers alert if OOC
+    is_critical             # bool : triggers alert if OOC
     sequence_order          # display order
 ```
 
@@ -209,9 +209,9 @@ class InspectionParameter(Model):
 
 ---
 
-## Phase 5 — `apps/inspections/`
+## Phase 5 : `apps/inspections/`
 
-Core business logic — validation engine lives here.
+Core business logic : validation engine lives here.
 
 ### MongoDB Collection: `inspection_records`
 ```json
@@ -248,7 +248,7 @@ Core business logic — validation engine lives here.
 }
 ```
 
-### [MODIFY] apps/inspections/models.py (PostgreSQL — lightweight index only)
+### [MODIFY] apps/inspections/models.py (PostgreSQL : lightweight index only)
 ```python
 class InspectionSession(Model):
     session_id (UUID, unique)   # links to MongoDB doc
@@ -260,7 +260,7 @@ class InspectionSession(Model):
     has_ooc_parameters (bool)   # quick flag
 ```
 
-### [NEW] apps/inspections/services.py — Validation Engine
+### [NEW] apps/inspections/services.py : Validation Engine
 ```python
 class ToleranceValidator:
     def validate(measured_value, parameter) → ValidationResult
@@ -285,7 +285,7 @@ class InspectionService:
 
 ---
 
-## Phase 6 — `apps/voice/`
+## Phase 6 : `apps/voice/`
 
 ### [NEW] apps/voice/whisper_engine.py
 ```python
@@ -320,7 +320,7 @@ class NumberParser:
 
 ---
 
-## Phase 7 — `apps/dashboard/`
+## Phase 7 : `apps/dashboard/`
 
 ### [NEW] apps/dashboard/consumers.py
 ```python
@@ -346,7 +346,7 @@ websocket_urlpatterns = [
 
 ---
 
-## Phase 8 — `apps/analytics/`
+## Phase 8 : `apps/analytics/`
 
 ### [NEW] apps/analytics/views.py
 - `InspectionReportView`     → GET /api/analytics/report/?from=&to=&machine=
@@ -360,7 +360,7 @@ websocket_urlpatterns = [
 ## Verification Plan
 
 ### After each phase:
-- Run `python manage.py check` — no errors
+- Run `python manage.py check` : no errors
 - Run `python manage.py makemigrations && migrate`
 - Test endpoints with `curl` or Postman
 
@@ -377,13 +377,13 @@ websocket_urlpatterns = [
 ## Open Questions
 
 > [!IMPORTANT]
-> **Shift system** — Does your factory run 2 shifts or 3? (A/B or A/B/C) — affects inspection session model
+> **Shift system** : Does your factory run 2 shifts or 3? (A/B or A/B/C) : affects inspection session model
 
 > [!IMPORTANT]
-> **Report format** — Do supervisors need PDF export of inspection sheets? Or just on-screen?
+> **Report format** : Do supervisors need PDF export of inspection sheets? Or just on-screen?
 
 > [!NOTE]
-> **Whisper model size** — `base` model recommended to start (fast, runs on CPU). Can upgrade to `small` or `medium` for better accuracy with accented speech.
+> **Whisper model size** : `base` model recommended to start (fast, runs on CPU). Can upgrade to `small` or `medium` for better accuracy with accented speech.
 
 > [!NOTE]
-> **`common/` folder** — Currently in backend but not in your target structure. Should it be kept as shared utilities (e.g., base models, pagination)?
+> **`common/` folder** : Currently in backend but not in your target structure. Should it be kept as shared utilities (e.g., base models, pagination)?

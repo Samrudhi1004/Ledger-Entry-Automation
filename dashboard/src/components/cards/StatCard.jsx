@@ -1,5 +1,5 @@
 /**
- * StatCard — KPI card with top-accent line
+ * StatCard : KPI card with top-accent line
  *
  * Props:
  *  label       string
@@ -17,7 +17,7 @@ export default function StatCard({ label, value, sub, accent, alert, icon }) {
     >
       {icon && <div className="stat-icon">{icon}</div>}
       <div className="stat-label">{label}</div>
-      <div className="stat-value">{value ?? '—'}</div>
+      <div className="stat-value">{value ?? '-'}</div>
       {sub && <div className="stat-sub">{sub}</div>}
     </div>
   );

@@ -1,5 +1,5 @@
 """
-Views for the users app — auth, profile, user management.
+Views for the users app : auth, profile, user management.
 """
 
 from rest_framework import generics, status
@@ -198,7 +198,7 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
                 "message": "User account not found."
             }, status=status.HTTP_404_NOT_FOUND)
 
-        # Direct is_active toggle — bypass full serializer to avoid validation errors
+        # Direct is_active toggle : bypass full serializer to avoid validation errors
         if 'is_active' in request.data:
             is_active_val = request.data['is_active']
             # Handle both JSON boolean and string representations
@@ -216,7 +216,7 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
                 "user": serializer.data
             }, status=status.HTTP_200_OK)
 
-        # Direct assigned_shift update — fast shift rotation
+        # Direct assigned_shift update : fast shift rotation
         if 'assigned_shift' in request.data:
             shift_val = request.data['assigned_shift']
             if shift_val in dict(User.Shift.choices):

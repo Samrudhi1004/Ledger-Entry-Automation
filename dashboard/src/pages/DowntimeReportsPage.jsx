@@ -305,7 +305,7 @@ export default function DowntimeReportsPage() {
       <>
         <Header
           title="Downtime Reports"
-          subtitle="Form QF/MF-06 — Date-Wise Quality Inspection & Machine Breakdown History"
+          subtitle="Form QF/MF-06 : Date-Wise Quality Inspection & Machine Breakdown History"
         />
 
         <div className="page-content" style={{ padding: '16px 20px', backgroundColor: '#F8FAFC', minHeight: '100vh' }}>
@@ -320,7 +320,7 @@ export default function DowntimeReportsPage() {
                   Date-Wise Submitted Downtime Reports History
                 </h3>
                 <p style={{ fontSize: '12px', color: '#64748B', margin: '2px 0 0 0' }}>
-                  Form QF/MF-06 Hanuman Engineering Works — Browse and download past submitted reports
+                  Form QF/MF-06 Hanuman Engineering Works : Browse and download past submitted reports
                 </p>
               </div>
 
@@ -482,7 +482,7 @@ export default function DowntimeReportsPage() {
     <>
       <Header
         title="Downtime Report"
-        subtitle="Form QF/MF-06 — Supervisor Downtime Logging & Date-Wise Submissions"
+        subtitle="Form QF/MF-06 : Supervisor Downtime Logging & Date-Wise Submissions"
       />
 
       <div className="page-content" style={{ padding: '14px 16px', backgroundColor: '#F8FAFC', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>

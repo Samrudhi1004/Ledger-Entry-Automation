@@ -1,5 +1,5 @@
 """
-AI Number Parser — converts raw speech text to numeric measurement values.
+AI Number Parser : converts raw speech text to numeric measurement values.
 
 Pipeline:
   1. Direct float regex          "25.01"         → 25.01
@@ -14,7 +14,7 @@ import re
 import logging
 from typing import Optional
 
-# L4 FIX: Import word2number at module level — not inside functions.
+# L4 FIX: Import word2number at module level : not inside functions.
 # Importing inside a function pays a sys.modules dict lookup on every call.
 # With a top-level import + fallback we also get a clear startup error if the
 # library is missing, instead of a cryptic failure buried in a measurement call.
@@ -38,7 +38,7 @@ UNIT_PATTERN = re.compile(
 # Direct numeric patterns
 FLOAT_PATTERN = re.compile(r'^[+-]?\d+(\.\d+)?$')
 
-# "point X" shorthand — e.g. "point five two" → "0.52"
+# "point X" shorthand : e.g. "point five two" → "0.52"
 LEADING_POINT = re.compile(r'^(minus\s+)?point\s+', re.IGNORECASE)
 
 
@@ -163,7 +163,7 @@ class NumberParser:
         return ''.join(digits) if digits else None
 
     def _try_extract_number(self, text: str) -> Optional[float]:
-        """Last resort — extract first numeric substring from text."""
+        """Last resort : extract first numeric substring from text."""
         match = re.search(r'[+-]?\d+(\.\d+)?', text)
         if match:
             try:
@@ -178,5 +178,5 @@ _parser = NumberParser()
 
 
 def parse_measurement(text: str) -> Optional[float]:
-    """Convenience function — parse text to float."""
+    """Convenience function : parse text to float."""
     return _parser.parse(text)

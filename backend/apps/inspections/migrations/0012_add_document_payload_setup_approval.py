@@ -1,4 +1,4 @@
-# Generated 2026-09-08 — MongoDB → PostgreSQL migration: Step 1 models
+# Generated 2026-09-08 : MongoDB → PostgreSQL migration: Step 1 models
 
 import django.db.models.deletion
 import uuid

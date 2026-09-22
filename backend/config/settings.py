@@ -54,7 +54,7 @@ INSTALLED_APPS = [
 
 # ─── Middleware ────────────────────────────────────────────────
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',          # CORS — must be at the very top
+    'corsheaders.middleware.CorsMiddleware',          # CORS : must be at the very top
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -90,7 +90,7 @@ ASGI_APPLICATION = 'config.asgi.application'
 import dj_database_url
 
 # ─── Databases ────────────────────────────────────────────────
-# PostgreSQL — Structured data (Users, Machines, Parts, Templates)
+# PostgreSQL : Structured data (Users, Machines, Parts, Templates)
 DATABASE_URL = os.getenv('DATABASE_URL')
 if DATABASE_URL:
     DATABASES = {
@@ -112,7 +112,7 @@ else:
         }
     }
 
-# MongoDB — DEPRECATED after migration to PostgreSQL-only architecture
+# MongoDB : DEPRECATED after migration to PostgreSQL-only architecture
 # All inspection data now stored in PostgreSQL JSONB fields
 # MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
 # MONGODB_NAME = os.getenv('MONGODB_NAME', 'voice_inspection_db')
@@ -157,7 +157,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 
 USE_REDIS = os.getenv('USE_REDIS', 'false').lower() == 'true'
 
-# When REDIS_URL is explicitly set (e.g. on Railway), trust it — no socket probe.
+# When REDIS_URL is explicitly set (e.g. on Railway), trust it : no socket probe.
 # Only run the local connectivity check for dev environments that have no REDIS_URL,
 # so developers who haven't started Redis yet fall back gracefully to LocMemCache.
 if USE_REDIS and not os.getenv('REDIS_URL'):
@@ -194,7 +194,7 @@ if USE_REDIS:
         'default': {
             'BACKEND': 'django.core.cache.backends.redis.RedisCache',
             'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379'),
-            'TIMEOUT': 300,  # 5 minutes — default for analytics data
+            'TIMEOUT': 300,  # 5 minutes : default for analytics data
         }
     }
 else:

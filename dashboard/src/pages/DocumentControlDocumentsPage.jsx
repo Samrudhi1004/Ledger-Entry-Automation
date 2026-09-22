@@ -169,7 +169,7 @@ function UploadModal({ onClose, onSuccess }) {
                 <Paperclip size={20} color="#6366f1" style={{ marginBottom: '6px' }} />
                 <p style={{ margin: 0, fontWeight: '600', color: '#6366f1', fontSize: '13px' }}>{file.name}</p>
                 <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#94a3b8' }}>
-                  {(file.size / 1024 / 1024).toFixed(2)} MB — click to change
+                  {(file.size / 1024 / 1024).toFixed(2)} MB : click to change
                 </p>
               </div>
             ) : (
@@ -208,10 +208,10 @@ function UploadModal({ onClose, onSuccess }) {
                   border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: '#fff'
                 }}
               >
-                <option value="L1">L1 — Quality Manual & Policy</option>
-                <option value="L2">L2 — Standard Operating Procedure (SOP/QSP)</option>
-                <option value="L3">L3 — Work Instruction (WI)</option>
-                <option value="L4">L4 — Form / Format / Checklist</option>
+                <option value="L1">L1 : Quality Manual & Policy</option>
+                <option value="L2">L2 : Standard Operating Procedure (SOP/QSP)</option>
+                <option value="L3">L3 : Work Instruction (WI)</option>
+                <option value="L4">L4 : Form / Format / Checklist</option>
               </select>
             </div>
 
@@ -501,7 +501,7 @@ export default function DocumentControlDocumentsPage() {
   };
 
   const formatDateDMY = (d) => {
-    if (!d) return '—';
+    if (!d) return '-';
     try {
       const parts = String(d).split('T')[0].split('-');
       if (parts.length === 3 && parts[0].length === 4) {
@@ -514,7 +514,7 @@ export default function DocumentControlDocumentsPage() {
       const year = date.getFullYear();
       return `${day}.${month}.${year}`;
     } catch {
-      return d || '—';
+      return d || '-';
     }
   };
 
@@ -529,12 +529,12 @@ export default function DocumentControlDocumentsPage() {
     <>
       <Header
         title="Document Register"
-        subtitle="Browse, inspect & manage controlled quality documents (L1–L4) • Click any row to view"
+        subtitle="Browse, inspect & manage controlled quality documents (L1 : L4) • Click any row to view"
       />
 
       <div className="page-content bg-gradient-animated">
         <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-          <Breadcrumbs items={[{ label: 'Document Control', to: '/document-control' }, { label: 'Documents (L1–L4)' }]} />
+          <Breadcrumbs items={[{ label: 'Document Control', to: '/document-control' }, { label: 'Documents (L1 : L4)' }]} />
         {/* Action Toolbar */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
           <button
@@ -839,7 +839,7 @@ export default function DocumentControlDocumentsPage() {
                     {doc.reviewed_by_name ? (
                       <span style={{ fontWeight: '600', color: '#0f172a' }}>{doc.reviewed_by_name}</span>
                     ) : (
-                      <span style={{ color: '#94a3b8' }}>—</span>
+                      <span style={{ color: '#94a3b8' }}>-</span>
                     )}
                   </td>
 
@@ -848,7 +848,7 @@ export default function DocumentControlDocumentsPage() {
                     {doc.approved_by_name ? (
                       <span style={{ fontWeight: '600', color: '#0f172a' }}>{doc.approved_by_name}</span>
                     ) : (
-                      <span style={{ color: '#94a3b8' }}>—</span>
+                      <span style={{ color: '#94a3b8' }}>-</span>
                     )}
                   </td>
 
@@ -958,7 +958,7 @@ export default function DocumentControlDocumentsPage() {
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: '#0f172a' }}>Audit Activity Log</h3>
-                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>{historyDoc.document_number} — {historyDoc.title}</p>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>{historyDoc.document_number} : {historyDoc.title}</p>
               </div>
               <button onClick={() => setHistoryDoc(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
                 <X size={18} color="#94a3b8" />

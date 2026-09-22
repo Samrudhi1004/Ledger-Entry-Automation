@@ -48,6 +48,20 @@ const MODULES = [
     items: [],
   },
 
+  // Master Database Module
+  {
+    key: 'master_database',
+    label: 'Master Database',
+    icon: Database,
+    items: [
+      {
+        label: 'Master Parameters',
+        to: '/parameters',
+        icon: Sliders,
+      },
+    ],
+  },
+
   // Enterprise Modules
   {
     key: 'quality_analyzer',
@@ -104,7 +118,7 @@ const MODULES = [
     icon: FolderOpen,
     to: '/document-control',
     items: [
-      { label: 'Documents (L1–L4)', to: '/document-control/documents' },
+      { label: 'Documents (L1 : L4)', to: '/document-control/documents' },
       { label: 'Change Requests (DCR)', to: '/document-control/dcr' },
       { label: 'Approvals Queue', to: '/document-control/approvals' },
     ],
@@ -136,10 +150,10 @@ export default function Sidebar({ pendingCount = 0 }) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
 
-  // Initialize expanded state: expand module that contains current active route, or master by default
+  // Initialize expanded state: expand module that contains current active route, or master_database by default
   const [expanded, setExpanded] = useState(() => {
     const activeMod = MODULES.find((m) => m.items && m.items.some((item) => item.to === location.pathname));
-    return activeMod ? { [activeMod.key]: true } : { development: true };
+    return activeMod ? { [activeMod.key]: true } : { master_database: true };
   });
 
   // Automatically expand module when route changes
@@ -181,7 +195,7 @@ export default function Sidebar({ pendingCount = 0 }) {
       icon: FolderOpen,
       to: '/document-control',
       items: [
-        { label: 'Documents (L1–L4)', to: '/document-control/documents' },
+        { label: 'Documents (L1 : L4)', to: '/document-control/documents' },
         { label: 'Change Requests (DCR)', to: '/document-control/dcr' },
       ],
     },
@@ -192,7 +206,7 @@ export default function Sidebar({ pendingCount = 0 }) {
     : MODULES.filter((module) => {
         if (user?.role === 'admin') return true;
         if (user?.role === 'supervisor') {
-          return ['development', 'quality_analyzer', 'production_old', 'tasks', 'messages', 'document_control'].includes(module.key);
+          return ['master_database', 'development', 'quality_analyzer', 'production_old', 'tasks', 'messages', 'document_control'].includes(module.key);
         }
         if (user?.role === 'inspector') {
           // Inspector gets: quality_analyzer, production, tasks, and messages
@@ -203,9 +217,6 @@ export default function Sidebar({ pendingCount = 0 }) {
         }
         return true;
       }).map((m) => {
-        if (user?.role === 'supervisor' && m.key === 'development') {
-          return { ...m, label: 'Master Parameters', to: '/parameters' };
-        }
         if (m.key === 'document_control' && user?.role !== 'admin') {
           return {
             ...m,
@@ -316,7 +327,7 @@ export default function Sidebar({ pendingCount = 0 }) {
                           end={item.to === '/'}
                           className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
                         >
-                          <ItemIcon size={16} />
+                          {ItemIcon && <ItemIcon size={16} />}
                           <span style={{ flex: 1 }}>{item.label}</span>
                           {item.badgeKey === 'pending' && pendingCount > 0 && (
                             <span className="nav-badge">{pendingCount}</span>
@@ -383,7 +394,7 @@ export default function Sidebar({ pendingCount = 0 }) {
                   textOverflow: 'ellipsis',
                 }}
               >
-                {user ? `${user.first_name} ${user.last_name}`.trim() || user.username : '—'}
+                {user ? `${user.first_name} ${user.last_name}`.trim() || user.username : '-'}
               </div>
               <div
                 className="sidebar-user-role"

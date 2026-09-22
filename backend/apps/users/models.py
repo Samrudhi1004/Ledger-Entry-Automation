@@ -72,7 +72,7 @@ class User(AbstractUser):
         verbose_name_plural = 'Users'
 
     def __str__(self):
-        return f"{self.get_full_name()} ({self.employee_id}) — {self.get_role_display()}"
+        return f"{self.get_full_name()} ({self.employee_id}) : {self.get_role_display()}"
 
     # ─── Role helpers ─────────────────────────────────────────
     @property

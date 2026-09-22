@@ -103,11 +103,11 @@ def cleanup_and_seed():
         # Re-assign DailyProductionReport references
         DailyProductionReport.objects.filter(operator=extra).update(operator=op_user)
 
-        # Re-assign Task references (PROTECT FK — must be done before delete)
+        # Re-assign Task references (PROTECT FK : must be done before delete)
         Task.objects.filter(allocated_to=extra).update(allocated_to=op_user)
         Task.objects.filter(allocated_by=extra).update(allocated_by=sup_user)
 
-        # Re-assign JH Inspection Record references (PROTECT FK — Sourcery fix)
+        # Re-assign JH Inspection Record references (PROTECT FK : Sourcery fix)
         JHInspectionRecord.objects.filter(operator=extra).update(operator=op_user)
 
     # Now safely delete extra users

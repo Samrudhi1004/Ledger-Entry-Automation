@@ -81,7 +81,7 @@ urlpatterns = [
     path('jh/matrix/export_excel/',         JHInspectionMatrixExportExcelView.as_view(),  name='jh-inspection-matrix-export-excel'),
     path('jh/matrix/',                      JHInspectionMatrixView.as_view(),             name='jh-inspection-matrix'),
 
-    # Session detail (full MongoDB document) — wildcard route must be last
+    # Session detail (full MongoDB document) : wildcard route must be last
     path('<uuid:session_id>/batch-measure/', BatchMeasureView.as_view(),      name='batch-measure'),
     path('<uuid:session_id>/',              SessionDetailView.as_view(),      name='session-detail'),
 ]

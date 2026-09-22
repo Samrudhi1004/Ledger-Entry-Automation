@@ -53,7 +53,7 @@ export default function InspectionGridSheet({ session, onUpdate }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--accent-blue)' }}>
-              {companyCode} — 1ST PIECE CUM IN-PROCESS INSPECTION REPORT
+              {companyCode} : 1ST PIECE CUM IN-PROCESS INSPECTION REPORT
             </h3>
             <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '20px', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
               ⚡ {maxSlots}-Hour Shift ({maxSlots} Slots)
@@ -126,7 +126,7 @@ export default function InspectionGridSheet({ session, onUpdate }) {
                         {valT1} {p.unit}
                       </span>
                     ) : (
-                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      <span style={{ color: 'var(--text-muted)' }}>-</span>
                     )}
                   </td>
 
@@ -137,7 +137,7 @@ export default function InspectionGridSheet({ session, onUpdate }) {
                         {valT2} {p.unit}
                       </span>
                     ) : (
-                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      <span style={{ color: 'var(--text-muted)' }}>-</span>
                     )}
                   </td>
 
@@ -198,7 +198,7 @@ export default function InspectionGridSheet({ session, onUpdate }) {
                         Override
                       </button>
                     ) : (
-                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      <span style={{ color: 'var(--text-muted)' }}>-</span>
                     )}
                   </td>
 
@@ -207,7 +207,7 @@ export default function InspectionGridSheet({ session, onUpdate }) {
                     const hrVal = hourlyMeas[slotNum];
                     return (
                       <td key={slotNum} style={{ textAlign: 'center', padding: '8px', color: hrVal !== undefined ? '#ffffff' : 'var(--text-muted)', fontSize: '12px', fontWeight: hrVal !== undefined ? 'bold' : 'normal' }}>
-                        {hrVal !== undefined ? `${hrVal} ${p.unit}` : '—'}
+                        {hrVal !== undefined ? `${hrVal} ${p.unit}` : '-'}
                       </td>
                     );
                   })}

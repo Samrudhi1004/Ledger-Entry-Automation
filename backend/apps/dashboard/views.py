@@ -60,7 +60,7 @@ class ShiftSummaryView(APIView):
         shift    = request.query_params.get('shift', 'A')
         today    = timezone.localdate()
 
-        # Cache shift summary for 2 minutes — shorter than analytics (5 min) because
+        # Cache shift summary for 2 minutes : shorter than analytics (5 min) because
         # shift counts (approved, rejected, pending) change frequently during active shifts.
         cache_key = f"shift_summary_{today}_{shift}_{plant_id or 'all'}"
         cached = cache.get(cache_key)
