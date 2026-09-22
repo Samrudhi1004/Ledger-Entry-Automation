@@ -1,46 +1,86 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FileCode, 
+import {
+  Sliders,
   ArrowRight,
-  FileSpreadsheet
 } from 'lucide-react';
+import { getParts } from '../api/parts';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 
-export default function DevelopmentModulePage() {
+export default function MasterDatabasePage() {
   const navigate = useNavigate();
+  const [partsCount, setPartsCount] = useState(null);
+  const [fetchError, setFetchError] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const cards = [
+  useEffect(() => {
+    getParts()
+      .then((res) => {
+        const parts = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+        setPartsCount(parts.length);
+        setFetchError(false);
+      })
+      .catch(() => {
+        setFetchError(true);
+        setPartsCount(null);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  const getBadgeInfo = () => {
+    if (loading) {
+      return {
+        text: '• Loading...',
+        bg: '#F1F5F9',
+        color: '#64748B',
+      };
+    }
+    if (fetchError) {
+      return {
+        text: '• Status Unavailable',
+        bg: '#FEF2F2',
+        color: '#DC2626',
+      };
+    }
+    if (typeof partsCount === 'number') {
+      return {
+        text: `• ${partsCount} Active Parts`,
+        bg: '#FFF7ED',
+        color: '#C2410C',
+      };
+    }
+    return {
+      text: '• Active Database',
+      bg: '#FFF7ED',
+      color: '#C2410C',
+    };
+  };
+
+  const badgeInfo = getBadgeInfo();
+
+  const masterCards = [
     {
-      title: 'Drawing Management',
-      icon: FileCode,
-      iconBg: '#EEF2FF',
-      iconColor: '#4F46E5',
-      to: '/development/drawings',
-      badge: '• Engineering Drawings',
-      badgeBg: '#EEF2FF',
-      badgeColor: '#4338CA',
-      actionText: 'Open Drawing Management',
-    },
-    {
-      title: 'Control Plan Management',
-      icon: FileSpreadsheet,
-      iconBg: '#ECFDF5',
-      iconColor: '#059669',
-      to: '/development/control-plans',
-      badge: '• Process Control',
-      badgeBg: '#ECFDF5',
-      badgeColor: '#047857',
-      actionText: 'Open Control Plan Management',
+      id: 'master-parameters',
+      title: 'Master Parameters',
+      icon: Sliders,
+      iconBg: '#FFF7ED',
+      iconColor: '#EA580C',
+      to: '/parameters',
+      badge: badgeInfo.text,
+      badgeBg: badgeInfo.bg,
+      badgeColor: badgeInfo.color,
+      actionText: 'Open Master Parameters',
     },
   ];
 
   return (
     <>
       <Header
-        title="Development"
-        subtitle="Engineering Repository : CAD Drawings & Process Control Plans"
+        title="Master Database"
+        subtitle="Master Data Management : Central repository for inspection parameters, nominal dimensions, tolerances, and quality standards"
       />
 
       <div
@@ -52,7 +92,7 @@ export default function DevelopmentModulePage() {
         }}
       >
         <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-          <Breadcrumbs items={[{ label: 'Development' }]} />
+          <Breadcrumbs items={[{ label: 'Master Database' }]} />
 
           {/* Feature Cards Grid */}
           <div
@@ -62,11 +102,11 @@ export default function DevelopmentModulePage() {
               gap: '24px',
             }}
           >
-            {cards.map((card, idx) => {
+            {masterCards.map((card) => {
               const IconComponent = card.icon;
               return (
                 <div
-                  key={idx}
+                  key={card.id}
                   className="card shadow-hover-elevate transition-all duration-300"
                   style={{
                     borderRadius: '16px',

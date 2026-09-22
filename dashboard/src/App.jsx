@@ -38,6 +38,7 @@ import DocumentControlPage from './pages/DocumentControlPage';
 import DocumentControlDocumentsPage from './pages/DocumentControlDocumentsPage';
 import DocumentControlApprovalsPage from './pages/DocumentControlApprovalsPage';
 import DocumentControlDCRPage from './pages/DocumentControlDCRPage';
+import MasterDatabasePage from './pages/MasterDatabasePage';
 import AdminBugReportsPage from './pages/AdminBugReportsPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { getPendingSessions } from './api/inspections';
@@ -248,7 +249,7 @@ export default function App() {
       <Route
         path="/development/drawings"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
             <DrawingsPage />
           </ProtectedLayout>
         }
@@ -256,7 +257,7 @@ export default function App() {
       <Route
         path="/development/control-plans"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
             <ControlPlansPage />
           </ProtectedLayout>
         }
@@ -310,6 +311,15 @@ export default function App() {
         }
       />
       
+      <Route
+        path="/master-database"
+        element={
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
+            <MasterDatabasePage />
+          </ProtectedLayout>
+        }
+      />
+
       <Route
         path="/parameters"
         element={

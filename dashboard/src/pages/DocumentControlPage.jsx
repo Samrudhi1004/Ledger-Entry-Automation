@@ -1,17 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   FolderOpen,
   FileText,
   ClipboardCheck,
   Tag,
   ArrowRight,
-  Upload,
-  FileCheck,
   Clock,
   CheckCircle,
   Edit3,
-  Shield,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getDocuments, getDCRs } from '../api/documentControl';
@@ -19,6 +16,7 @@ import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 
 export default function DocumentControlPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin      = user?.role === 'admin';
   const isSupervisor = user?.role === 'supervisor';
@@ -48,12 +46,12 @@ export default function DocumentControlPage() {
     {
       title: 'Document Register (L1 : L4)',
       icon: FolderOpen,
-      iconBg: 'rgba(99, 102, 241, 0.12)',
-      iconColor: '#4f46e5',
+      iconBg: '#EEF2FF',
+      iconColor: '#4F46E5',
       to: '/document-control/documents',
-      badge: 'L1 : L4 Hierarchy',
-      badgeBg: '#e0e7ff',
-      badgeColor: '#4338ca',
+      badge: '• L1 : L4 Hierarchy',
+      badgeBg: '#EEF2FF',
+      badgeColor: '#4338CA',
       primary: true,
       actionText: 'Open Document Library',
       showAlways: true,
@@ -61,12 +59,12 @@ export default function DocumentControlPage() {
     {
       title: 'Change Requests (DCR)',
       icon: Edit3,
-      iconBg: 'rgba(16, 185, 129, 0.12)',
+      iconBg: '#ECFDF5',
       iconColor: '#059669',
       to: '/document-control/dcr',
-      badge: stats.pendingDcr > 0 ? `${stats.pendingDcr} Action Required` : 'DKI/MR/F/05',
-      badgeBg: stats.pendingDcr > 0 ? '#fef3c7' : '#ecfdf5',
-      badgeColor: stats.pendingDcr > 0 ? '#b45309' : '#059669',
+      badge: stats.pendingDcr > 0 ? `• ${stats.pendingDcr} Action Required` : '• DKI/MR/F/05',
+      badgeBg: stats.pendingDcr > 0 ? '#FEF3C7' : '#ECFDF5',
+      badgeColor: stats.pendingDcr > 0 ? '#B45309' : '#059669',
       primary: false,
       actionText: 'Manage Change Requests',
       showAlways: true,
@@ -74,12 +72,12 @@ export default function DocumentControlPage() {
     {
       title: 'Direct Approvals Queue',
       icon: ClipboardCheck,
-      iconBg: 'rgba(245, 158, 11, 0.12)',
-      iconColor: '#d97706',
+      iconBg: '#FFFBEB',
+      iconColor: '#D97706',
       to: '/document-control/approvals',
-      badge: `${stats.pending} Pending`,
-      badgeBg: '#fef3c7',
-      badgeColor: '#d97706',
+      badge: `• ${stats.pending} Pending`,
+      badgeBg: '#FEF3C7',
+      badgeColor: '#D97706',
       primary: false,
       actionText: 'Review Pending Approvals',
       showAlways: false,
@@ -147,42 +145,62 @@ export default function DocumentControlPage() {
         {visibleCards.map((c, i) => {
           const Icon = c.icon;
           return (
-            <NavLink
+            <div
               key={i}
-              to={c.to}
+              className="card shadow-hover-elevate transition-all duration-300"
               style={{
-                textDecoration: 'none', background: '#fff', borderRadius: '16px',
-                border: c.primary ? '2px solid #4f46e5' : '1px solid #e2e8f0',
-                padding: '24px', display: 'flex', flexDirection: 'column',
-                boxShadow: c.primary ? '0 8px 24px rgba(79,70,229,0.12)' : '0 2px 8px rgba(0,0,0,0.04)',
-                transition: 'all 0.2s ease',
+                borderRadius: '16px',
+                padding: '24px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                border: '1px solid #E2E8F0',
+                backgroundColor: '#ffffff',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                <div style={{
-                  background: c.iconBg, borderRadius: '12px', width: '48px', height: '48px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}>
-                  <Icon size={24} color={c.iconColor} />
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                  <div style={{
+                    background: c.iconBg, borderRadius: '12px', width: '48px', height: '48px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <Icon size={24} color={c.iconColor} />
+                  </div>
+                  <span style={{
+                    background: c.badgeBg, color: c.badgeColor, fontSize: '11px',
+                    fontWeight: '700', padding: '4px 10px', borderRadius: '20px'
+                  }}>
+                    {c.badge}
+                  </span>
                 </div>
-                <span style={{
-                  background: c.badgeBg, color: c.badgeColor, fontSize: '11px',
-                  fontWeight: '700', padding: '4px 10px', borderRadius: '20px'
-                }}>
-                  {c.badge}
-                </span>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0F172A', marginBottom: '24px' }}>
+                  {c.title}
+                </h3>
               </div>
-              <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', margin: '0 0 16px' }}>
-                {c.title}
-              </h2>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px',
-                fontWeight: '700', color: '#4f46e5', borderTop: '1px solid #f1f5f9', paddingTop: '16px'
-              }}>
+
+              <button
+                className="btn btn-primary"
+                onClick={() => navigate(c.to)}
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  backgroundColor: '#EA580C',
+                  borderColor: '#EA580C',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                }}
+              >
                 <span>{c.actionText}</span>
-                <ArrowRight size={15} />
-              </div>
-            </NavLink>
+                <ArrowRight size={16} />
+              </button>
+            </div>
           );
         })}
       </div>

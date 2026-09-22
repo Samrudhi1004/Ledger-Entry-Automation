@@ -119,52 +119,26 @@ export default function QualityAnalyzerPage() {
             return (
               <div
                 key={card.id}
-                className="card"
-                onClick={() => {
-                  if (!isDisabled) {
-                    if (card.onClick) {
-                      card.onClick();
-                    } else if (card.link) {
-                      navigate(card.link);
-                    }
-                  }
-                }}
+                className="card shadow-hover-elevate transition-all duration-300"
                 style={{
                   background: isDisabled ? '#FAFBFD' : '#ffffff',
                   border: '1px solid #E2E8F0',
-                  borderRadius: '12px',
+                  borderRadius: '16px',
                   padding: '24px',
-                  boxShadow: isDisabled ? 'none' : '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
-                  cursor: isDisabled ? 'default' : 'pointer',
                   opacity: isDisabled ? 0.75 : 1,
-                  transition: 'all 0.2s ease-in-out',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                 }}
-                onMouseEnter={(e) => {
-                  if (!isDisabled) {
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)';
-                    e.currentTarget.style.borderColor = '#CBD5E1';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isDisabled) {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)';
-                    e.currentTarget.style.borderColor = '#E2E8F0';
-                  }
-                }}
               >
                 <div>
                   {/* Top Badge & Icon */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                     <div
                       style={{
                         width: '48px',
                         height: '48px',
-                        borderRadius: '10px',
+                        borderRadius: '12px',
                         background: card.iconBg,
                         color: card.iconColor,
                         display: 'flex',
@@ -179,8 +153,8 @@ export default function QualityAnalyzerPage() {
                       style={{
                         background: card.badgeBg,
                         color: card.badgeColor,
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
+                        fontSize: '11px',
+                        fontWeight: '700',
                         padding: '4px 10px',
                         borderRadius: '20px',
                         display: 'inline-flex',
@@ -201,39 +175,43 @@ export default function QualityAnalyzerPage() {
                   </div>
 
                   {/* Title */}
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1E293B', marginBottom: '24px' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0F172A', marginBottom: '24px' }}>
                     {card.title}
                   </h3>
                 </div>
 
                 {/* Bottom Action Button */}
-                <div
+                <button
+                  className="btn btn-primary"
+                  disabled={isDisabled}
+                  onClick={() => {
+                    if (!isDisabled) {
+                      if (card.onClick) {
+                        card.onClick();
+                      } else if (card.link) {
+                        navigate(card.link);
+                      }
+                    }
+                  }}
                   style={{
-                    paddingTop: '16px',
-                    borderTop: '1px solid #F1F5F9',
+                    width: '100%',
+                    padding: '12px 16px',
+                    borderRadius: '10px',
+                    fontSize: '13px',
+                    fontWeight: '700',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    backgroundColor: isDisabled ? '#94A3B8' : '#EA580C',
+                    borderColor: isDisabled ? '#94A3B8' : '#EA580C',
+                    color: '#ffffff',
+                    cursor: isDisabled ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: card.iconColor }}>
-                    {card.actionText}
-                  </span>
-                  <div
-                    style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '50%',
-                      background: card.iconBg,
-                      color: card.iconColor,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <ArrowRight size={16} />
-                  </div>
-                </div>
+                  <span>{card.actionText}</span>
+                  <ArrowRight size={16} />
+                </button>
               </div>
             );
           })}

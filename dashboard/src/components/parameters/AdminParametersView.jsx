@@ -91,7 +91,7 @@ export default function AdminParametersView({ hideTopHeader = false, onSwitchToB
     <div style={{ padding: hideTopHeader ? '0' : '24px', maxWidth: 1400, margin: '0 auto' }}>
       {!hideTopHeader && (
         <>
-          <Breadcrumbs items={[{ label: 'Master Database' }, { label: 'Master Parameters' }]} />
+          <Breadcrumbs items={[{ label: 'Master Database', to: '/master-database' }, { label: 'Master Parameters' }]} />
           {/* Header */}
           <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
