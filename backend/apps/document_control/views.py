@@ -743,7 +743,33 @@ class DCRNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return DCRNotification.objects.filter(recipient=self.request.user).order_by('-created_at')[:30]
+        qs = DCRNotification.objects.filter(recipient=self.request.user).order_by('-created_at')
+        is_read_param = self.request.query_params.get('is_read')
+        if is_read_param is not None:
+            if is_read_param.lower() in ('true', '1'):
+                qs = qs.filter(is_read=True)
+            elif is_read_param.lower() in ('false', '0'):
+                qs = qs.filter(is_read=False)
+
+        all_param = self.request.query_params.get('all', '').lower()
+        if all_param in ('true', '1', 'yes'):
+            return qs[:250]
+
+        limit = self.request.query_params.get('limit')
+        if limit:
+            try:
+                return qs[:int(limit)]
+            except (ValueError, TypeError):
+                pass
+
+        return qs[:30]
+
+    @action(detail=True, methods=['post'], url_path='mark-unread')
+    def mark_unread(self, request, pk=None):
+        notif = self.get_object()
+        notif.is_read = False
+        notif.save(update_fields=['is_read'])
+        return Response({'status': 'marked_unread'})
 
     @action(detail=False, methods=['get'], url_path='unread-count')
     def unread_count(self, request):

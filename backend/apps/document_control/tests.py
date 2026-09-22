@@ -94,7 +94,7 @@ class DocumentControlSystemTests(TestCase):
         self.assertEqual(res.status_code, 200)
         docs = res.data if isinstance(res.data, list) else res.data.get('results', [])
         self.assertEqual(len(docs), 1)
-        self.assertEqual(docs[0]['document_number'], 'QM-001')
+        self.assertEqual(docs[0]['document_number'], 'MANUAL-01')
 
         # Test L3
         res = self.client.get('/api/document-control/documents/?level=L3')
