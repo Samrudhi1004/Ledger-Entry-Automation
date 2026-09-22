@@ -7,11 +7,22 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
 } from '../../api/documentControl';
+import AllNotificationsModal from './AllNotificationsModal';
+
+// Clean legacy em dashes or en dashes from titles/messages
+const sanitizeText = (text) => {
+  if (!text) return '';
+  return text
+    .replace(/[\u2014\u2013]/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
 
 export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isAllModalOpen, setIsAllModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
@@ -23,6 +34,15 @@ export default function NotificationBell() {
       setUnreadCount(res.data?.unread_count || 0);
     } catch (e) {
       // Ignore polling network failures
+    }
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await getNotifications();
+      setNotifications(res.data?.results || res.data || []);
+    } catch (e) {
+      console.error("Failed to fetch notifications", e);
     }
   };
 
@@ -50,10 +70,7 @@ export default function NotificationBell() {
       setLoading(true);
       setIsOpen(true);
       try {
-        const res = await getNotifications();
-        setNotifications(res.data?.results || res.data || []);
-      } catch (e) {
-        console.error("Failed to fetch notifications", e);
+        await fetchNotifications();
       } finally {
         setLoading(false);
       }
@@ -275,14 +292,14 @@ export default function NotificationBell() {
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
-                        {n.title}
+                        {sanitizeText(n.title)}
                       </span>
                       <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap', marginLeft: '6px' }}>
                         {formatRelativeTime(n.created_at)}
                       </span>
                     </div>
                     <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: '#475569', lineHeight: '1.4' }}>
-                      {n.message}
+                      {sanitizeText(n.message)}
                     </p>
                     {n.document_title && (
                       <span style={{
@@ -292,7 +309,7 @@ export default function NotificationBell() {
                         fontWeight: '600',
                         color: '#6366f1',
                       }}>
-                        Doc: {n.document_title}
+                        Doc: {sanitizeText(n.document_title)}
                       </span>
                     )}
                   </div>
@@ -311,7 +328,7 @@ export default function NotificationBell() {
             <button
               onClick={() => {
                 setIsOpen(false);
-                navigate('/document-control/dcr');
+                setIsAllModalOpen(true);
               }}
               style={{
                 background: 'none',
@@ -322,11 +339,21 @@ export default function NotificationBell() {
                 cursor: 'pointer',
               }}
             >
-              View All Change Requests &rarr;
+              View All Notifications &rarr;
             </button>
           </div>
         </div>
       )}
+
+      {/* All Notifications Modal */}
+      <AllNotificationsModal
+        isOpen={isAllModalOpen}
+        onClose={() => setIsAllModalOpen(false)}
+        onNotificationUpdated={() => {
+          fetchCount();
+          fetchNotifications();
+        }}
+      />
     </div>
   );
 }
