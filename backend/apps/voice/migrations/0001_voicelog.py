@@ -1,4 +1,4 @@
-# Generated 2026-09-08 — MongoDB → PostgreSQL migration: VoiceLog model
+# Generated 2026-09-08 : MongoDB → PostgreSQL migration: VoiceLog model
 
 import django.db.models.deletion
 from django.conf import settings

@@ -9,7 +9,7 @@ from django.core.validators import MinValueValidator
 
 
 class Part(models.Model):
-    """A manufactured part — identified by part number."""
+    """A manufactured part : identified by part number."""
 
     machine     = models.ForeignKey(
         'machines.Machine',
@@ -36,7 +36,7 @@ class Part(models.Model):
         ordering = ['part_number']
 
     def __str__(self):
-        return f"{self.part_number} — {self.part_name}"
+        return f"{self.part_number} : {self.part_name}"
 
 
 class InspectionTemplate(models.Model):
@@ -50,6 +50,13 @@ class InspectionTemplate(models.Model):
         HOURLY      = 'hourly',      'Hourly'
         FINAL       = 'final',       'Final'
 
+    class Status(models.TextChoices):
+        DRAFT         = 'draft',          'Draft'
+        UNDER_REVIEW  = 'under_review',   'Under Review'
+        REVIEWED      = 'reviewed',       'Reviewed / Awaiting Approval'
+        APPROVED      = 'approved',       'Approved & Dispatched'
+        REJECTED      = 'rejected',       'Rejected'
+
     part            = models.ForeignKey(Part, on_delete=models.CASCADE, related_name='templates')
     name            = models.CharField(max_length=150, blank=True, default='', help_text='Custom Operation Name e.g. Op 10 - Rough Turning')
     inspection_type = models.CharField(max_length=20, choices=InspectionType.choices)
@@ -61,6 +68,12 @@ class InspectionTemplate(models.Model):
     is_active       = models.BooleanField(default=True)
     is_published    = models.BooleanField(default=True, help_text='Dispatched and live for operators and inspectors on mobile')
     published_at    = models.DateTimeField(null=True, blank=True)
+    status          = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True
+    )
     cycle_time_mins = models.FloatField(default=0.0, help_text='Cycle time per operation in minutes')
     created_by      = models.ForeignKey(
         'users.User',
@@ -70,6 +83,49 @@ class InspectionTemplate(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Assigned Reviewer & Approver
+    assigned_reviewer = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='assigned_template_reviews'
+    )
+    assigned_approver = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='assigned_template_approvals'
+    )
+
+    # Reviewer Sign-off
+    reviewed_by     = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reviewed_templates'
+    )
+    reviewed_at     = models.DateTimeField(null=True, blank=True)
+    review_comments = models.TextField(blank=True, default='')
+
+    # Approver Sign-off
+    approved_by       = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='approved_templates'
+    )
+    approved_at       = models.DateTimeField(null=True, blank=True)
+    approval_comments = models.TextField(blank=True, default='')
+
+    # Rejection Info
+    rejected_by      = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rejected_templates'
+    )
+    rejection_reason = models.TextField(blank=True, default='')
+
     class Meta:
         db_table        = 'inspection_templates'
         ordering        = ['part', 'inspection_type', '-version']
@@ -78,7 +134,7 @@ class InspectionTemplate(models.Model):
 
     def __str__(self):
         op_label = self.name if self.name else self.get_inspection_type_display()
-        return f"{self.part.part_number} — {op_label} v{self.version} ({self.configured_parameter_count}/{self.target_parameter_count})"
+        return f"{self.part.part_number} : {op_label} v{self.version} ({self.configured_parameter_count}/{self.target_parameter_count})"
 
     @property
     def configured_parameter_count(self):
@@ -282,6 +338,18 @@ class DrawingDocument(models.Model):
     Can optionally be linked to a Part, or kept as a general drawing.
     Holds metadata and tracks its revision history via DrawingVersion.
     """
+    class DrawingType(models.TextChoices):
+        CUSTOMER = 'customer', 'Customer Drawing'
+        INTERNAL = 'internal', 'Internal Manufacturing Drawing'
+        TOOLING  = 'tooling',  'Tooling & Fixture Drawing'
+
+    class Status(models.TextChoices):
+        DRAFT         = 'draft',          'Draft'
+        UNDER_REVIEW  = 'under_review',   'Under Review'
+        REVIEWED      = 'reviewed',       'Reviewed / Awaiting Approval'
+        APPROVED      = 'approved',       'Approved & Released'
+        REJECTED      = 'rejected',       'Rejected'
+
     part = models.ForeignKey(
         Part,
         on_delete=models.SET_NULL,
@@ -293,7 +361,19 @@ class DrawingDocument(models.Model):
     drawing_number = models.CharField(max_length=100, unique=True, help_text='Unique Drawing Number e.g. DWG-101')
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, default='')
+    doc_type = models.CharField(
+        max_length=20,
+        choices=DrawingType.choices,
+        default=DrawingType.INTERNAL,
+        db_index=True
+    )
     current_revision = models.CharField(max_length=20, default='Rev A')
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True
+    )
     created_by = models.ForeignKey(
         'users.User',
         on_delete=models.SET_NULL,
@@ -302,6 +382,49 @@ class DrawingDocument(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Assigned Reviewer & Approver
+    assigned_reviewer = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='assigned_drawing_reviews'
+    )
+    assigned_approver = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='assigned_drawing_approvals'
+    )
+
+    # Reviewer Sign-off
+    reviewed_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reviewed_drawings'
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_comments = models.TextField(blank=True, default='')
+
+    # Approver Sign-off
+    approved_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='approved_drawings'
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approval_comments = models.TextField(blank=True, default='')
+
+    # Rejection Info
+    rejected_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rejected_drawings'
+    )
+    rejection_reason = models.TextField(blank=True, default='')
 
     class Meta:
         db_table = 'drawing_documents'
@@ -325,6 +448,7 @@ class DrawingVersion(models.Model):
     file = models.FileField(upload_to='drawings/')
     file_name = models.CharField(max_length=255, blank=True)
     file_size = models.PositiveIntegerField(default=0)  # in bytes
+    change_type = models.CharField(max_length=50, default='initial', blank=True)
     change_notes = models.TextField(blank=True, default='')
     uploaded_by = models.ForeignKey(
         'users.User',
@@ -355,6 +479,18 @@ class ControlPlanDocument(models.Model):
     Can optionally be linked to a Part, or kept as a general control plan.
     Holds metadata and tracks version history via ControlPlanVersion.
     """
+    class PhaseType(models.TextChoices):
+        PROTOTYPE  = 'prototype',  'Prototype'
+        PRE_LAUNCH = 'pre_launch', 'Pre-Launch'
+        PRODUCTION = 'production', 'Production'
+
+    class Status(models.TextChoices):
+        DRAFT         = 'draft',          'Draft'
+        UNDER_REVIEW  = 'under_review',   'Under Review'
+        REVIEWED      = 'reviewed',       'Reviewed / Awaiting Approval'
+        APPROVED      = 'approved',       'Approved & Released'
+        REJECTED      = 'rejected',       'Rejected'
+
     part = models.ForeignKey(
         Part,
         on_delete=models.SET_NULL,
@@ -366,7 +502,19 @@ class ControlPlanDocument(models.Model):
     control_plan_number = models.CharField(max_length=100, unique=True, help_text='Unique Control Plan Number e.g. CP-101')
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, default='')
+    phase = models.CharField(
+        max_length=20,
+        choices=PhaseType.choices,
+        default=PhaseType.PRODUCTION,
+        db_index=True
+    )
     current_revision = models.CharField(max_length=20, default='v1.0')
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True
+    )
     created_by = models.ForeignKey(
         'users.User',
         on_delete=models.SET_NULL,
@@ -375,6 +523,49 @@ class ControlPlanDocument(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Assigned Reviewer & Approver
+    assigned_reviewer = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='assigned_control_plan_reviews'
+    )
+    assigned_approver = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='assigned_control_plan_approvals'
+    )
+
+    # Reviewer Sign-off
+    reviewed_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reviewed_control_plans'
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_comments = models.TextField(blank=True, default='')
+
+    # Approver Sign-off
+    approved_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='approved_control_plans'
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approval_comments = models.TextField(blank=True, default='')
+
+    # Rejection Info
+    rejected_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rejected_control_plans'
+    )
+    rejection_reason = models.TextField(blank=True, default='')
 
     class Meta:
         db_table = 'control_plan_documents'
@@ -397,6 +588,7 @@ class ControlPlanVersion(models.Model):
     file = models.FileField(upload_to='control_plans/')
     file_name = models.CharField(max_length=255, blank=True)
     file_size = models.PositiveIntegerField(default=0)
+    change_type = models.CharField(max_length=50, default='initial', blank=True)
     change_notes = models.TextField(blank=True, default='')
     uploaded_by = models.ForeignKey(
         'users.User',
@@ -419,4 +611,121 @@ class ControlPlanVersion(models.Model):
         if self.file and hasattr(self.file, 'size'):
             self.file_size = getattr(self.file, 'size', 0)
         super().save(*args, **kwargs)
+
+
+class TemplateChangeRequest(models.Model):
+    """
+    Formal Document Change Request (DCR) for Master Inspection Parameters.
+    Adheres to industrial engineering standard Form DKI/MR/F/05.
+    Governs additions, modifications, and deletions of parameters after template approval.
+    """
+    class ChangeType(models.TextChoices):
+        MODIFICATION = 'modification', 'Parameter Specification Modification'
+        ADDITION     = 'addition',     'New Parameter Addition'
+        DELETION     = 'deletion',     'Parameter Deletion'
+
+    class Status(models.TextChoices):
+        SUBMITTED       = 'submitted',       'Submitted'
+        AWAITING_REVIEW = 'awaiting_review', 'Awaiting Review'
+        REVIEWED        = 'reviewed',        'Reviewed & Recommended'
+        APPROVED        = 'approved',        'Approved'
+        REJECTED        = 'rejected',        'Rejected'
+        IMPLEMENTED     = 'implemented',     'Implemented'
+
+    dcr_number = models.CharField(max_length=50, unique=True, db_index=True)
+    form_doc_no = models.CharField(max_length=50, default='DKI/MR/F/05', blank=True)
+    template = models.ForeignKey(
+        InspectionTemplate,
+        on_delete=models.CASCADE,
+        related_name='change_requests'
+    )
+    change_type = models.CharField(
+        max_length=20,
+        choices=ChangeType.choices,
+        default=ChangeType.MODIFICATION
+    )
+    parameter = models.ForeignKey(
+        InspectionParameter,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='change_requests'
+    )
+    process_parameter = models.ForeignKey(
+        ProcessParameter,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='change_requests'
+    )
+    is_process_parameter = models.BooleanField(default=False)
+
+    parameter_code = models.CharField(max_length=100)
+    parameter_name = models.CharField(max_length=255)
+
+    current_specification = models.JSONField(default=dict, blank=True)
+    proposed_specification = models.JSONField(default=dict, blank=True)
+
+    basis_for_change = models.TextField(help_text="Engineering / quality rationale for change")
+
+    status = models.CharField(
+        max_length=25,
+        choices=Status.choices,
+        default=Status.AWAITING_REVIEW,
+        db_index=True
+    )
+
+    raised_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.PROTECT,
+        related_name='raised_template_dcrs'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    assigned_reviewer = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='assigned_template_dcr_reviews'
+    )
+    assigned_approver = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='assigned_template_dcr_approvals'
+    )
+
+    reviewed_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reviewed_template_dcrs'
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_remarks = models.TextField(blank=True, default='')
+
+    approved_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='approved_template_dcrs'
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approval_remarks = models.TextField(blank=True, default='')
+
+    rejected_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rejected_template_dcrs'
+    )
+    rejection_reason = models.TextField(blank=True, default='')
+
+    implemented_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'template_change_requests'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.dcr_number} - {self.template} ({self.get_change_type_display()})"
+
 

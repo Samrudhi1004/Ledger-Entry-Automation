@@ -565,7 +565,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
               <span><small>Frequency</small>{statusTarget.calibration_frequency_days} days</span>
               <span><small>Last Calibration</small>{formatDate(statusTarget.last_calibration_date)}</span>
               <span><small>Next Due</small>{formatDate(statusTarget.next_calibration_date)}</span>
-              <span><small>Make / Model</small>{[statusTarget.manufacturer, statusTarget.model_number].filter(Boolean).join(' / ') || '—'}</span>
+              <span><small>Make / Model</small>{[statusTarget.manufacturer, statusTarget.model_number].filter(Boolean).join(' / ') || '-'}</span>
             </div>
           </div>
           <form id="calibration-status-form" onSubmit={handleStatusUpdate}>

@@ -313,7 +313,7 @@ export default function App() {
       <Route
         path="/parameters"
         element={
-          <ProtectedLayout pendingCount={pendingCount}>
+          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
             <ParametersPage />
           </ProtectedLayout>
         }

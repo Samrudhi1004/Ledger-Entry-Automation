@@ -50,7 +50,7 @@ export function AuthProvider({ children }) {
       setUser(profile.data);
       return profile.data;
     } catch {
-      /* ignore — user stays as-is if request fails */
+      /* ignore : user stays as-is if request fails */
     }
   }, []);
 

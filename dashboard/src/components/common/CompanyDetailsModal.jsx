@@ -117,7 +117,7 @@ export default function CompanyDetailsModal({ onClose }) {
 
   const renderValue = (val, isMono = false) => {
     if (!val || val.trim() === '') {
-      return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+      return <span style={{ color: 'var(--text-muted)' }}>-</span>;
     }
     return (
       <span style={{ fontFamily: isMono ? 'monospace' : 'inherit', color: 'var(--text-primary)', fontWeight: 500 }}>

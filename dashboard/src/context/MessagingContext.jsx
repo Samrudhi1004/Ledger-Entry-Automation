@@ -497,7 +497,7 @@ export const MessagingProvider = ({ children }) => {
 
         case 'new_message_notification':
           // Update conversation list sidebar only (message list is handled by the main WS).
-          // Do NOT add the message to messages[] here — the conversation WebSocket handles that
+          // Do NOT add the message to messages[] here : the conversation WebSocket handles that
           // via 'message_sent' (sender) and 'new_message' (others). Adding here causes duplicates.
           const { conversation_id, message } = data.data;
 
@@ -507,7 +507,7 @@ export const MessagingProvider = ({ children }) => {
             // If conversation is brand-new (first message from a stranger), fetch full list
             if (!conversationExists) {
               setTimeout(() => fetchConversations(), 0);
-              return prev; // leave state unchanged — fetchConversations will update it
+              return prev; // leave state unchanged : fetchConversations will update it
             }
 
             const updated = prev.map(conv =>

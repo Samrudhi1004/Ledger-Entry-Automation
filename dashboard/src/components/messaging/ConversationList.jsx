@@ -62,7 +62,7 @@ export default function ConversationList() {
     }
   };
 
-  // Filter conversations locally — no API call per keystroke
+  // Filter conversations locally : no API call per keystroke
   const filteredConversations = searchQuery.trim()
     ? conversations.filter(conversation => {
         const name = getConversationName(conversation).toLowerCase();

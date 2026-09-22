@@ -7,10 +7,10 @@ import { useAuth } from '../../context/AuthContext';
 import { submitForReview, approveDocument, rejectDocument } from '../../api/documentControl';
 
 const LEVEL_COLORS = {
-  L1: { bg: '#f5f3ff', color: '#7c3aed', border: '#ddd6fe', label: 'L1 — Quality Manual' },
-  L2: { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe', label: 'L2 — SOP' },
-  L3: { bg: '#ecfdf5', color: '#059669', border: '#a7f3d0', label: 'L3 — Work Instruction' },
-  L4: { bg: '#fffbeb', color: '#d97706', border: '#fde68a', label: 'L4 — Form / Record' },
+  L1: { bg: '#f5f3ff', color: '#7c3aed', border: '#ddd6fe', label: 'L1 : Quality Manual' },
+  L2: { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe', label: 'L2 : SOP' },
+  L3: { bg: '#ecfdf5', color: '#059669', border: '#a7f3d0', label: 'L3 : Work Instruction' },
+  L4: { bg: '#fffbeb', color: '#d97706', border: '#fde68a', label: 'L4 : Form / Record' },
 };
 
 export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canRequestDCR, onUpdate }) {
@@ -697,7 +697,7 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
                   Reject Controlled Document
                 </h3>
                 <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#64748b' }}>
-                  {currentDoc.document_number} — {currentDoc.title}
+                  {currentDoc.document_number} : {currentDoc.title}
                 </p>
               </div>
               <button

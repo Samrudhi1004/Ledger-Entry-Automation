@@ -97,7 +97,7 @@ def _equipment_line(item, today):
         status = f'OVERDUE by {(today - item.next_calibration_date).days} days'
     else:
         status = f'DUE on {item.next_calibration_date:%d %b %Y}'
-    return f"{item.equipment_id} — {item.equipment_name} — {status} — Department: {item.department or '—'} — Location: {item.location or '—'}"
+    return f"{item.equipment_id} : {item.equipment_name} : {status} : Department: {item.department or '-'} : Location: {item.location or '-'}"
 
 
 def _equipment_rows_html(equipment, today):
@@ -123,8 +123,8 @@ def _equipment_rows_html(equipment, today):
             f'<span style="font-weight:400;color:#667085;">{escape(str(item.equipment_name))}</span></td>'
             f'<td style="padding:12px;border-top:1px solid #e4e7ec;color:#344054;">{item.next_calibration_date:%d %b %Y}</td>'
             f'<td style="padding:12px;border-top:1px solid #e4e7ec;"><span style="display:inline-block;padding:4px 8px;border-radius:999px;background:{status_background};color:{status_color};font-weight:700;font-size:12px;">{escape(status)}</span></td>'
-            f'<td style="padding:12px;border-top:1px solid #e4e7ec;color:#344054;">{escape(str(item.department or "—"))}</td>'
-            f'<td style="padding:12px;border-top:1px solid #e4e7ec;color:#344054;">{escape(str(item.location or "—"))}</td>'
+            f'<td style="padding:12px;border-top:1px solid #e4e7ec;color:#344054;">{escape(str(item.department or "-"))}</td>'
+            f'<td style="padding:12px;border-top:1px solid #e4e7ec;color:#344054;">{escape(str(item.location or "-"))}</td>'
             '</tr>'
         )
     return ''.join(rows)
@@ -154,7 +154,7 @@ def _schedule_email_content(today):
     next_lines = '\n'.join(_equipment_line(item, today) for item in next_equipment)
     body = (
         f'Calibration notification for {today:%d %B %Y}\n\n'
-        f'NEXT MONTH CALIBRATION LIST — {month_label}\n'
+        f'NEXT MONTH CALIBRATION LIST : {month_label}\n'
         f'Equipment due next month: {len(next_equipment)}\n'
         f'{next_lines or "No equipment is scheduled for calibration next month."}\n\n'
         'DECISION RULES\n'
@@ -166,7 +166,7 @@ def _schedule_email_content(today):
         month_label,
         next_equipment,
     )
-    return f'[Calibration] Next Month Schedule — {month_label}', body, html_message, next_equipment
+    return f'[Calibration] Next Month Schedule : {month_label}', body, html_message, next_equipment
 
 
 def _schedule_email_html(today, month_label, next_equipment):
@@ -197,7 +197,7 @@ def _schedule_email_html(today, month_label, next_equipment):
             </tr>
           </table>
 
-          <h2 style="margin:0 0 6px;font-size:18px;color:#101828;">Next Month Calibration List &mdash; {escape(month_label)}</h2>
+          <h2 style="margin:0 0 6px;font-size:18px;color:#101828;">Next Month Calibration List  -  {escape(month_label)}</h2>
           <p style="margin:0 0 14px;color:#667085;font-size:13px;">Non-scrapped equipment scheduled for calibration in the next calendar month.</p>
           {_equipment_table_html(next_equipment, today, 'No equipment is scheduled for calibration next month.')}
 
@@ -268,7 +268,7 @@ def _alert_email_content(today):
   </body>
 </html>
 '''
-    return f'[Calibration Alert] Action Required — {len(alerts)} equipment', body, html_message, alerts
+    return f'[Calibration Alert] Action Required : {len(alerts)} equipment', body, html_message, alerts
 
 
 def _send_monthly_due_list(today, recipients):

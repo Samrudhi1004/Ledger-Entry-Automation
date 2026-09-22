@@ -22,7 +22,7 @@ class InspectionReportView(APIView):
         to_date      = request.query_params.get('to')
         machine_code = request.query_params.get('machine')
 
-        # Cache analytics reports for 5 minutes — report data changes infrequently
+        # Cache analytics reports for 5 minutes : report data changes infrequently
         # and re-aggregating the full table on every request is expensive.
         cache_key = f"inspection_report_{from_date}_{to_date}_{machine_code or 'all'}"
         cached = cache.get(cache_key)
@@ -75,13 +75,13 @@ class OOCTrendView(APIView):
         # Cache OOC trend for 5 minutes. The old implementation ran N×3 separate
         # DB queries (one count() call per metric per day). This version uses a
         # single annotated query and caches the result, so repeat requests are
-        # served in < 1ms instead of 1–5 seconds.
+        # served in < 1ms instead of 1-5 seconds.
         cache_key = f"ooc_trend_{days}_{plant_id or 'all'}"
         cached = cache.get(cache_key)
         if cached:
             return Response(cached)
 
-        # Single aggregated query — replaces the previous per-day loop
+        # Single aggregated query : replaces the previous per-day loop
         start_day = today - timedelta(days=days - 1)
         qs = InspectionSession.objects.filter(started_at__date__gte=start_day)
         if plant_id:
@@ -287,7 +287,7 @@ class DailyCompletedReportsView(APIView):
                 continue
             seen_keys.add(key)
 
-            operator_full = s.operator.get_full_name() if s.operator else '—'
+            operator_full = s.operator.get_full_name() if s.operator else '-'
             inspector_full = (
                 s.finalized_by.get_full_name()
                 if s.finalized_by
@@ -299,8 +299,8 @@ class DailyCompletedReportsView(APIView):
                 'session_id': str(s.session_id),
                 'date': date_str,
                 'raw_date': s.started_at.isoformat() if s.started_at else '',
-                'machine': s.machine.machine_code if s.machine else '—',
-                'part': f"{s.part.part_number} ({s.part.part_name})" if s.part and s.part.part_name else (s.part.part_number if s.part else '—'),
+                'machine': s.machine.machine_code if s.machine else '-',
+                'part': f"{s.part.part_number} ({s.part.part_name})" if s.part and s.part.part_name else (s.part.part_number if s.part else '-'),
                 'part_number': s.part.part_number if s.part else '',
                 'shift': s.shift or 'A',
                 'operator': operator_full,

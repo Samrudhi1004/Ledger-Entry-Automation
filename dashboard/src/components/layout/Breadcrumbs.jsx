@@ -8,7 +8,7 @@ const ROUTE_MAP = {
   '/document-control': [{ label: 'Document Control' }],
   '/document-control/documents': [
     { label: 'Document Control', to: '/document-control' },
-    { label: 'Documents (L1–L4)' },
+    { label: 'Documents (L1 : L4)' },
   ],
   '/document-control/dcr': [
     { label: 'Document Control', to: '/document-control' },
@@ -57,7 +57,10 @@ const ROUTE_MAP = {
     { label: 'Calibration', to: '/calibration' },
     { label: 'Annual Calibration Plan' },
   ],
-  '/parameters': [{ label: 'Master Parameters' }],
+  '/parameters': [
+    { label: 'Master Database' },
+    { label: 'Master Parameters' },
+  ],
   '/quality-analyzer': [{ label: 'Quality Analyzer' }],
   '/qa': [{ label: 'Quality Analyzer' }],
   '/users': [{ label: 'User Management' }],

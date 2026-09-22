@@ -110,7 +110,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     header_data = [
         [
             Paragraph(safe_fac_code, mmpl_style),
-            [Paragraph(safe_fac_name.upper(), title_style), Paragraph(f"1ST PIECE CUM IN-PROCESS INSPECTION REPORT — PROCESS NO. {op_no}", subtitle_style)],
+            [Paragraph(safe_fac_name.upper(), title_style), Paragraph(f"1ST PIECE CUM IN-PROCESS INSPECTION REPORT : PROCESS NO. {op_no}", subtitle_style)],
             Paragraph(f"DOC REF: {safe_fac_code}/PRD/F02<br/>REV: 02 (15.8.2013)<br/>PAGE 1 OF 1", doc_ref_style)
         ]
     ]
@@ -186,11 +186,11 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
             spec = f"{nom} {unit}"
 
         is_crit = p.get('is_critical', False)
-        class_str = "CRITICAL" if is_crit else "—"
+        class_str = "CRITICAL" if is_crit else "-"
         method_str = p.get('measurement_technique') or p.get('evaluation_technique') or p.get('gauge_used') or "VERNIER CALIPER"
         sample_str = p.get('sample_size') or p.get('sample_frequency') or "5NOS/SHIFT"
 
-        fmt_val = lambda m: (f"{float(m['measured_value']):.2f}" if isinstance(m.get('measured_value'), (int, float)) else str(m.get('measured_value', '—'))) if m else "—"
+        fmt_val = lambda m: (f"{float(m['measured_value']):.2f}" if isinstance(m.get('measured_value'), (int, float)) else str(m.get('measured_value', '-'))) if m else "-"
         fmt_para = lambda m: Paragraph(fmt_val(m), red_cell if (m and m.get('status') == 'out_of_spec') else cell_style)
 
         hourly_slot_map = {}
@@ -207,7 +207,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
                 h_str = f"{float(h_val):.2f}" if isinstance(h_val, (int, float)) else str(h_val)
                 hourly_cells.append(Paragraph(h_str, red_cell if h_status == 'out_of_spec' else cell_style))
             else:
-                hourly_cells.append(Paragraph("—", cell_style))
+                hourly_cells.append(Paragraph("-", cell_style))
 
         table_data.append([
             Paragraph("10.", bold_cell),
@@ -221,7 +221,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
             fmt_para(fp2),
             fmt_para(fp3),
             *hourly_cells,
-            Paragraph("—", cell_style),
+            Paragraph("-", cell_style),
         ])
 
     base_widths = [18, 18, 90, 26, 65, 70, 45, 24, 24, 24] # Total base: 404pt
@@ -323,7 +323,7 @@ def generate_daily_production_pdf(report) -> str:
     header_data = [
         [
             Paragraph(fac_code, mmpl_style),
-            [Paragraph(fac_name.upper(), title_style), Paragraph("DAILY PRODUCTION REPORT — END OF DAY SUMMARY", subtitle_style)],
+            [Paragraph(fac_name.upper(), title_style), Paragraph("DAILY PRODUCTION REPORT : END OF DAY SUMMARY", subtitle_style)],
             Paragraph(f"DOC REF: {fac_code}/PRD/F08<br/>REV: 01 (12.8.2026)<br/>PAGE 1 OF 1", doc_ref_style)
         ]
     ]
@@ -339,9 +339,9 @@ def generate_daily_production_pdf(report) -> str:
     elements.append(Spacer(1, 10))
 
     # 2. Metadata Grid
-    op_name = report.operator.get_full_name().strip() if report.operator else '—'
+    op_name = report.operator.get_full_name().strip() if report.operator else '-'
     if not op_name:
-        op_name = report.operator.username if report.operator else '—'
+        op_name = report.operator.username if report.operator else '-'
 
     meta_data = [
         [
@@ -351,7 +351,7 @@ def generate_daily_production_pdf(report) -> str:
         ],
         [
             Paragraph(f"<b>PART:</b> {report.part.part_number} ({report.part.part_name})", left_style),
-            Paragraph(f"<b>OPERATION:</b> {report.operation or '—'}", left_style),
+            Paragraph(f"<b>OPERATION:</b> {report.operation or '-'}", left_style),
             Paragraph(f"<b>OPERATOR:</b> {op_name}", left_style),
         ]
     ]
@@ -506,7 +506,7 @@ def generate_downtime_pdf(qs, date_str: str, shift_str: str) -> str:
 
     for idx, obj in enumerate(qs, 1):
         prod = obj.production_report
-        op_name = prod.operator.get_full_name().strip() if prod.operator else '—'
+        op_name = prod.operator.get_full_name().strip() if prod.operator else '-'
         if not op_name and prod.operator:
             op_name = prod.operator.username
 
@@ -534,7 +534,7 @@ def generate_downtime_pdf(qs, date_str: str, shift_str: str) -> str:
             Paragraph(str(obj.rework), cell_style),
             Paragraph(str(obj.tool_problem), cell_style),
             Paragraph(str(obj.total_downtime), bold_cell),
-            Paragraph(obj.remarks or '—', cell_style)
+            Paragraph(obj.remarks or '-', cell_style)
         ])
 
     # Summary Row

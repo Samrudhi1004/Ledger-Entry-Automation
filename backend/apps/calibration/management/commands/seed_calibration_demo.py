@@ -55,7 +55,7 @@ DEMO_WORKFLOW_CASES = (
     ('DEMO-DUE-15', 'Depth Micrometer', 15, CalibrationEquipment.State.ACTIVE, '', 'Due within 15 days'),
     ('DEMO-DUE-21', 'Slip Gauge Set', 21, CalibrationEquipment.State.ACTIVE, '', 'Due within 30 days'),
     ('DEMO-DUE-30', 'Dial Test Indicator', 30, CalibrationEquipment.State.ACTIVE, '', 'Due within 30 days'),
-    ('DEMO-REJECTED', 'Bimetal Thermometer', -4, CalibrationEquipment.State.REJECTED, '', 'Rejected — select a disposition'),
+    ('DEMO-REJECTED', 'Bimetal Thermometer', -4, CalibrationEquipment.State.REJECTED, '', 'Rejected : select a disposition'),
 )
 
 

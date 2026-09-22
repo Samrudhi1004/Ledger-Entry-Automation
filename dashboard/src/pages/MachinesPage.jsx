@@ -71,7 +71,7 @@ export default function MachinesPage() {
     }
   }, [wsEvents[0]?._receivedAt]);
 
-  // Compare using local date (IST) — not raw UTC string slice
+  // Compare using local date (IST) : not raw UTC string slice
   const todayLocal = new Date().toLocaleDateString('en-CA'); // "YYYY-MM-DD" in local TZ
 
   // Create a map from machine_code to active session started today
@@ -152,7 +152,7 @@ export default function MachinesPage() {
                         {/* Machine Name */}
                         <td>
                           <div><strong>{m.name}</strong></div>
-                          <div className="text-xs text-muted">{m.machine_type || '—'} · {m.manufacturer || ''}</div>
+                          <div className="text-xs text-muted">{m.machine_type || '-'} · {m.manufacturer || ''}</div>
                         </td>
 
                         {/* Active Operator */}
@@ -165,7 +165,7 @@ export default function MachinesPage() {
                               <span className="text-xs text-muted"> (Shift {activeSession.shift})</span>
                             </div>
                           ) : (
-                            <span className="text-muted text-xs">— Idle</span>
+                            <span className="text-muted text-xs">- Idle</span>
                           )}
                         </td>
 
@@ -179,7 +179,7 @@ export default function MachinesPage() {
                               <div className="text-xs text-muted">{activeSession.inspection_type}</div>
                             </div>
                           ) : (
-                            <span className="text-muted text-xs">—</span>
+                            <span className="text-muted text-xs">-</span>
                           )}
                         </td>
 

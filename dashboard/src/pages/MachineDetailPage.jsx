@@ -49,7 +49,7 @@ export default function MachineDetailPage() {
       setHistorySessions(Array.isArray(sessionsList) ? sessionsList : []);
 
       // 4. Find today's active inspection session for this machine
-      // Compare using local date (IST) — not raw UTC string slice
+      // Compare using local date (IST) : not raw UTC string slice
       const todayLocal = new Date().toLocaleDateString('en-CA'); // "YYYY-MM-DD" in local TZ
 
       const activeOrLatest = (Array.isArray(sessionsList) ? sessionsList : []).find((s) => {
@@ -175,7 +175,7 @@ export default function MachineDetailPage() {
       fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wsEvents[0]?._receivedAt]); // intentionally omit fetchData & machine — see note above
+  }, [wsEvents[0]?._receivedAt]); // intentionally omit fetchData & machine : see note above
 
   if (loading) {
     return (
@@ -479,7 +479,7 @@ export default function MachineDetailPage() {
                               const isOOC = p.trialsOOC?.[1] || isValOOC(v, p.lower_limit, p.upper_limit, p.trialStatuses?.[1]);
                               return (
                                 <td style={{ border: '1px solid #000000', padding: '3px 1px', fontWeight: isOOC ? 'bold' : 'normal', fontSize: 10, fontFamily: 'Consolas, monospace', color: isOOC ? '#dc2626' : '#000000', background: isOOC ? 'rgba(254, 226, 226, 0.45)' : (isAltRow ? '#e2e8f0' : '#f1f5f9') }}>
-                                  {v !== undefined ? fmt(v) : '—'}
+                                  {v !== undefined ? fmt(v) : '-'}
                                 </td>
                               );
                             })()}
@@ -490,7 +490,7 @@ export default function MachineDetailPage() {
                               const isOOC = p.trialsOOC?.[2] || isValOOC(v, p.lower_limit, p.upper_limit, p.trialStatuses?.[2]);
                               return (
                                 <td style={{ border: '1px solid #000000', padding: '3px 1px', fontWeight: isOOC ? 'bold' : 'normal', fontSize: 10, fontFamily: 'Consolas, monospace', color: isOOC ? '#dc2626' : '#000000', background: isOOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
-                                  {v !== undefined ? fmt(v) : '—'}
+                                  {v !== undefined ? fmt(v) : '-'}
                                 </td>
                               );
                             })()}
@@ -501,7 +501,7 @@ export default function MachineDetailPage() {
                               const isOOC = p.trialsOOC?.[3] || isValOOC(v, p.lower_limit, p.upper_limit, p.trialStatuses?.[3]);
                               return (
                                 <td style={{ border: '1px solid #000000', padding: '3px 1px', fontWeight: isOOC ? 'bold' : 'normal', fontSize: 10, fontFamily: 'Consolas, monospace', color: isOOC ? '#dc2626' : '#000000', background: isOOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
-                                  {v !== undefined ? fmt(v) : '—'}
+                                  {v !== undefined ? fmt(v) : '-'}
                                 </td>
                               );
                             })()}
@@ -512,7 +512,7 @@ export default function MachineDetailPage() {
                               const isOOC = p.hourlyOOC?.[slot] || isValOOC(v, p.lower_limit, p.upper_limit, p.hourlyStatuses?.[slot]);
                               return (
                                 <td key={slot} style={{ border: '1px solid #000000', padding: '3px 1px', fontWeight: isOOC ? 'bold' : 'normal', fontSize: 10, fontFamily: 'Consolas, monospace', color: isOOC ? '#dc2626' : '#000000', background: isOOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
-                                  {v !== undefined ? fmt(v) : '—'}
+                                  {v !== undefined ? fmt(v) : '-'}
                                 </td>
                               );
                             })}
@@ -523,7 +523,7 @@ export default function MachineDetailPage() {
                               ) : (Object.keys(p.trials).length > 0 || Object.keys(p.hourly).length > 0) ? (
                                 <span style={{ color: '#16a34a', fontWeight: 'bold', fontSize: 9 }}>OK</span>
                               ) : (
-                                <span style={{ color: '#94a3b8', fontSize: 9 }}>—</span>
+                                <span style={{ color: '#94a3b8', fontSize: 9 }}>-</span>
                               )}
                             </td>
                           </tr>
@@ -578,7 +578,7 @@ export default function MachineDetailPage() {
                   {historySessions.map((s) => {
                     const opLabel = s.template_name?.trim() ||
                       ({ first_piece: '1st Piece Inspection', hourly: 'Hourly In-Process', final: 'Final Check', setup_approval: 'Setup Approval' }[s.inspection_type]
-                        ?? s.inspection_type?.replace('_', ' ') ?? '—');
+                        ?? s.inspection_type?.replace('_', ' ') ?? '-');
                     return (
                       <tr key={s.session_id}>
                         <td>
@@ -587,7 +587,7 @@ export default function MachineDetailPage() {
                               ? `Slot ${s.hourly_unlocked_slot || s.hourly_slot || 1}/HR`
                               : s.inspection_type === 'first_piece'
                               ? `1ST PC #${s.trial_number || 1}`
-                              : s.inspection_type?.replace('_', ' ')?.toUpperCase() || '—'}
+                              : s.inspection_type?.replace('_', ' ')?.toUpperCase() || '-'}
                           </span>
                         </td>
                         <td className="font-mono font-bold">

@@ -15,8 +15,8 @@ class MailjetAPIBackend(BaseEmailBackend):
     Works on platforms that block outbound SMTP ports (like Railway).
 
     Environment variables:
-        EMAIL_HOST_USER     — Mailjet API Key
-        EMAIL_HOST_PASSWORD — Mailjet API Secret
+        EMAIL_HOST_USER     : Mailjet API Key
+        EMAIL_HOST_PASSWORD : Mailjet API Secret
     """
 
     def __init__(self, fail_silently=False, **kwargs):
@@ -53,7 +53,7 @@ class MailjetAPIBackend(BaseEmailBackend):
             return False
 
         # Build To / Cc / Bcc separately to avoid exposing BCC addresses.
-        # message.recipients() merges all three — we must NOT use it for Mailjet's
+        # message.recipients() merges all three : we must NOT use it for Mailjet's
         # 'To' field, as every address in 'To' is visible to all recipients.
         to_list  = [{'Email': addr} for addr in (message.to or [])]
         cc_list  = [{'Email': addr} for addr in (message.cc or [])]

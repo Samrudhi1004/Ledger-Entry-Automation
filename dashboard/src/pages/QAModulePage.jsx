@@ -9,7 +9,7 @@ export default function QAModulePage() {
     <>
       <Header
         title="QA Module"
-        subtitle="Quality Assurance Hub — First Piece Setup Approvals, Form F02 Inspection Ledgers & Defect Analytics"
+        subtitle="Quality Assurance Hub : First Piece Setup Approvals, Form F02 Inspection Ledgers & Defect Analytics"
       />
 
       <div className="page-content bg-gradient-animated">

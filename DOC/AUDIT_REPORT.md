@@ -9,25 +9,25 @@ A full deep-dive audit of the backend (Django/Daphne) and frontend (React/Vite) 
 
 | Severity | Count |
 |---|---|
-| 🔴 Critical — Runtime crash / data corruption | 4 |
-| 🔴 Critical — Security | 7 |
-| 🟠 High — Functional bugs / silent wrong data | 6 |
-| 🟡 Medium — Performance / reliability | 4 |
-| 🟢 Low — Code quality / dead code | 8 |
+| 🔴 Critical : Runtime crash / data corruption | 4 |
+| 🔴 Critical : Security | 7 |
+| 🟠 High : Functional bugs / silent wrong data | 6 |
+| 🟡 Medium : Performance / reliability | 4 |
+| 🟢 Low : Code quality / dead code | 8 |
 
 ---
 
-## 🔴 CRITICAL — Runtime Crashes / Data Corruption
+## 🔴 CRITICAL : Runtime Crashes / Data Corruption
 
 ### C1 · Wrong method name crashes `SetupStatusView`
 **File:** `backend/apps/inspections/views.py:567`  
-**Problem:** Calls `_service.get_session_detail()` — this method does not exist on `InspectionService`. The correct name is `get_session_document()`. Every request to the `/setup-status/` endpoint crashes with `AttributeError`.  
+**Problem:** Calls `_service.get_session_detail()` : this method does not exist on `InspectionService`. The correct name is `get_session_document()`. Every request to the `/setup-status/` endpoint crashes with `AttributeError`.  
 **Fix:** Rename the call to `get_session_document()`.
 
 ---
 
 ### C2 · Wrong tolerance applied to measurements (silent data corruption)
-**File:** `backend/apps/inspections/services.py:436–438`  
+**File:** `backend/apps/inspections/services.py:436-438`  
 **Problem:** In `record_measurement()`, if the `parameter_code` is not found for the session's part/template, the code falls back silently:
 ```python
 parameter = InspectionParameter.objects.filter(template__part_id=session.part_id).first()
@@ -46,17 +46,17 @@ This applies wrong tolerances from a completely different parameter/part, produc
 
 ---
 
-### C4 · WebSocket message type mismatch — dashboard_event handler missing
+### C4 · WebSocket message type mismatch : dashboard_event handler missing
 **File:** `backend/apps/dashboard/consumers.py`  
-**Problem:** Consumer only handles type `inspection_event`. The reminder_worker sends type `dashboard_event`. Channels routes by type — unhandled types are silently discarded.  
+**Problem:** Consumer only handles type `inspection_event`. The reminder_worker sends type `dashboard_event`. Channels routes by type : unhandled types are silently discarded.  
 **Fix:** Add a `dashboard_event(self, event)` handler to the consumer, or change the reminder_worker to send type `inspection.event` matching the existing handler.
 
 ---
 
-## 🔴 CRITICAL — Security
+## 🔴 CRITICAL : Security
 
 ### S1 · Unauthenticated export endpoints (full data leak)
-**File:** `backend/apps/inspections/views.py` — `DailyProductionReportViewSet`, `DowntimeReportViewSet`  
+**File:** `backend/apps/inspections/views.py` : `DailyProductionReportViewSet`, `DowntimeReportViewSet`  
 **Problem:** `get_permissions()` returns an empty list `[]` for `export_pdf` and `export_excel` actions, completely bypassing authentication. Anyone on the internet can download all production and downtime data.
 ```python
 def get_permissions(self):
@@ -115,7 +115,7 @@ This path is then returned to the client via the job status endpoint.
 
 ### S6 · Redundant `CORS_ALLOW_ALL_ORIGINS = True` (misleading)
 **File:** `backend/config/settings.py:149`  
-**Problem:** `CORS_ALLOW_ALL_ORIGINS = True` is set unconditionally at line 149, then correctly overridden to `DEBUG` at line 317. The early `True` is dead but dangerous — it will become active if the override line is ever removed.  
+**Problem:** `CORS_ALLOW_ALL_ORIGINS = True` is set unconditionally at line 149, then correctly overridden to `DEBUG` at line 317. The early `True` is dead but dangerous : it will become active if the override line is ever removed.  
 **Fix:** Delete the redundant line 149.
 
 ---
@@ -127,7 +127,7 @@ This path is then returned to the client via the job status endpoint.
 
 ---
 
-## 🟠 HIGH — Functional Bugs / Silent Wrong Data
+## 🟠 HIGH : Functional Bugs / Silent Wrong Data
 
 ### H1 · Reminder worker launches on every Daphne process start (double worker)
 **File:** `backend/apps/inspections/apps.py`  
@@ -141,7 +141,7 @@ Daphne never sets `RUN_MAIN`, so `not SERVER_SOFTWARE` is always `True` under Da
 ---
 
 ### H2 · Race condition in `_worker_started` flag (no lock)
-**File:** `backend/apps/inspections/reminder_worker.py:117–124`  
+**File:** `backend/apps/inspections/reminder_worker.py:117-124`  
 **Problem:** `_worker_started` is a plain global boolean. Two threads (e.g. startup + a hot-reload) reading simultaneously both see `False` and both call `thread.start()`.  
 **Fix:**
 ```python
@@ -161,13 +161,13 @@ def start_reminder_worker():
 
 ### H3 · Wrong part substituted on `Part.DoesNotExist` (silent)
 **File:** `backend/apps/inspections/views.py:73`  
-**Problem:** The `except Part.DoesNotExist` block falls through to `Part.objects.filter(is_active=True).first()` — it silently substitutes any available active part instead of returning 404.  
+**Problem:** The `except Part.DoesNotExist` block falls through to `Part.objects.filter(is_active=True).first()` : it silently substitutes any available active part instead of returning 404.  
 **Fix:** Return `Response({'error': 'Part not found'}, status=404)` in the except block.
 
 ---
 
 ### H4 · Race condition in session creation (duplicate sessions possible)
-**File:** `backend/apps/inspections/services.py` — `create_session()`  
+**File:** `backend/apps/inspections/services.py` : `create_session()`  
 **Problem:** The existence check and subsequent `create()` are not atomic. Two simultaneous requests for the same session can both pass the check and create duplicate records.  
 **Fix:** Use `get_or_create()` inside `transaction.atomic()` with `select_for_update()`, or add a unique constraint and handle `IntegrityError`.
 
@@ -197,7 +197,7 @@ def _get_local_model():
 
 ---
 
-## 🟡 MEDIUM — Performance / Reliability
+## 🟡 MEDIUM : Performance / Reliability
 
 ### M1 · New thread spawned per WebSocket event (thread churn)
 **File:** `backend/apps/inspections/services.py:39`  
@@ -219,7 +219,7 @@ On busy systems with rapid measurements, this spawns tens of threads per second 
 
 ### M3 · `DowntimeReportViewSet.history()` has no pagination
 **File:** `backend/apps/inspections/views.py`  
-**Problem:** The `history()` action returns all downtime report records — a full table scan that grows unbounded.  
+**Problem:** The `history()` action returns all downtime report records : a full table scan that grows unbounded.  
 **Fix:** Apply `self.paginate_queryset()` or limit to a recent window (e.g. `[:100]` with appropriate ordering).
 
 ---
@@ -236,17 +236,17 @@ Then import it: `from .services import _default_service as _service`.
 
 ---
 
-## 🟢 LOW — Code Quality / Dead Code / Minor Issues
+## 🟢 LOW : Code Quality / Dead Code / Minor Issues
 
 ### L1 · Duplicate imports of `Part` and `Machine`
-**File:** `backend/apps/inspections/views.py:11–12, 24–25`  
-Both models imported twice. Delete lines 24–25.
+**File:** `backend/apps/inspections/views.py:11-12, 24-25`  
+Both models imported twice. Delete lines 24-25.
 
 ---
 
 ### L2 · `dispatch_measurement_task_async()` is dead code
-**File:** `backend/apps/inspections/tasks.py:110–149`  
-Never called from `views.py` — views call `process_measurement_in_background()` directly via a thread. Remove or clearly document as "intended Celery entry point".
+**File:** `backend/apps/inspections/tasks.py:110-149`  
+Never called from `views.py` : views call `process_measurement_in_background()` directly via a thread. Remove or clearly document as "intended Celery entry point".
 
 ---
 
@@ -262,7 +262,7 @@ Only contains a placeholder comment. No models are defined. If voice models are 
 
 ---
 
-### L5 · `DowntimeReport.save()` calls `self.full_clean()` — breaks bulk operations
+### L5 · `DowntimeReport.save()` calls `self.full_clean()` : breaks bulk operations
 **File:** `backend/apps/inspections/models.py:218`  
 `save()` calls `full_clean()` which raises `ValidationError` in `bulk_create()`, signals, and admin actions. `PositiveIntegerField` already enforces >= 0 at the DB level.  
 Remove `self.full_clean()` from `save()`; keep `clean()` for form/serializer validation.
@@ -271,7 +271,7 @@ Remove `self.full_clean()` from `save()`; keep `clean()` for form/serializer val
 
 ### L6 · `PLANT_ID` hardcoded in dashboard
 **File:** `dashboard/src/pages/DashboardPage.jsx`  
-`const PLANT_ID = 1;` hardcoded at top — blocks multi-plant support. Read from URL params or user profile instead.
+`const PLANT_ID = 1;` hardcoded at top : blocks multi-plant support. Read from URL params or user profile instead.
 
 ---
 

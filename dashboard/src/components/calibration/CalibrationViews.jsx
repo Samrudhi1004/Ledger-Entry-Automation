@@ -129,8 +129,8 @@ function DueWindowChart({ equipment, selectedFilter, onFilterChange }) {
   const data = [
     { name: 'Overdue', filter: 'overdue', value: count('overdue'), color: STATUS_COLORS.overdue },
     { name: 'Today', filter: 'dueToday', value: count('dueToday'), color: STATUS_COLORS.dueToday },
-    { name: '1–7 Days', filter: 'due1to7', value: count('due1to7'), color: '#ca8a04' },
-    { name: '8–30 Days', filter: 'due8to30', value: count('due8to30'), color: STATUS_COLORS.dueSoon },
+    { name: '1-7 Days', filter: 'due1to7', value: count('due1to7'), color: '#ca8a04' },
+    { name: '8-30 Days', filter: 'due8to30', value: count('due8to30'), color: STATUS_COLORS.dueSoon },
     { name: 'Over 30 Days', filter: 'valid', value: count('valid'), color: STATUS_COLORS.valid },
   ];
 
@@ -204,8 +204,8 @@ function DashboardEquipmentModal({ equipment, filter, onClose, openStatus }) {
               <tr key={item.id}>
                 <td><span className="font-mono font-bold text-blue">{item.equipment_id}</span><br /><span className="text-xs text-muted">{item.equipment_name}</span></td>
                 <td>{item.equipment_type}</td>
-                <td>{item.history_card_number || '—'}</td>
-                <td>{[item.department, item.location].filter(Boolean).join(' / ') || '—'}</td>
+                <td>{item.history_card_number || '-'}</td>
+                <td>{[item.department, item.location].filter(Boolean).join(' / ') || '-'}</td>
                 <td>{formatDate(item.next_calibration_date)}</td>
                 <td><span className={`badge ${STATUS_BADGES[item.status] ?? 'badge-manual'}`}>{item.status}</span></td>
                 {filter === 'compliance' && <td><span className={`badge ${item.status === 'Overdue' ? 'badge-ooc' : 'badge-ok'}`}>{item.status === 'Overdue' ? 'Overdue' : 'Not overdue'}</span></td>}
@@ -237,10 +237,10 @@ function ComplianceCard({ summary, onOpen }) {
       </div>
       <div className="calibration-compliance-meter" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, percentage))}%` }} /></div>
       <div className="calibration-compliance-summary-list" aria-label="Compliance summary" title="Compliance is total equipment minus overdue equipment, divided by total equipment.">
-        <span>Not overdue — <strong>{compliantEquipment}</strong></span>
-        <span>Due soon — <strong>{summary.due_within_30_days}</strong></span>
-        <span>Overdue — <strong>{summary.overdue_equipment}</strong></span>
-        <span>Needs action — <strong>{needsAction}</strong></span>
+        <span>Not overdue : <strong>{compliantEquipment}</strong></span>
+        <span>Due soon : <strong>{summary.due_within_30_days}</strong></span>
+        <span>Overdue : <strong>{summary.overdue_equipment}</strong></span>
+        <span>Needs action : <strong>{needsAction}</strong></span>
       </div>
     </button>
   );
@@ -275,7 +275,7 @@ function DashboardEquipmentList({ equipment, openStatus }) {
       </div>
       <div className="table-wrapper"><table className="calibration-report-table calibration-dashboard-table"><thead><tr><th>Equipment</th><th>History Card No.</th><th>Department / Location</th><th>Next Calibration</th><th>Status</th><th>Actions</th></tr></thead><tbody>
         {visible.length === 0 ? <tr><td colSpan="6">No equipment matches the current filters.</td></tr> : visible.map((item) => <tr key={item.id}>
-          <td><strong>{item.equipment_id}</strong><br /><span className="text-xs text-muted">{item.equipment_name}</span></td><td>{item.history_card_number || '—'}</td><td>{[item.department, item.location].filter(Boolean).join(' / ') || '—'}</td><td>{formatDate(item.next_calibration_date)}</td><td><span className={`badge ${STATUS_BADGES[item.status] ?? 'badge-manual'}`}>{item.status}</span></td><td><div className="calibration-actions">{item.state !== 'scrapped' && <button type="button" className="btn btn-ghost btn-sm" onClick={() => openStatus(item)}>{item.state === 'rejected' ? 'Choose Action' : item.state === 'repair' ? 'Recalibrate' : 'Record Result'}</button>}<Link className="btn btn-ghost btn-sm" to={`/calibration/equipment/${item.id}/history`} state={{ calibrationPath: [{ label: 'Calibration Dashboard', to: '/calibration' }] }}><FileClock size={14} aria-hidden="true" /> History</Link></div></td>
+          <td><strong>{item.equipment_id}</strong><br /><span className="text-xs text-muted">{item.equipment_name}</span></td><td>{item.history_card_number || '-'}</td><td>{[item.department, item.location].filter(Boolean).join(' / ') || '-'}</td><td>{formatDate(item.next_calibration_date)}</td><td><span className={`badge ${STATUS_BADGES[item.status] ?? 'badge-manual'}`}>{item.status}</span></td><td><div className="calibration-actions">{item.state !== 'scrapped' && <button type="button" className="btn btn-ghost btn-sm" onClick={() => openStatus(item)}>{item.state === 'rejected' ? 'Choose Action' : item.state === 'repair' ? 'Recalibrate' : 'Record Result'}</button>}<Link className="btn btn-ghost btn-sm" to={`/calibration/equipment/${item.id}/history`} state={{ calibrationPath: [{ label: 'Calibration Dashboard', to: '/calibration' }] }}><FileClock size={14} aria-hidden="true" /> History</Link></div></td>
         </tr>)}
       </tbody></table></div>
       {filtered.length > PAGE_SIZE && <div className="calibration-pagination" aria-label="Dashboard equipment pages"><button className="btn btn-ghost btn-sm" type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1}>Previous</button><span>Page {page} of {pages}</span><button className="btn btn-ghost btn-sm" type="button" onClick={() => setPage((value) => Math.min(pages, value + 1))} disabled={page === pages}>Next</button></div>}
@@ -362,7 +362,7 @@ function EquipmentTable({ equipment, openEdit, openStatus }) {
         <thead><tr><th>Equipment ID</th><th>Equipment Name</th><th>Equipment Type</th><th>History Card No.</th><th>Department</th><th>Location</th><th>Last Calibration</th><th>Next Calibration</th><th>Days Remaining</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>{equipment.map((item) => (
           <tr key={item.id}>
-            <td className="font-mono font-bold text-blue">{item.equipment_id}</td><td>{item.equipment_name}</td><td>{item.equipment_type}</td><td className="font-mono">{item.history_card_number || '—'}</td><td>{item.department || '—'}</td><td>{item.location || '—'}</td><td>{formatDate(item.last_calibration_date)}</td><td>{formatDate(item.next_calibration_date)}</td><td className={item.days_remaining < 0 ? 'text-red font-bold' : ''}>{daysLabel(item)}</td><td><span className={`badge ${STATUS_BADGES[item.status] ?? 'badge-manual'}`}>{item.status}</span></td>
+            <td className="font-mono font-bold text-blue">{item.equipment_id}</td><td>{item.equipment_name}</td><td>{item.equipment_type}</td><td className="font-mono">{item.history_card_number || '-'}</td><td>{item.department || '-'}</td><td>{item.location || '-'}</td><td>{formatDate(item.last_calibration_date)}</td><td>{formatDate(item.next_calibration_date)}</td><td className={item.days_remaining < 0 ? 'text-red font-bold' : ''}>{daysLabel(item)}</td><td><span className={`badge ${STATUS_BADGES[item.status] ?? 'badge-manual'}`}>{item.status}</span></td>
             <td><div className="calibration-actions">
               <button className="btn btn-ghost btn-sm" onClick={() => openEdit(item)} aria-label={`Edit ${item.equipment_id}`}><Pencil size={14} aria-hidden="true" /> Edit</button>
               {item.state !== 'scrapped' && <button className="btn btn-ghost btn-sm" onClick={() => openStatus(item)} aria-label={`Record calibration action for ${item.equipment_id}`}><ClipboardCheck size={14} aria-hidden="true" /> {item.state === 'rejected' ? 'Repair / Scrap' : item.state === 'repair' ? 'Recalibrate' : 'Record Result'}</button>}
@@ -503,7 +503,7 @@ export function CalibrationPlanReport({ year, setYear, rows, company, equipment,
         <table className="calibration-report-table">
           <thead><tr><th>Equipment</th><th>Equipment ID</th><th>Planned Date</th><th>Actual Date</th><th>Result</th><th>Remarks</th><th>Controls</th></tr></thead>
           <tbody>{filteredRows.length === 0 ? <tr><td colSpan="7">No equipment matches the selected plan filters for {year}.</td></tr> : visibleRows.map((row) => (
-            <tr key={row.key}><td>{row.equipment_name}</td><td>{row.equipment_id}</td><td>{formatDate(row.planned_date)}</td><td>{formatDate(row.actual_date)}</td><td><span className={`calibration-plan-result ${planResultClass(row)}`}>{planResultLabel(row)}</span></td><td>{planRemarks(row) || '—'}</td><td><div className="calibration-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={() => openDetails(row)}><Eye size={14} aria-hidden="true" /> Details</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditor(row)}><Pencil size={14} aria-hidden="true" /> Edit</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEntry(row)}><Trash2 size={14} aria-hidden="true" /> Remove</button></div></td></tr>
+            <tr key={row.key}><td>{row.equipment_name}</td><td>{row.equipment_id}</td><td>{formatDate(row.planned_date)}</td><td>{formatDate(row.actual_date)}</td><td><span className={`calibration-plan-result ${planResultClass(row)}`}>{planResultLabel(row)}</span></td><td>{planRemarks(row) || '-'}</td><td><div className="calibration-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={() => openDetails(row)}><Eye size={14} aria-hidden="true" /> Details</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditor(row)}><Pencil size={14} aria-hidden="true" /> Edit</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEntry(row)}><Trash2 size={14} aria-hidden="true" /> Remove</button></div></td></tr>
           ))}</tbody>
         </table>
       </div>
@@ -549,7 +549,7 @@ export function CalibrationPlanReport({ year, setYear, rows, company, equipment,
 }
 
 function EquipmentDetail({ label, value }) {
-  return <div><span>{label}</span><strong>{value || '—'}</strong></div>;
+  return <div><span>{label}</span><strong>{value || '-'}</strong></div>;
 }
 
 export function CalibrationHistoryCard({ data, onViewReport, downloadPdf, downloadingPdf }) {
@@ -582,7 +582,7 @@ export function CalibrationHistoryCard({ data, onViewReport, downloadPdf, downlo
           <table className="calibration-report-table calibration-history-table">
             <thead><tr><th>Date</th><th>Calibration Agency</th><th>Certificate No.</th><th>Certificate / Evidence</th><th>Traceability</th><th>Calibration Details</th><th>Result / Disposition</th><th>Next Due</th><th>Remarks</th></tr></thead>
             <tbody>{records.length === 0 ? <tr><td colSpan="9">No calibration results have been recorded yet.</td></tr> : records.map((record) => (
-              <tr key={record.id}><td>{formatDate(record.calibration_date)}</td><td>{record.calibration_agency || '—'}</td><td>{record.certificate_number || '—'}</td><td>{record.has_report ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => onViewReport(record)}><Eye size={14} aria-hidden="true" /> View Certificate</button> : '—'}</td><td>{record.traceability_certificate_number || '—'}</td><td>{record.calibration_details || '—'}</td><td>{record.result === 'accepted' ? 'Accepted' : 'Rejected'}{record.disposition ? ` · ${record.disposition === 'repair' ? 'Under Repair' : 'Scrapped'}` : ''}</td><td>{formatDate(record.next_due_date)}</td><td>{record.remarks || '—'}</td></tr>
+              <tr key={record.id}><td>{formatDate(record.calibration_date)}</td><td>{record.calibration_agency || '-'}</td><td>{record.certificate_number || '-'}</td><td>{record.has_report ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => onViewReport(record)}><Eye size={14} aria-hidden="true" /> View Certificate</button> : '-'}</td><td>{record.traceability_certificate_number || '-'}</td><td>{record.calibration_details || '-'}</td><td>{record.result === 'accepted' ? 'Accepted' : 'Rejected'}{record.disposition ? ` · ${record.disposition === 'repair' ? 'Under Repair' : 'Scrapped'}` : ''}</td><td>{formatDate(record.next_due_date)}</td><td>{record.remarks || '-'}</td></tr>
             ))}</tbody>
           </table>
         </div>

@@ -44,7 +44,7 @@ function RejectModal({ doc, onClose, onSuccess }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>Reject Document</h2>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>{doc.document_number} — {doc.title}</p>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>{doc.document_number} : {doc.title}</p>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
             <X size={18} color="#94a3b8" />
@@ -118,7 +118,7 @@ function ApproveModal({ doc, onClose, onSuccess }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>Approve Document</h2>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>{doc.document_number} — {doc.title}</p>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>{doc.document_number} : {doc.title}</p>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
             <X size={18} color="#94a3b8" />
@@ -190,7 +190,7 @@ export default function DocumentControlApprovalsPage() {
 
   const formatDate = (d) => d
     ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-    : '—';
+    : '-';
 
   return (
     <>
@@ -243,7 +243,7 @@ export default function DocumentControlApprovalsPage() {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px' }}>
 
-                {/* Left — doc info */}
+                {/* Left : doc info */}
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
                     <FileText size={16} color="#6366f1" />
@@ -288,7 +288,7 @@ export default function DocumentControlApprovalsPage() {
                   </div>
                 </div>
 
-                {/* Right — actions */}
+                {/* Right : actions */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
                   <button
                     onClick={() => setSelectedViewerDoc(doc)}

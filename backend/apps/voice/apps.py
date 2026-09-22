@@ -8,7 +8,7 @@ def _is_web_server() -> bool:
     argv = sys.argv
     if not argv:
         return False
-    # gunicorn / uvicorn / daphne — never have manage.py in argv[0]
+    # gunicorn / uvicorn / daphne : never have manage.py in argv[0]
     # Also exclude python -c commands
     if not argv[0].endswith('manage.py') and argv[0] != '-c':
         return True

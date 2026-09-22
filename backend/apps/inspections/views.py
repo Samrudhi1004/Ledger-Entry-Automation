@@ -22,7 +22,7 @@ import csv
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-# L1 FIX: Removed duplicate imports — Part and Machine already imported on lines 11-12.
+# L1 FIX: Removed duplicate imports : Part and Machine already imported on lines 11-12.
 from apps.users.permissions import IsSupervisorOrAbove, IsOperatorOrSupervisor
 from .models import (
     InspectionSession,
@@ -46,7 +46,7 @@ from .serializers import (
     JHInspectionSubmitSerializer,
 )
 from .pdf_generator import generate_daily_production_pdf, generate_downtime_pdf
-# M4 FIX: Import shared singleton — do NOT instantiate InspectionService() here.
+# M4 FIX: Import shared singleton : do NOT instantiate InspectionService() here.
 # One instance is shared across views.py, tasks.py, and any future modules.
 from .services import inspection_service as _service
 
@@ -66,7 +66,7 @@ class StartInspectionView(APIView):
 
         d = serializer.validated_data
         try:
-            # Part and Machine are independent lookups — neither depends on the
+            # Part and Machine are independent lookups : neither depends on the
             # other's result, so they can safely run in parallel. ThreadPoolExecutor
             # releases the GIL during DB I/O, allowing both queries to be in-flight
             # at the same time. Total wait ≈ max(t_part, t_machine) instead of
@@ -81,7 +81,7 @@ class StartInspectionView(APIView):
                 part    = part_future.result()    # re-raises Part.DoesNotExist if not found
                 machine = machine_future.result()  # re-raises Machine.DoesNotExist if not found
         except Part.DoesNotExist:
-            # H3 FIX: Never substitute a random part — return 404 immediately.
+            # H3 FIX: Never substitute a random part : return 404 immediately.
             # Old code silently picked any available part, causing measurements
             # to be validated against completely wrong tolerances.
             return Response(
@@ -89,7 +89,7 @@ class StartInspectionView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         except Machine.DoesNotExist:
-            # H3 FIX: Same — never substitute a random machine.
+            # H3 FIX: Same : never substitute a random machine.
             return Response(
                 {'error': f"Machine ID {d['machine_id']} not found or is inactive."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -271,7 +271,7 @@ class BatchMeasureView(APIView):
                 if field_status == 'out_of_spec':
                     failed_codes.append(code)
             except Exception as exc:
-                # Unrecognised parameter — count as failure so the field re-opens
+                # Unrecognised parameter : count as failure so the field re-opens
                 results.append({
                     'parameter_code': code,
                     'status':         'error',
@@ -283,7 +283,7 @@ class BatchMeasureView(APIView):
         passed_count   = len(results) - len(failed_codes)
         piece_complete = len(failed_codes) == 0
 
-        # Auto-complete when every field passes — no separate /complete/ call needed.
+        # Auto-complete when every field passes : no separate /complete/ call needed.
         if piece_complete:
             try:
                 _service.complete_session(session_id)
@@ -413,7 +413,7 @@ class SessionListView(generics.ListAPIView):
         from apps.parts.models import InspectionTemplate
 
         # Annotate each session with the operation name from the matching
-        # InspectionTemplate (part + inspection_type) — same ORM pattern as
+        # InspectionTemplate (part + inspection_type) : same ORM pattern as
         # part_number/part_name. NullIf converts blank names to NULL so the
         # serializer's None-check works correctly.
         template_name_subquery = Subquery(
@@ -673,7 +673,7 @@ class SetupStatusView(APIView):
         return Response({
             'has_today_report':          has_today,
             'is_setup_approved':         True,
-            # Generic session_id — first_piece preferred (backward compat)
+            # Generic session_id : first_piece preferred (backward compat)
             'session_id':                str(fp_session.session_id) if fp_session else str(session.session_id),
             # Explicit typed IDs for report screens
             'first_piece_session_id':    str(fp_session.session_id) if fp_session else None,
@@ -910,7 +910,7 @@ class SetupApprovalView(APIView):
 
         now = datetime.now(tz.utc)
 
-        # Upsert — update today's existing document or insert new
+        # Upsert : update today's existing document or insert new
         from apps.inspections.models import SetupApproval, InspectionSession
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         existing = SetupApproval.objects.filter(
@@ -1208,7 +1208,7 @@ def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
     current_row = 6
     for idx, obj in enumerate(qs, 1):
         prod = obj.production_report
-        op_name = prod.operator.get_full_name().strip() if prod.operator else '—'
+        op_name = prod.operator.get_full_name().strip() if prod.operator else '-'
         if not op_name and prod.operator:
             op_name = prod.operator.username
 
@@ -1456,7 +1456,7 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
         """
         Returns date-wise and shift-wise summary of submitted downtime reports for history tracking.
 
-        M3 FIX: Added date-range cap — defaults to last 90 days.
+        M3 FIX: Added date-range cap : defaults to last 90 days.
         Use ?days=N (max 365) to customise the lookback window.
         Without a cap, this fetched ALL records ever created, causing server-side
         memory spikes and slow responses after months of factory operation.
@@ -1464,7 +1464,7 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
         from django.utils import timezone as django_tz
         import datetime as dt
 
-        # Parse ?days= query param — default 90, hard cap at 365
+        # Parse ?days= query param : default 90, hard cap at 365
         try:
             days = min(int(request.query_params.get('days', 90)), 365)
         except (ValueError, TypeError):
@@ -1811,7 +1811,7 @@ class JHInspectionMatrixView(APIView):
                     'day': day_num,
                     'shift': rec.shift,
                     'status': rec.status,
-                    'operator_name': rec.operator.get_full_name() or rec.operator.username if rec.operator else '—',
+                    'operator_name': rec.operator.get_full_name() or rec.operator.username if rec.operator else '-',
                     'ok_items': rec.ok_items,
                     'not_ok_items': rec.not_ok_items,
                     'corrected_items': rec.corrected_items,
@@ -1823,7 +1823,7 @@ class JHInspectionMatrixView(APIView):
                             'status': res.status,
                             'remark': res.remark,
                             'action_taken': res.action_taken,
-                            'operator': rec.operator.get_full_name() or rec.operator.username if rec.operator else '—',
+                            'operator': rec.operator.get_full_name() or rec.operator.username if rec.operator else '-',
                         }
 
         return Response({
@@ -1836,8 +1836,8 @@ class JHInspectionMatrixView(APIView):
             'shifts': active_shifts,
             'machine': {
                 'id': machine.id if machine else None,
-                'machine_code': machine.machine_code if machine else '—',
-                'name': machine.name if machine else '—',
+                'machine_code': machine.machine_code if machine else '-',
+                'name': machine.name if machine else '-',
                 'shift_duration_hours': shift_hours,
             } if machine else None,
             'items': items_data,

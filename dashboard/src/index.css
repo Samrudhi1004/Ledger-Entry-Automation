@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   INSPECTION DASHBOARD — DESIGN SYSTEM
+   INSPECTION DASHBOARD : DESIGN SYSTEM
    Clean Modern Light Theme (Slate, Navy & Blue Accents)
    ═══════════════════════════════════════════════════════════ */
 
@@ -90,11 +90,9 @@ p  { color: var(--text-secondary); }
 
 .mono { font-family: 'JetBrains Mono', monospace; }
 
-/* ── Animated Background Gradient ──────────────────────────── */
+/* ── Clean Neutral Page Background ─────────────────────────── */
 .bg-gradient-animated {
-  background: radial-gradient(ellipse at 20% 50%, rgba(29,78,216,0.03) 0%, transparent 60%),
-              radial-gradient(ellipse at 80% 20%, rgba(109,40,217,0.03) 0%, transparent 60%),
-              var(--bg-primary);
+  background: var(--bg-primary);
   min-height: 100vh;
 }
 

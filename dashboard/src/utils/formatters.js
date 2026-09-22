@@ -2,7 +2,7 @@ function ensureUtcIso(iso) {
   if (!iso) return null;
   if (typeof iso === 'string') {
     // Django serializes microseconds: "2026-08-13T13:31:17.031461+05:30"
-    // Some JS engines misparse 6-digit fractional seconds — strip to 3 digits (milliseconds)
+    // Some JS engines misparse 6-digit fractional seconds : strip to 3 digits (milliseconds)
     iso = iso.replace(/(\.\d{3})\d+/, '$1');
     // If no timezone offset and no 'Z', assume UTC
     if (!iso.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(iso)) {
@@ -15,7 +15,7 @@ function ensureUtcIso(iso) {
 
 /** Format ISO date string → "22 Jul 2026, 11:30 am" in local timezone */
 export function formatDateTime(iso) {
-  if (!iso) return '—';
+  if (!iso) return '-';
   const dateObj = new Date(ensureUtcIso(iso));
   return dateObj.toLocaleString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
@@ -26,7 +26,7 @@ export function formatDateTime(iso) {
 
 /** Format ISO date string → "22 Jul 2026" */
 export function formatDate(iso) {
-  if (!iso) return '—';
+  if (!iso) return '-';
   const dateObj = new Date(ensureUtcIso(iso));
   return dateObj.toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
@@ -35,7 +35,7 @@ export function formatDate(iso) {
 
 /**
  * Returns the LOCAL calendar date of a timestamp as "YYYY-MM-DD".
- * Correctly handles +05:30 offset from Django — use this instead of
+ * Correctly handles +05:30 offset from Django : use this instead of
  * raw `.slice(0, 10)` which silently gives a UTC date.
  */
 export function localDateStr(iso) {
@@ -46,7 +46,7 @@ export function localDateStr(iso) {
 
 /** Format ISO date → "11:30 am" */
 export function formatTime(iso) {
-  if (!iso) return '—';
+  if (!iso) return '-';
   const dateObj = new Date(ensureUtcIso(iso));
   return dateObj.toLocaleTimeString('en-IN', {
     hour: '2-digit', minute: '2-digit',
@@ -65,13 +65,13 @@ export function timeAgo(iso) {
 
 /** Format number with fixed decimals */
 export function fmt(val, decimals = 3) {
-  if (val === null || val === undefined) return '—';
+  if (val === null || val === undefined) return '-';
   return Number(val).toFixed(decimals);
 }
 
 /** Deviation with sign */
 export function fmtDeviation(measured, nominal) {
-  if (measured === null || nominal === null) return '—';
+  if (measured === null || nominal === null) return '-';
   const dev = measured - nominal;
   return `${dev >= 0 ? '+' : ''}${dev.toFixed(3)}`;
 }
@@ -84,8 +84,8 @@ export function currentShift() {
   return 'C';
 }
 
-/** Short session ID — last 8 chars */
+/** Short session ID : last 8 chars */
 export function shortId(id) {
-  if (!id) return '—';
+  if (!id) return '-';
   return id.slice(-8).toUpperCase();
 }

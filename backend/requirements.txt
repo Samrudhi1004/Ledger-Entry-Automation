@@ -25,7 +25,7 @@ dj-database-url==2.3.0
 # ─── Environment Variables ─────────────────────────────────────
 python-dotenv==1.2.2
 
-# ─── Speech-to-Text (Faster-Whisper only — uses ctranslate2, NOT torch)
+# ─── Speech-to-Text (Faster-Whisper only : uses ctranslate2, NOT torch)
 # openai-whisper is NOT listed here intentionally: it depends on PyTorch
 # which is 2+ GB and causes OOM on Render's 512 MB free instance.
 faster-whisper
@@ -42,7 +42,7 @@ channels==4.2.2
 channels-redis==4.2.1
 daphne==4.1.2
 
-# ─── Background Tasks (threading + Redis cache — no Celery worker needed) ─
+# ─── Background Tasks (threading + Redis cache : no Celery worker needed) ─
 # celery is NOT listed here intentionally: replaced by Python threading.
 # See apps/voice/tasks.py for the threading-based approach.
 redis==5.2.1

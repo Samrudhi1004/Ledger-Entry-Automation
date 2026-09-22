@@ -167,7 +167,7 @@ export default function ProfilePage() {
   };
 
   const formatDate = (str) => {
-    if (!str) return '—';
+    if (!str) return '-';
     return new Date(str).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
@@ -175,7 +175,7 @@ export default function ProfilePage() {
     <>
       <Header
         title="Profile & Account Settings"
-        subtitle={`Manage your profile, personal information, and security credentials — ${roleLabel}`}
+        subtitle={`Manage your profile, personal information, and security credentials : ${roleLabel}`}
       />
 
       <div className="page-content bg-gradient-animated">
@@ -283,7 +283,7 @@ export default function ProfilePage() {
               <div style={{ flex: 1, minWidth: 260 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-                    {user ? `${user.first_name} ${user.last_name}`.trim() || user.username : '—'}
+                    {user ? `${user.first_name} ${user.last_name}`.trim() || user.username : '-'}
                   </h2>
                   <span className="badge badge-purple" style={{ fontSize: '0.72rem', letterSpacing: '0.04em' }}>
                     {roleLabel}
@@ -301,7 +301,7 @@ export default function ProfilePage() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Mail size={14} color="var(--text-muted)" />
-                    <span>{user?.email || '—'}</span>
+                    <span>{user?.email || '-'}</span>
                   </div>
                 </div>
 
@@ -501,7 +501,7 @@ export default function ProfilePage() {
                   System Username
                 </div>
                 <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: 6 }} className="font-mono">
-                  {user?.username || '—'}
+                  {user?.username || '-'}
                 </div>
               </div>
 

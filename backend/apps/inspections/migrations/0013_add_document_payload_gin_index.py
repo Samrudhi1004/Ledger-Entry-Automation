@@ -1,4 +1,4 @@
-# Generated 2026-09-08 — MongoDB → PostgreSQL migration: GIN index on document_payload
+# Generated 2026-09-08 : MongoDB → PostgreSQL migration: GIN index on document_payload
 
 from django.db import migrations
 

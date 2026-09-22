@@ -122,7 +122,7 @@ export default function PendingReviewPage({ onPendingCountChange }) {
                       <td className="font-mono">{shortId(s.session_id)}</td>
                       <td>{s.part?.part_number ?? s.part_number}</td>
                       <td className="font-mono">{s.machine?.machine_code ?? s.machine_code}</td>
-                      <td>{s.operator?.username ?? '—'}</td>
+                      <td>{s.operator?.username ?? '-'}</td>
                       <td>{s.shift}</td>
                       <td>
                         <Badge type="pending" />
@@ -151,7 +151,7 @@ export default function PendingReviewPage({ onPendingCountChange }) {
 
       {selectedSession && (
         <Modal
-          title={`First Piece Record — 1ST PC #${selectedSession.trial_number ?? 1} (${shortId(selectedSession.session_id)})`}
+          title={`First Piece Record : 1ST PC #${selectedSession.trial_number ?? 1} (${shortId(selectedSession.session_id)})`}
           onClose={() => setSelectedSession(null)}
           footer={
             <button
