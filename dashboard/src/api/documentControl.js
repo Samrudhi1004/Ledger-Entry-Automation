@@ -80,8 +80,8 @@ export const getAssignableUsers = () =>
   api.get('/change-requests/assignable-users/');
 
 // ── Realtime DCR Notifications ─────────────────────────────────────────────
-export const getNotifications = () =>
-  api.get('/notifications/');
+export const getNotifications = (params = {}) =>
+  api.get('/notifications/', { params });
 
 export const getUnreadNotificationCount = () =>
   api.get('/notifications/unread-count/');
@@ -89,5 +89,9 @@ export const getUnreadNotificationCount = () =>
 export const markNotificationRead = (id) =>
   api.post(`/notifications/${id}/mark-read/`);
 
+export const markNotificationUnread = (id) =>
+  api.post(`/notifications/${id}/mark-unread/`);
+
 export const markAllNotificationsRead = () =>
   api.post('/notifications/mark-all-read/');
+
