@@ -48,7 +48,7 @@ class _JhInspectionScreenState extends State<JhInspectionScreen> {
     });
 
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    if (!auth.isOperator) {
+    if (!auth.hasAccess('production.jh.submit')) {
       if (mounted) {
         setState(() {
           _isLoading = false;

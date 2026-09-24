@@ -5,6 +5,7 @@ import {
   Eye, RefreshCw, MessageSquare, AlertTriangle, X, FileText, Clock,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 import {
   getDocuments, approveDocument, rejectDocument, getDocumentHistory,
 } from '../api/documentControl';
@@ -186,7 +187,11 @@ export default function DocumentControlApprovalsPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchPending(); }, []);
+  useEffect(() => { if (can(user, 'document.approve')) fetchPending(); }, [user]);
+
+  if (user && !can(user, 'document.approve')) {
+    return <Navigate to="/document-control" replace />;
+  }
 
   const formatDate = (d) => d
     ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })

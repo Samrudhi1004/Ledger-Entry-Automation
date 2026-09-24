@@ -102,7 +102,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
         final allUsers = await ApiService.getUsers();
         final inspectors = allUsers.where((u) {
           final r = (u['role'] ?? '').toString().toLowerCase();
-          return r == 'quality_engineer' || r == 'inspector';
+          return r == 'inspector';
         }).toList();
 
         if (inspectors.isNotEmpty) {

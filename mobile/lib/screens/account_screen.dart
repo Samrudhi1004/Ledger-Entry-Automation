@@ -385,7 +385,9 @@ class _AccountScreenState extends State<AccountScreen> {
     final initials = name.split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join('').toUpperCase();
     final roleTitle = auth.isInspector
         ? 'Quality Inspector'
-        : (auth.isOperator ? 'Machine Operator' : 'Quality Supervisor');
+        : (auth.isQualityEngineer
+            ? 'Quality Engineer'
+            : (auth.isOperator ? 'Machine Operator' : 'Quality Supervisor'));
     final roleIcon = auth.isInspector ? '🛡️' : (auth.isOperator ? '⚙️' : '🔑');
 
     final photoUrl = auth.profilePhotoUrl;

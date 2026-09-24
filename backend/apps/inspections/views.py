@@ -23,7 +23,9 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 # L1 FIX: Removed duplicate imports : Part and Machine already imported on lines 11-12.
-from apps.users.permissions import IsSupervisorOrAbove, IsOperatorOrSupervisor
+from apps.users.permissions import (
+    HasAccess, IsSupervisorOrAbove, IsOperatorOrSupervisor,
+)
 from .models import (
     InspectionSession,
     DailyProductionReport,
@@ -57,7 +59,8 @@ class StartInspectionView(APIView):
     POST /api/inspections/start/
     Operator starts a new inspection session.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def post(self, request):
         serializer = StartInspectionSerializer(data=request.data)
@@ -136,7 +139,8 @@ class RecordMeasurementView(APIView):
     Records a single voice/manual measurement for a parameter asynchronously.
     Returns HTTP 202 Accepted immediately (<100ms response time).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
         t_start = time.perf_counter()
@@ -221,7 +225,8 @@ class BatchMeasureView(APIView):
       ]
     }
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
         t_batch_start = time.perf_counter()
@@ -318,7 +323,8 @@ class BatchMeasureView(APIView):
 # ─── Complete Session ─────────────────────────────────────────────────────
 class CompleteInspectionView(APIView):
     """POST /api/inspections/<session_id>/complete/"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
         try:
@@ -334,7 +340,8 @@ class SessionDetailView(APIView):
     GET /api/inspections/<session_id>/
     Returns full inspection document from MongoDB.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.reports.view'
 
     def get(self, request, session_id):
         doc = _service.get_session_document(session_id)
@@ -350,7 +357,8 @@ class PendingReviewView(generics.ListAPIView):
     Supervisor sees all sessions awaiting review.
     """
     serializer_class   = InspectionSessionSerializer
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.review'
 
     def get_queryset(self):
         qs = InspectionSession.objects.select_related(
@@ -376,7 +384,8 @@ class ApproveRejectView(APIView):
     POST /api/inspections/<session_id>/review/
     Supervisor approves or rejects a completed inspection.
     """
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.review'
 
     def post(self, request, session_id):
         serializer = ReviewSerializer(data=request.data)
@@ -405,7 +414,8 @@ class SessionListView(generics.ListAPIView):
     GET /api/inspections/?machine=MCH-001                    → filter by machine code
     """
     serializer_class   = InspectionSessionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.reports.view'
 
     def get_queryset(self):
         from django.db.models import Q, Subquery, OuterRef, Value
@@ -502,7 +512,8 @@ class RejectionsListView(generics.ListAPIView):
     Returns active rejected sessions that require corrective trial #2 or #3.
     """
     serializer_class   = InspectionSessionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.reports.view'
 
     def get_queryset(self):
         qs = InspectionSession.objects.select_related(
@@ -533,12 +544,10 @@ class SupervisorOverrideView(APIView):
     POST /api/inspections/<session_id>/supervisor-override/
     Allows Supervisor to directly enter/correct a parameter reading on 1ST PC #3.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.review'
 
     def post(self, request, session_id):
-        if not (request.user.is_supervisor or request.user.is_staff):
-            return Response({'error': 'Only supervisors can perform direct overrides.'}, status=status.HTTP_403_FORBIDDEN)
-
         parameter_code = request.data.get('parameter_code')
         override_value = request.data.get('measured_value')
         remark         = request.data.get('remark', '')
@@ -566,7 +575,8 @@ class HourlyStatusView(APIView):
     GET /api/inspections/<session_id>/hourly-status/
     Returns open/locked/overdue status for hourly slots 1/HR through 8/HR.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def get(self, request, session_id):
         try:
@@ -582,7 +592,8 @@ class SetupStatusView(APIView):
     GET /api/inspections/setup-status/?machine=2
     Returns whether 1st Piece Inspection is approved for a machine.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def get(self, request):
         machine_id = request.query_params.get('machine')
@@ -698,7 +709,8 @@ class FinalizeFirstPieceView(APIView):
     POST /api/inspections/<session_id>/finalize/
     Inspector finalizes First Piece inspection and generates PDF.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
         try:
@@ -714,7 +726,8 @@ class FirstPiecePDFView(APIView):
     GET /api/inspections/<session_id>/pdf/
     Returns the official First Piece Inspection Report PDF file.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.reports.view'
 
     def get(self, request, session_id):
         import os
@@ -752,7 +765,8 @@ class FirstPieceStatusView(APIView):
     GET /api/inspections/first-piece-status/?machine_id=2&part_number=PN-101
     Checks if 1st Piece Inspection is finalized and passed for a machine/part.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def get(self, request):
         machine_id = request.query_params.get('machine_id') or request.query_params.get('machine')
@@ -793,7 +807,8 @@ class ClearHistoryView(APIView):
     Supervisors can clear live monitoring view for a machine.
     Finalized reports (First Piece, Setup Approval, Production) remain permanent in database.
     """
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.review'
 
     def delete(self, request):
         machine_code = request.query_params.get('machine_code')
@@ -831,7 +846,8 @@ class SetupApprovalView(APIView):
         Returns the most recent Setup Approval data for a template + machine combination.
         Used to pre-populate the SetupApprovalScreen on the mobile app.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = {'GET': 'quality.setup.view', 'POST': 'quality.inspections.record'}
 
     def get(self, request):
         template_id = request.query_params.get('template')
@@ -981,9 +997,8 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
     serializer_class = DailyProductionReportSerializer
 
     def get_permissions(self):
-        if self.action in ['export_excel', 'export_pdf']:
-            return [IsAuthenticated()]
-        return [IsAuthenticated()]
+        key = 'production.daily.view' if self.request.method in ('GET', 'HEAD', 'OPTIONS') else 'production.daily.manage'
+        return [HasAccess(key)]
 
     def get_queryset(self):
         qs = DailyProductionReport.objects.select_related('machine', 'part', 'operator').all()
@@ -1344,9 +1359,8 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
     serializer_class = DowntimeReportSerializer
 
     def get_permissions(self):
-        if self.action in ['export_excel', 'export_pdf']:
-            return [IsAuthenticated()]
-        return [IsAuthenticated()]
+        key = 'production.downtime.view' if self.request.method in ('GET', 'HEAD', 'OPTIONS') else 'production.downtime.manage'
+        return [HasAccess(key)]
 
     def get_queryset(self):
         # Fetch only SUBMITTED Daily Production Reports
@@ -1526,7 +1540,8 @@ class JHChecklistItemsView(APIView):
     GET /api/inspections/jh/items/
     Returns all active JH checklist checkpoints ordered by sort_order.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         items = JHChecklistItem.objects.filter(is_active=True).order_by('sort_order', 'sub_no')
@@ -1543,7 +1558,8 @@ class JHInspectionSubmitView(APIView):
     Submits a shift's Autonomous Maintenance checklist.
     Stored in PostgreSQL under JHInspectionRecord and JHInspectionItemResult.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.submit'
 
     def post(self, request):
         serializer = JHInspectionSubmitSerializer(data=request.data)
@@ -1574,9 +1590,7 @@ class JHInspectionSubmitView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Enforce operator role restriction (JH Inspection is strictly for operators)
-        user_role = getattr(request.user, 'role', '')
-        if user_role and user_role not in ('operator', 'admin'):
+        if not request.user.has_access('production.jh.submit'):
             return Response(
                 {'error': "पहुंच अस्वीकृत (Access Denied): J-H (Autonomous Maintenance) निरीक्षण केवल मशीन ऑपरेटरों के लिए है।"},
                 status=status.HTTP_403_FORBIDDEN
@@ -1659,7 +1673,8 @@ class JHInspectionReportsView(APIView):
     GET /api/inspections/jh/reports/
     Lists shift inspection records with filters (machine, date range, shift, status).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         qs = JHInspectionRecord.objects.select_related('machine', 'operator').prefetch_related('item_results', 'item_results__item').all()
@@ -1702,7 +1717,8 @@ class JHInspectionDetailView(APIView):
     """
     GET /api/inspections/jh/reports/<pk>/
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request, pk):
         import uuid
@@ -1728,7 +1744,8 @@ class JHInspectionMatrixView(APIView):
     GET /api/inspections/jh/matrix/?machine=<machine_id_or_code>&month=<YYYY-MM>
     Returns the full 31-day compliance grid with Shift I, II, III for each checklist item.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         import calendar
@@ -1851,7 +1868,8 @@ class JHInspectionMatrixExportExcelView(APIView):
     GET /api/inspections/jh/matrix/export_excel/?machine=<id_or_code>&month=<YYYY-MM>
     Exports the official Form QF/MF-08 Jishu Hozen 31-day monitoring sheet in authentic Excel (.xlsx) format.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         from datetime import datetime
@@ -1918,7 +1936,8 @@ class JHChecklistUploadParseView(APIView):
     Accepts multipart/form-data with 'file' (PDF or Excel).
     Parses table checkpoints and returns structured JSON for review/preview.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.manage'
 
     def post(self, request):
         from .jh_checklist_parser import parse_jh_checklist_file
@@ -1947,7 +1966,8 @@ class JHChecklistBulkSaveView(APIView):
     POST /api/inspections/jh/checklist/bulk_save/
     Saves or replaces checklist items in the database atomically, recording version audit history.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.manage'
 
     def post(self, request):
         from django.db import transaction
@@ -2039,7 +2059,8 @@ class JHChecklistVersionListView(APIView):
     GET /api/inspections/jh/checklist/versions/
     Returns audit history of all uploaded checklist versions.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         from .models import JHChecklistVersion
@@ -2067,7 +2088,8 @@ class JHChecklistVersionDetailView(APIView):
     GET /api/inspections/jh/checklist/versions/<int:version_number>/
     Returns items for a specific historical checklist version.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request, version_number):
         from .models import JHChecklistVersion, JHChecklistItem
@@ -2104,7 +2126,8 @@ class JHChecklistVersionRestoreView(APIView):
     POST /api/inspections/jh/checklist/versions/<int:version_number>/restore/
     Rolls back / restores a previous checklist version as active.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.manage'
 
     def post(self, request, version_number):
         from django.db import transaction
@@ -2141,7 +2164,8 @@ class JHChecklistTemplateDownloadView(APIView):
     GET /api/inspections/jh/checklist/template/
     Downloads blank Form QF/MF-08 Excel template.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         from django.http import HttpResponse

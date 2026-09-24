@@ -34,13 +34,24 @@ import {
 } from '../api/parts';
 import { getUsers } from '../api/users';
 import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
+import { showAccessDenied } from '../components/common/AccessDeniedModal';
 
 export default function DrawingsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const isSupervisorOrAbove = ['admin', 'supervisor', 'quality_engineer'].includes(user?.role);
+  const canView = can(user, 'development.drawings.view');
+  const canManage = can(user, 'development.drawings.manage');
+  const isAdmin = canManage;
+  const requireManageAccess = (action = 'edit engineering drawings') => {
+    if (canManage) return true;
+    showAccessDenied(`You have view-only access to Engineering Drawings. Manage permission is required to ${action}.`);
+    return false;
+  };
+  const openUploadModal = () => {
+    if (requireManageAccess('upload a drawing')) setIsUploadModalOpen(true);
+  };
 
   const [drawings, setDrawings] = useState([]);
   const [parts, setParts] = useState([]);
@@ -153,6 +164,7 @@ export default function DrawingsPage() {
 
   const handleCreateDrawing = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('upload a drawing')) return;
     if (!newDrawingForm.drawing_number || !newDrawingForm.title || !newDrawingForm.file) {
       alert('Please fill in Drawing Number, Title, and select a File.');
       return;
@@ -197,6 +209,7 @@ export default function DrawingsPage() {
 
   // 1. Submit for Review
   const handleOpenSubmitReviewModal = (drawing) => {
+    if (!requireManageAccess('submit a drawing for review')) return;
     setActiveDrawingForSubmit(drawing);
     setSubmitReviewForm({
       assigned_reviewer: drawing.assigned_reviewer || '',
@@ -208,6 +221,7 @@ export default function DrawingsPage() {
 
   const handleSubmitReview = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('submit a drawing for review')) return;
     if (!activeDrawingForSubmit) return;
     setIsSubmittingReview(true);
     try {
@@ -228,6 +242,7 @@ export default function DrawingsPage() {
 
   // 2. Review Action (Recommend / Reject)
   const handleOpenReviewModal = (drawing) => {
+    if (!requireManageAccess('review a drawing')) return;
     setActiveDrawingForReview(drawing);
     setReviewForm({
       action: 'recommend',
@@ -238,6 +253,7 @@ export default function DrawingsPage() {
 
   const handleReviewAction = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('review a drawing')) return;
     if (!activeDrawingForReview) return;
     setIsProcessingReview(true);
     try {
@@ -257,6 +273,7 @@ export default function DrawingsPage() {
 
   // 3. Approve Action (Approve / Reject)
   const handleOpenApproveModal = (drawing) => {
+    if (!requireManageAccess('approve a drawing')) return;
     setActiveDrawingForApprove(drawing);
     setApproveForm({
       action: 'approve',
@@ -267,6 +284,7 @@ export default function DrawingsPage() {
 
   const handleApproveAction = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('approve a drawing')) return;
     if (!activeDrawingForApprove) return;
     setIsProcessingApprove(true);
     try {
@@ -286,6 +304,7 @@ export default function DrawingsPage() {
 
   // 4. Upload Revision (DCR)
   const handleOpenRevisionModal = (drawing) => {
+    if (!requireManageAccess('upload a drawing revision')) return;
     setActiveDrawingForRevision(drawing);
     setRevisionForm({
       revision_code: '',
@@ -300,6 +319,7 @@ export default function DrawingsPage() {
 
   const handleUploadRevision = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('upload a drawing revision')) return;
     const targetDrawing = activeDrawingForRevision || activeDrawingForHistory;
     if (!targetDrawing || !revisionForm.revision_code || !revisionForm.file) {
       alert('Please enter Revision Code and select a file.');
@@ -340,6 +360,7 @@ export default function DrawingsPage() {
   };
 
   const handleDeleteDrawing = async (drawingId) => {
+    if (!requireManageAccess('delete a drawing')) return;
     if (!window.confirm('Are you sure you want to delete this drawing document?')) return;
     try {
       await deleteDrawing(drawingId);
@@ -404,13 +425,13 @@ export default function DrawingsPage() {
     }
   };
 
-  if (!isSupervisorOrAbove) {
+  if (!canView) {
     return (
       <div style={{ padding: '40px', textAlign: 'center', maxWidth: '600px', margin: '40px auto' }}>
         <ShieldAlert size={56} color="#DC2626" style={{ marginBottom: '16px' }} />
         <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#0F172A' }}>Access Restricted</h2>
         <p style={{ color: '#64748B', margin: '12px 0 24px' }}>
-          Engineering Drawing repository and revision history access is restricted to Supervisors and Administrators.
+          Your role needs the View development records permission to open the engineering drawing repository.
         </p>
         <NavLink to="/development" className="btn btn-primary" style={{ padding: '10px 20px', borderRadius: '8px', background: '#0F172A', color: '#FFFFFF', textDecoration: 'none', fontWeight: '700' }}>
           Return to Development Module
@@ -455,7 +476,7 @@ export default function DrawingsPage() {
             </NavLink>
 
             <button
-              onClick={() => setIsUploadModalOpen(true)}
+              onClick={() => openUploadModal()}
               style={{
                 background: '#0F172A',
                 color: '#FFFFFF',
@@ -554,7 +575,7 @@ export default function DrawingsPage() {
               </p>
               {!searchQuery && (
                 <button
-                  onClick={() => setIsUploadModalOpen(true)}
+                  onClick={() => openUploadModal()}
                   style={{
                     background: '#0F172A',
                     color: '#FFFFFF',

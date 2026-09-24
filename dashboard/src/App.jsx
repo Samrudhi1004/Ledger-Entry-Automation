@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
@@ -41,21 +41,20 @@ import DocumentControlDCRPage from './pages/DocumentControlDCRPage';
 import MasterDatabasePage from './pages/MasterDatabasePage';
 import AdminBugReportsPage from './pages/AdminBugReportsPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
+import AccessDeniedModalHost from './components/common/AccessDeniedModal';
 import { getPendingSessions } from './api/inspections';
+import { can, canOpenPath } from './utils/access';
 
 const PLANT_ID = 1;
-const CALIBRATOR_ROLE = 'calibrator';
-const ALL_ROLES = ['admin', 'supervisor', 'calibrator', 'operator', 'quality_engineer'];
-const CALIBRATOR_ONLY = [CALIBRATOR_ROLE];
-const CALIBRATION_ROLES = ['admin', 'calibrator'];
 const CalibrationPage = lazy(() => import('./pages/CalibrationPage'));
 
-function ProtectedLayout({ children, pendingCount, allowedRoles }) {
+function ProtectedLayout({ children, pendingCount }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) return <LoadingSpinner message="Checking authentication..." />;
   if (!user) return <Navigate to="/login" replace />;
-  if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
+  if (!canOpenPath(user, location.pathname)) return <Navigate to="/" replace />;
 
   const layout = (
     <div className="app-layout">
@@ -65,6 +64,7 @@ function ProtectedLayout({ children, pendingCount, allowedRoles }) {
           {children}
         </Suspense>
       </main>
+      <AccessDeniedModalHost />
     </div>
   );
 
@@ -75,9 +75,10 @@ function RootRedirect() {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner message="Redirecting..." />;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === CALIBRATOR_ROLE) return <Navigate to="/calibration" replace />;
-  if (user.role === 'admin') return <Navigate to="/users" replace />;
-  return <Navigate to="/reports" replace />;
+  for (const path of ['/users', '/production', '/quality-analyzer', '/tasks', '/messages']) {
+    if (canOpenPath(user, path)) return <Navigate to={path} replace />;
+  }
+  return <Navigate to="/profile" replace />;
 }
 
 export default function App() {
@@ -85,7 +86,7 @@ export default function App() {
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
-    if (!user || user.role === CALIBRATOR_ROLE) {
+    if (!user || !can(user, 'quality.inspections.review')) {
       setPendingCount(0);
       return;
     }
@@ -112,10 +113,10 @@ export default function App() {
       supervisor: 'SUPERVISOR',
       calibrator: 'CALIBRATOR',
       operator: 'OPERATOR',
-      quality_engineer: 'INSPECTOR',
+      quality_engineer: 'QUALITY ENGINEER',
       inspector: 'INSPECTOR',
     };
-    const roleText = roleLabels[user.role] || (user.role || '').toUpperCase();
+    const roleText = user.role_name?.toUpperCase() || roleLabels[user.role] || (user.role || '').toUpperCase();
     document.title = `${roleText} | Inspection Hub`;
   }, [user]);
 
@@ -185,7 +186,7 @@ export default function App() {
       <Route
         path="/production/jh-inspections"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <JHInspectionReportsPage />
           </ProtectedLayout>
         }
@@ -225,7 +226,7 @@ export default function App() {
       <Route
         path="/store"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <StoreModulePage />
           </ProtectedLayout>
         }
@@ -249,7 +250,7 @@ export default function App() {
       <Route
         path="/development/drawings"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <DrawingsPage />
           </ProtectedLayout>
         }
@@ -257,7 +258,7 @@ export default function App() {
       <Route
         path="/development/control-plans"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <ControlPlansPage />
           </ProtectedLayout>
         }
@@ -314,7 +315,7 @@ export default function App() {
       <Route
         path="/master-database"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <MasterDatabasePage />
           </ProtectedLayout>
         }
@@ -323,7 +324,7 @@ export default function App() {
       <Route
         path="/parameters"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor']}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <ParametersPage />
           </ProtectedLayout>
         }
@@ -341,7 +342,7 @@ export default function App() {
       <Route
         path="/profile"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={ALL_ROLES}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <ProfilePage />
           </ProtectedLayout>
         }
@@ -350,7 +351,7 @@ export default function App() {
       <Route
         path="/company"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={ALL_ROLES}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <CompanyDetailsPage />
           </ProtectedLayout>
         }
@@ -359,7 +360,7 @@ export default function App() {
       <Route
         path="/calibration"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATION_ROLES}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <CalibrationPage view="dashboard" />
           </ProtectedLayout>
         }
@@ -368,7 +369,7 @@ export default function App() {
       <Route
         path="/calibration/equipment"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATION_ROLES}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <CalibrationPage view="equipment" />
           </ProtectedLayout>
         }
@@ -377,7 +378,7 @@ export default function App() {
       <Route
         path="/calibration/equipment/new"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATION_ROLES}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <CalibrationPage view="register" />
           </ProtectedLayout>
         }
@@ -386,7 +387,7 @@ export default function App() {
       <Route
         path="/calibration/plan"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATION_ROLES}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <CalibrationPage view="plan" />
           </ProtectedLayout>
         }
@@ -395,7 +396,7 @@ export default function App() {
       <Route
         path="/calibration/equipment/:equipmentId/history"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={CALIBRATION_ROLES}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <CalibrationPage view="history" />
           </ProtectedLayout>
         }
@@ -413,7 +414,7 @@ export default function App() {
       <Route
         path="/messages"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={ALL_ROLES}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <MessagesPage />
           </ProtectedLayout>
         }
@@ -422,7 +423,7 @@ export default function App() {
       <Route
         path="/document-control"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor', 'calibrator']}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <DocumentControlPage />
           </ProtectedLayout>
         }
@@ -430,7 +431,7 @@ export default function App() {
       <Route
         path="/document-control/documents"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor', 'calibrator']}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <DocumentControlDocumentsPage />
           </ProtectedLayout>
         }
@@ -438,7 +439,7 @@ export default function App() {
       <Route
         path="/document-control/approvals"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <DocumentControlApprovalsPage />
           </ProtectedLayout>
         }
@@ -446,7 +447,7 @@ export default function App() {
       <Route
         path="/document-control/dcr"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin', 'supervisor', 'calibrator']}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <DocumentControlDCRPage />
           </ProtectedLayout>
         }
@@ -454,7 +455,7 @@ export default function App() {
       <Route
         path="/support/bug-reports"
         element={
-          <ProtectedLayout pendingCount={pendingCount} allowedRoles={['admin']}>
+          <ProtectedLayout pendingCount={pendingCount}>
             <AdminBugReportsPage />
           </ProtectedLayout>
         }

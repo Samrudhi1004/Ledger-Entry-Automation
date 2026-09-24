@@ -4,11 +4,11 @@ import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import { Cpu, FileText, ArrowRight, ShieldCheck, Clock, Gauge, FileSpreadsheet } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { canOpenPath } from '../utils/access';
 
 export default function QualityAnalyzerPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canAccessCalibration = user?.role === 'admin' || user?.role === 'calibrator';
 
   const allReportCards = [
     {
@@ -91,9 +91,7 @@ export default function QualityAnalyzerPage() {
     },
   ];
 
-  const reportCards = allReportCards.filter(
-    (card) => card.id !== 'calibration-hub' || canAccessCalibration
-  );
+  const reportCards = allReportCards.filter((card) => canOpenPath(user, card.link));
 
   return (
     <>

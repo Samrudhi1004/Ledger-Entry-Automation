@@ -44,10 +44,9 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
     getAssignableUsers()
       .then(res => {
         setUsers(res.data || []);
-        // Auto-select first admin as default approver if available
-        const defaultAdmin = (res.data || []).find(u => u.role === 'admin');
-        if (defaultAdmin) {
-          setForm(prev => ({ ...prev, assigned_approver: defaultAdmin.id }));
+        const defaultApprover = (res.data || []).find(u => u.can_approve);
+        if (defaultApprover) {
+          setForm(prev => ({ ...prev, assigned_approver: defaultApprover.id }));
         }
       })
       .catch(err => {
@@ -72,7 +71,7 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
       return setError('Please select a Cross-Functional Team (CFT) Reviewer.');
     }
     if (!form.assigned_approver) {
-      return setError('Please select a Management Representative (Admin) Approver.');
+      return setError('Please select an approver.');
     }
 
     setSubmitting(true);
@@ -98,11 +97,12 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
     }
   };
 
-  // Backend now handles exclusion of operator and currentUser
-  const selectOptions = users.map(u => ({
+  const userOption = u => ({
     value: u.id,
     label: `${u.name} (${u.role})`
-  }));
+  });
+  const reviewerOptions = users.filter(u => u.can_review).map(userOption);
+  const approverOptions = users.filter(u => u.can_approve).map(userOption);
   return (
     <div style={{
       position: 'fixed',
@@ -412,9 +412,9 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
                       CFT Reviewer <span style={{ color: '#ef4444' }}>*</span>
                     </label>
                     <Select
-                      value={selectOptions.find(opt => opt.value === form.assigned_cft_reviewer) || null}
+                      value={reviewerOptions.find(opt => opt.value === form.assigned_cft_reviewer) || null}
                       onChange={selected => setForm({ ...form, assigned_cft_reviewer: selected?.value || '' })}
-                      options={selectOptions}
+                      options={reviewerOptions}
                       isDisabled={loadingUsers}
                       placeholder="-- Search / Select CFT Reviewer --"
                       styles={{
@@ -432,14 +432,14 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
                 {/* Approver (Admin / MR) */}
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#4b5563', marginBottom: '4px' }}>
-                    Management Representative / Admin Approver <span style={{ color: '#ef4444' }}>*</span>
+                    Management Representative / Approver <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <Select
-                    value={selectOptions.find(opt => opt.value === form.assigned_approver) || null}
+                    value={approverOptions.find(opt => opt.value === form.assigned_approver) || null}
                     onChange={selected => setForm({ ...form, assigned_approver: selected?.value || '' })}
-                    options={selectOptions}
+                    options={approverOptions}
                     isDisabled={loadingUsers}
-                    placeholder="-- Search / Select Admin Approver --"
+                    placeholder="-- Search / Select Approver --"
                     styles={{
                       control: (base) => ({
                         ...base,

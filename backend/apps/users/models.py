@@ -1,10 +1,31 @@
-"""
-Custom User model with role-based access control.
-Roles: Operator, Supervisor, Quality Engineer, Calibrator, Admin
-"""
+"""Custom User model with role-based access control."""
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from .access import ACCESS_KEYS, MANAGE_IMPLIES_VIEW
+
+
+class AccessRole(models.Model):
+    slug = models.SlugField(max_length=64, unique=True)
+    name = models.CharField(max_length=100, unique=True)
+    permissions = models.JSONField(default=list)
+    is_system = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.name
+
+
+class AccessEvent(models.Model):
+    actor = models.ForeignKey('users.User', null=True, on_delete=models.SET_NULL, related_name='access_changes_made')
+    target_user = models.ForeignKey('users.User', null=True, on_delete=models.SET_NULL, related_name='access_changes_received')
+    role = models.ForeignKey(AccessRole, null=True, on_delete=models.SET_NULL)
+    action = models.CharField(max_length=40)
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
 
 
 class User(AbstractUser):
@@ -12,7 +33,8 @@ class User(AbstractUser):
     class Role(models.TextChoices):
         OPERATOR          = 'operator',           'Operator'
         SUPERVISOR        = 'supervisor',         'Supervisor'
-        QUALITY_ENGINEER  = 'quality_engineer',   'Inspector'
+        INSPECTOR         = 'inspector',          'Inspector'
+        QUALITY_ENGINEER  = 'quality_engineer',   'Quality Engineer'
         CALIBRATOR        = 'calibrator',         'Calibrator'
         ADMIN             = 'admin',              'Admin'
 
@@ -23,11 +45,9 @@ class User(AbstractUser):
         ALL       = 'ALL', 'All Shifts (Flexible)'
 
     # Core fields
-    role        = models.CharField(
-        max_length=20,
-        choices=Role.choices,
-        default=Role.OPERATOR,
-    )
+    role = models.CharField(max_length=64, default=Role.OPERATOR)
+    access_grants = models.JSONField(default=list, blank=True)
+    access_denials = models.JSONField(default=list, blank=True)
     assigned_shift = models.CharField(
         max_length=10,
         choices=Shift.choices,
@@ -74,6 +94,23 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.get_full_name()} ({self.employee_id}) : {self.get_role_display()}"
 
+    def effective_access(self):
+        if not self.is_active:
+            return set()
+        if self.is_superuser:
+            return ACCESS_KEYS
+        role = AccessRole.objects.filter(slug=self.role).first()
+        granted = set(role.permissions if role else ()) | set(self.access_grants)
+        denials = set(self.access_denials)
+        effective = granted - denials
+        for manage_key, view_keys in MANAGE_IMPLIES_VIEW.items():
+            if manage_key in effective:
+                effective.update(view_keys - denials)
+        return effective & ACCESS_KEYS
+
+    def has_access(self, key):
+        return key in self.effective_access()
+
     # ─── Role helpers ─────────────────────────────────────────
     @property
     def is_operator(self):
@@ -86,6 +123,10 @@ class User(AbstractUser):
     @property
     def is_quality_engineer(self):
         return self.role == self.Role.QUALITY_ENGINEER
+
+    @property
+    def is_inspector(self):
+        return self.role == self.Role.INSPECTOR
 
     @property
     def is_calibrator(self):

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 import AdminParametersView from '../components/parameters/AdminParametersView';
 import {
   getParts,
@@ -57,6 +58,7 @@ import api from '../api/axios';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
+import { showAccessDenied } from '../components/common/AccessDeniedModal';
 
 const extractErrorMessage = (err, fallback) => {
   if (!err.response?.data) return fallback;
@@ -78,7 +80,12 @@ export default function ParametersPage() {
   const targetOpId = searchParams.get('operation') || searchParams.get('template');
   const targetPartId = searchParams.get('part');
   const targetMachineId = searchParams.get('machine');
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = can(user, 'development.parameters.manage');
+  const requireManageAccess = (action = 'edit master database records') => {
+    if (isAdmin) return true;
+    showAccessDenied(`You have view-only access to the Master Database. Manage permission is required to ${action}.`);
+    return false;
+  };
   const [adminTab, setAdminTab] = useState('builder'); // 'builder' or 'audit'
 
   const [machines, setMachines] = useState([]);
@@ -390,12 +397,14 @@ export default function ParametersPage() {
 
   // MACHINE HANDLERS
   const handleOpenAddMachine = () => {
+    if (!requireManageAccess('add a machine')) return;
     setEditingMachine(null);
     setMachineForm({ machine_code: '', name: '', machine_type: 'CNC' });
     setShowAddMachineModal(true);
   };
 
   const handleOpenEditMachine = (m) => {
+    if (!requireManageAccess('edit a machine')) return;
     setEditingMachine(m);
     setMachineForm({ machine_code: m.machine_code, name: m.name || '', machine_type: m.machine_type || 'CNC' });
     setShowAddMachineModal(true);
@@ -403,6 +412,7 @@ export default function ParametersPage() {
 
   const handleSaveMachine = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('save machine changes')) return;
     if (!machineForm.machine_code.trim()) return;
     try {
       setError('');
@@ -434,6 +444,7 @@ export default function ParametersPage() {
   };
 
   const handleDeleteMachine = async (mId) => {
+    if (!requireManageAccess('delete a machine')) return;
     if (!window.confirm('Are you sure you want to delete this Machine and all associated Parts?')) return;
     try {
       setError('');
@@ -448,6 +459,7 @@ export default function ParametersPage() {
 
   // PART HANDLERS
   const handleOpenAddPart = () => {
+    if (!requireManageAccess('add a part')) return;
     if (!selectedMachine) {
       setError('Please select or create a machine first.');
       return;
@@ -458,6 +470,7 @@ export default function ParametersPage() {
   };
 
   const handleOpenEditPart = (p) => {
+    if (!requireManageAccess('edit a part')) return;
     setEditingPart(p);
     setPartForm({
       part_number: p.part_number,
@@ -471,6 +484,7 @@ export default function ParametersPage() {
 
   const handleSavePart = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('save part changes')) return;
     if (!selectedMachine) return;
     try {
       setError('');
@@ -494,6 +508,7 @@ export default function ParametersPage() {
   };
 
   const handleDeletePartItem = async (partNum) => {
+    if (!requireManageAccess('delete a part')) return;
     if (!window.confirm(`Are you sure you want to delete Part ${partNum} and all its operations & parameters?`)) return;
     try {
       setError('');
@@ -509,6 +524,7 @@ export default function ParametersPage() {
   // OPERATION HANDLERS
   const handleSaveOperation = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('save an operation')) return;
     if (!selectedPart) return;
     try {
       setError('');
@@ -535,6 +551,7 @@ export default function ParametersPage() {
 
   const handleSaveTargetCount = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('edit target settings')) return;
     if (!selectedTemplate) return;
     try {
       setError('');
@@ -555,6 +572,7 @@ export default function ParametersPage() {
   };
 
   const handlePublishTemplate = async () => {
+    if (!requireManageAccess('publish an operation')) return;
     if (!selectedTemplate) return;
     setIsPublishing(true);
     try {
@@ -578,6 +596,7 @@ export default function ParametersPage() {
 
   // ─── Sign-Off Workflow Handlers ───────────────────────────────────────────
   const handleOpenSubmitReviewModal = () => {
+    if (!requireManageAccess('submit an operation for review')) return;
     if (!selectedTemplate) return;
     setSubmitReviewForm({
       assigned_reviewer: selectedTemplate.assigned_reviewer || '',
@@ -589,6 +608,7 @@ export default function ParametersPage() {
 
   const handleSubmitReview = async (e) => {
     if (e) e.preventDefault();
+    if (!requireManageAccess('submit an operation for review')) return;
     if (!selectedTemplate) return;
     setIsSubmittingReview(true);
     try {
@@ -613,6 +633,7 @@ export default function ParametersPage() {
   };
 
   const handleOpenReviewModal = () => {
+    if (!requireManageAccess('review an operation')) return;
     if (!selectedTemplate) return;
     setReviewActionForm({
       action: 'recommend',
@@ -622,6 +643,7 @@ export default function ParametersPage() {
   };
 
   const handleSubmitReviewAction = async (chosenAction) => {
+    if (!requireManageAccess('review an operation')) return;
     if (!selectedTemplate) return;
     const actionToUse = chosenAction || reviewActionForm.action;
     setIsProcessingReview(true);
@@ -646,6 +668,7 @@ export default function ParametersPage() {
   };
 
   const handleOpenApproveModal = () => {
+    if (!requireManageAccess('approve an operation')) return;
     if (!selectedTemplate) return;
     setApproveActionForm({
       action: 'approve',
@@ -655,6 +678,7 @@ export default function ParametersPage() {
   };
 
   const handleSubmitApproveAction = async (chosenAction) => {
+    if (!requireManageAccess('approve an operation')) return;
     if (!selectedTemplate) return;
     const actionToUse = chosenAction || approveActionForm.action;
     setIsProcessingApprove(true);
@@ -679,6 +703,7 @@ export default function ParametersPage() {
   };
 
   const handleDeleteOperationItem = async (templateId) => {
+    if (!requireManageAccess('delete an operation')) return;
     if (!window.confirm('Are you sure you want to delete this Operation and all its parameters?')) return;
     try {
       setError('');
@@ -698,6 +723,7 @@ export default function ParametersPage() {
   const isApproved = selectedTemplate?.status === 'approved';
 
   const handleInitiateSubmitReview = () => {
+    if (!requireManageAccess('submit an operation for review')) return;
     if (!selectedTemplate) return;
     if (totalConfiguredParams === 0) {
       setError('Please add at least one Product or Process parameter before submitting for Quality Sign-Off.');
@@ -708,6 +734,7 @@ export default function ParametersPage() {
 
   // ── Locked State Interception for Approved Templates (DCR Workflow) ──
   const handleOpenGeneralDCRModal = () => {
+    if (!requireManageAccess('create a change request')) return;
     setDcrForm({
       change_type: 'modification',
       target_type: activeParamTab,
@@ -724,6 +751,7 @@ export default function ParametersPage() {
   };
 
   const handleOpenAddParamWithLockCheck = () => {
+    if (!requireManageAccess('add a product parameter')) return;
     if (isApproved) {
       setDcrForm({
         change_type: 'addition',
@@ -744,6 +772,7 @@ export default function ParametersPage() {
   };
 
   const handleOpenAddProcessParamWithLockCheck = () => {
+    if (!requireManageAccess('add a process parameter')) return;
     if (isApproved) {
       setDcrForm({
         change_type: 'addition',
@@ -764,6 +793,7 @@ export default function ParametersPage() {
   };
 
   const handleEditParamWithLockCheck = (p) => {
+    if (!requireManageAccess('edit a product parameter')) return;
     if (isApproved) {
       setDcrForm({
         change_type: 'modification',
@@ -784,6 +814,7 @@ export default function ParametersPage() {
   };
 
   const handleDeleteParamWithLockCheck = (p) => {
+    if (!requireManageAccess('delete a product parameter')) return;
     if (isApproved) {
       setDcrForm({
         change_type: 'deletion',
@@ -804,6 +835,7 @@ export default function ParametersPage() {
   };
 
   const handleEditProcessParamWithLockCheck = (pp) => {
+    if (!requireManageAccess('edit a process parameter')) return;
     if (isApproved) {
       setDcrForm({
         change_type: 'modification',
@@ -824,6 +856,7 @@ export default function ParametersPage() {
   };
 
   const handleDeleteProcessParamWithLockCheck = (pp) => {
+    if (!requireManageAccess('delete a process parameter')) return;
     if (isApproved) {
       setDcrForm({
         change_type: 'deletion',
@@ -846,6 +879,7 @@ export default function ParametersPage() {
   // ── DCR Submission, Review & Approval Actions ──
   const handleSubmitDCR = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('submit a change request')) return;
     if (!selectedTemplate) return;
     setIsSubmittingDCR(true);
     try {
@@ -876,6 +910,7 @@ export default function ParametersPage() {
   };
 
   const handleOpenDCRReviewModal = (dcr) => {
+    if (!requireManageAccess('review a change request')) return;
     setSelectedDCR(dcr);
     setDcrReviewForm({
       action: 'recommend',
@@ -885,6 +920,7 @@ export default function ParametersPage() {
   };
 
   const handleReviewDCRSubmit = async (chosenAction) => {
+    if (!requireManageAccess('review a change request')) return;
     if (!selectedDCR) return;
     const action = chosenAction || dcrReviewForm.action;
     setIsProcessingDCRReview(true);
@@ -906,6 +942,7 @@ export default function ParametersPage() {
   };
 
   const handleOpenDCRApproveModal = (dcr) => {
+    if (!requireManageAccess('approve a change request')) return;
     setSelectedDCR(dcr);
     setDcrApproveForm({
       action: 'approve',
@@ -915,6 +952,7 @@ export default function ParametersPage() {
   };
 
   const handleApproveDCRSubmit = async (chosenAction) => {
+    if (!requireManageAccess('approve a change request')) return;
     if (!selectedDCR) return;
     const action = chosenAction || dcrApproveForm.action;
     setIsProcessingDCRApprove(true);
@@ -970,6 +1008,7 @@ export default function ParametersPage() {
   };
 
   const handleOpenAddParam = () => {
+    if (!requireManageAccess('add a product parameter')) return;
     setEditingParam(null);
     setRuleMode('rule1');
     setParamForm({
@@ -991,6 +1030,7 @@ export default function ParametersPage() {
   };
 
   const handleOpenEditParam = (param) => {
+    if (!requireManageAccess('edit a product parameter')) return;
     setEditingParam(param);
     let mode = 'rule1';
     const mType = (param.measurement_type || '').toLowerCase();
@@ -1018,6 +1058,7 @@ export default function ParametersPage() {
 
   const handleSaveParam = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('save product parameter changes')) return;
     if (!selectedTemplate) return;
     try {
       setError('');
@@ -1054,6 +1095,7 @@ export default function ParametersPage() {
   };
 
   const handleDeleteParam = async (paramId) => {
+    if (!requireManageAccess('delete a product parameter')) return;
     if (!window.confirm('Are you sure you want to delete this parameter?')) return;
     try {
       setError('');
@@ -1098,6 +1140,7 @@ export default function ParametersPage() {
   };
 
   const handleOpenAddProcessParam = () => {
+    if (!requireManageAccess('add a process parameter')) return;
     setEditingProcessParam(null);
     setProcessRuleMode('rule1');
     setProcessParamForm({
@@ -1121,6 +1164,7 @@ export default function ParametersPage() {
   };
 
   const handleOpenEditProcessParam = (pp) => {
+    if (!requireManageAccess('edit a process parameter')) return;
     setEditingProcessParam(pp);
     let mode = 'rule1';
     const mType = (pp.measurement_type || '').toLowerCase();
@@ -1150,6 +1194,7 @@ export default function ParametersPage() {
 
   const handleSaveProcessParam = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('save process parameter changes')) return;
     if (!selectedTemplate || !processParamForm.parameter_name.trim()) return;
     try {
       setError('');
@@ -1195,6 +1240,7 @@ export default function ParametersPage() {
   };
 
   const handleDeleteProcessParam = async (pp) => {
+    if (!requireManageAccess('delete a process parameter')) return;
     if (!window.confirm(`Delete process parameter "${pp.parameter_name}"?`)) return;
     try {
       setError('');
@@ -1417,7 +1463,7 @@ export default function ParametersPage() {
                     <button style={{ padding: '2px 8px', fontSize: 11, background: '#FFFFFF', border: '1px solid #FECACA', borderRadius: 5, color: '#DC2626', cursor: 'pointer' }} onClick={() => handleDeleteOperationItem(selectedTemplate.id)}>Delete</button>
                   )}
                   {selectedPart && (
-                    <button style={{ padding: '2px 8px', fontSize: 11, background: '#0F172A', border: '1px solid #0F172A', borderRadius: 5, color: '#FFFFFF', cursor: 'pointer', fontWeight: 600 }} onClick={() => setShowAddOpModal(true)}>+ New</button>
+                    <button style={{ padding: '2px 8px', fontSize: 11, background: '#0F172A', border: '1px solid #0F172A', borderRadius: 5, color: '#FFFFFF', cursor: 'pointer', fontWeight: 600 }} onClick={() => { if (requireManageAccess('add an operation')) setShowAddOpModal(true); }}>+ New</button>
                   )}
                 </div>
               </div>
@@ -2501,7 +2547,7 @@ export default function ParametersPage() {
                     </span>
                   )}
                   <button
-                    onClick={() => { setEditTargetCount(target); setEditCycleTime(selectedTemplate?.cycle_time_mins || ''); setShowEditTargetModal(true); }}
+                    onClick={() => { if (!requireManageAccess('edit target settings')) return; setEditTargetCount(target); setEditCycleTime(selectedTemplate?.cycle_time_mins || ''); setShowEditTargetModal(true); }}
                     style={{
                       padding: '5px 12px', fontSize: 11, fontWeight: 700,
                       background: '#EFF6FF', border: '1px solid #BAE6FD',
@@ -2637,7 +2683,7 @@ export default function ParametersPage() {
                   {/* Direct Publish / Re-Dispatch button */}
                   <button
                     type="button"
-                    onClick={() => setShowPublishModal(true)}
+                      onClick={() => { if (requireManageAccess('publish an operation')) setShowPublishModal(true); }}
                     style={{
                       padding: '8px 16px', fontWeight: 600, borderRadius: 6, fontSize: 12.5,
                       background: '#FFFFFF',
@@ -2856,7 +2902,7 @@ export default function ParametersPage() {
         {/* Modal 4: Add / Edit Parameter */}
         {showAddParamModal && selectedTemplate && (
           <div className="modal-overlay" onClick={() => setShowAddParamModal(false)}>
-            <div className="modal-content" style={{ maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content parameter-rule-editor-modal" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
                 <h3>{editingParam ? `Edit Parameter Rule` : `Add Parameter Rule to [${selectedTemplate?.inspection_type?.toUpperCase()}]`}</h3>
                 <button type="button" className="btn-close" onClick={() => setShowAddParamModal(false)}>×</button>

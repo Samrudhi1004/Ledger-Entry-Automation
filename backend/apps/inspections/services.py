@@ -1008,7 +1008,7 @@ class InspectionService:
         if session_obj.finalized_by:
             doc['finalized_by_name'] = session_obj.finalized_by.get_full_name()
             doc['inspector_name'] = session_obj.finalized_by.get_full_name()
-        elif session_obj.operator and (session_obj.operator.role in ['quality_engineer', 'inspector'] or session_obj.inspection_type == 'first_piece'):
+        elif session_obj.operator and (session_obj.operator.role == 'inspector' or session_obj.inspection_type == 'first_piece'):
             doc['inspector_name'] = session_obj.operator.get_full_name()
 
         if session_obj.operator:

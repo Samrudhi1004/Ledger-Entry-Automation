@@ -25,7 +25,7 @@ export default function Header({
     supervisor: 'SUPERVISOR',
     calibrator: 'CALIBRATOR',
     operator: 'OPERATOR',
-    quality_engineer: 'INSPECTOR',
+    quality_engineer: 'QUALITY ENGINEER',
     inspector: 'INSPECTOR',
   };
   const roleText = user ? (roleLabels[user.role] || user.role?.toUpperCase()) : '';

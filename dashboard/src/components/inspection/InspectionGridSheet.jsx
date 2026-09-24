@@ -1,13 +1,24 @@
 import { useState } from 'react';
 import { supervisorOverride } from '../../api/inspections';
 import { useCompany } from '../../context/CompanyContext';
+import { useAuth } from '../../context/AuthContext';
+import { can } from '../../utils/access';
+import { showAccessDenied } from '../common/AccessDeniedModal';
 
 export default function InspectionGridSheet({ session, onUpdate }) {
   const { companyCode } = useCompany();
+  const { user } = useAuth();
+  const canOverride = can(user, 'quality.inspections.review');
   const [editingParam, setEditingParam] = useState(null);
   const [overrideVal, setOverrideVal]   = useState('');
   const [overrideRemark, setOverrideRemark] = useState('');
   const [loading, setLoading]         = useState(false);
+
+  const requireOverrideAccess = () => {
+    if (canOverride) return true;
+    showAccessDenied('You have view-only access to this inspection report. Review permission is required for supervisor overrides.');
+    return false;
+  };
 
   if (!session) return null;
 
@@ -28,6 +39,7 @@ export default function InspectionGridSheet({ session, onUpdate }) {
   });
 
   const handleSaveOverride = async (paramCode) => {
+    if (!requireOverrideAccess()) return;
     if (!overrideVal || isNaN(overrideVal)) {
       alert('Please enter a valid numeric value.');
       return;
@@ -190,6 +202,7 @@ export default function InspectionGridSheet({ session, onUpdate }) {
                       <button
                         className="btn btn-warning btn-sm"
                         onClick={() => {
+                          if (!requireOverrideAccess()) return;
                           setEditingParam(pCode);
                           setOverrideVal(p.nominal?.toString() || '');
                         }}

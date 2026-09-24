@@ -102,7 +102,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
-    final canSubmitDCR = !auth.isOperator && !auth.isInspector;
+    final canSubmitDCR = auth.hasAccess('document.dcr.create');
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),

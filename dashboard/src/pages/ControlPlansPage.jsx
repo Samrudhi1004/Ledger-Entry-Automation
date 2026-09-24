@@ -31,13 +31,24 @@ import {
 } from '../api/parts';
 import { getUsers } from '../api/users';
 import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
+import { showAccessDenied } from '../components/common/AccessDeniedModal';
 
 export default function ControlPlansPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const isSupervisorOrAbove = ['admin', 'supervisor', 'quality_engineer'].includes(user?.role);
+  const canView = can(user, 'development.control_plans.view');
+  const canManage = can(user, 'development.control_plans.manage');
+  const isAdmin = canManage;
+  const requireManageAccess = (action = 'edit process control plans') => {
+    if (canManage) return true;
+    showAccessDenied(`You have view-only access to Control Plans. Manage permission is required to ${action}.`);
+    return false;
+  };
+  const openUploadModal = () => {
+    if (requireManageAccess('upload a control plan')) setIsUploadModalOpen(true);
+  };
 
   const [controlPlans, setControlPlans] = useState([]);
   const [parts, setParts] = useState([]);
@@ -150,6 +161,7 @@ export default function ControlPlansPage() {
 
   const handleCreateControlPlan = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('upload a control plan')) return;
     if (!newPlanForm.control_plan_number || !newPlanForm.title || !newPlanForm.file) {
       alert('Please fill in Control Plan Number, Title, and select a File.');
       return;
@@ -194,6 +206,7 @@ export default function ControlPlansPage() {
 
   // 1. Submit for Review
   const handleOpenSubmitReviewModal = (cp) => {
+    if (!requireManageAccess('submit a control plan for review')) return;
     setActivePlanForSubmit(cp);
     setSubmitReviewForm({
       assigned_reviewer: cp.assigned_reviewer || '',
@@ -205,6 +218,7 @@ export default function ControlPlansPage() {
 
   const handleSubmitReview = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('submit a control plan for review')) return;
     if (!activePlanForSubmit) return;
     setIsSubmittingReview(true);
     try {
@@ -225,6 +239,7 @@ export default function ControlPlansPage() {
 
   // 2. Review Action (Recommend / Reject)
   const handleOpenReviewModal = (cp) => {
+    if (!requireManageAccess('review a control plan')) return;
     setActivePlanForReview(cp);
     setReviewForm({
       action: 'recommend',
@@ -235,6 +250,7 @@ export default function ControlPlansPage() {
 
   const handleReviewAction = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('review a control plan')) return;
     if (!activePlanForReview) return;
     setIsProcessingReview(true);
     try {
@@ -254,6 +270,7 @@ export default function ControlPlansPage() {
 
   // 3. Approve Action (Approve / Reject)
   const handleOpenApproveModal = (cp) => {
+    if (!requireManageAccess('approve a control plan')) return;
     setActivePlanForApprove(cp);
     setApproveForm({
       action: 'approve',
@@ -264,6 +281,7 @@ export default function ControlPlansPage() {
 
   const handleApproveAction = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('approve a control plan')) return;
     if (!activePlanForApprove) return;
     setIsProcessingApprove(true);
     try {
@@ -283,6 +301,7 @@ export default function ControlPlansPage() {
 
   // 4. Upload Revision (DCR)
   const handleOpenRevisionModal = (cp) => {
+    if (!requireManageAccess('upload a control plan revision')) return;
     setActivePlanForRevision(cp);
     setRevisionForm({
       revision_code: '',
@@ -297,6 +316,7 @@ export default function ControlPlansPage() {
 
   const handleUploadRevision = async (e) => {
     e.preventDefault();
+    if (!requireManageAccess('upload a control plan revision')) return;
     const targetPlan = activePlanForRevision || activePlanForHistory;
     if (!targetPlan || !revisionForm.revision_code || !revisionForm.file) {
       alert('Please enter Version Code and select a file.');
@@ -337,6 +357,7 @@ export default function ControlPlansPage() {
   };
 
   const handleDeleteControlPlan = async (cpId) => {
+    if (!requireManageAccess('delete a control plan')) return;
     if (!window.confirm('Are you sure you want to delete this Control Plan document?')) return;
     try {
       await deleteControlPlan(cpId);
@@ -426,13 +447,13 @@ export default function ControlPlansPage() {
     }
   };
 
-  if (!isSupervisorOrAbove) {
+  if (!canView) {
     return (
       <div style={{ padding: '40px', textAlign: 'center', maxWidth: '600px', margin: '40px auto' }}>
         <ShieldAlert size={56} color="#DC2626" style={{ marginBottom: '16px' }} />
         <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#0F172A' }}>Access Restricted</h2>
         <p style={{ color: '#64748B', margin: '12px 0 24px' }}>
-          Process Control Plan repository and version history access is restricted to Supervisors and Administrators.
+          Your role needs the View development records permission to open the process control plan repository.
         </p>
         <NavLink to="/development" className="btn btn-primary" style={{ padding: '10px 20px', borderRadius: '8px', background: '#0F172A', color: '#FFFFFF', textDecoration: 'none', fontWeight: '700' }}>
           Return to Development Module
@@ -477,7 +498,7 @@ export default function ControlPlansPage() {
             </NavLink>
 
             <button
-              onClick={() => setIsUploadModalOpen(true)}
+              onClick={() => openUploadModal()}
               style={{
                 background: '#0F172A',
                 color: '#FFFFFF',
@@ -576,7 +597,7 @@ export default function ControlPlansPage() {
               </p>
               {!searchQuery && (
                 <button
-                  onClick={() => setIsUploadModalOpen(true)}
+                  onClick={() => openUploadModal()}
                   style={{
                     background: '#0F172A',
                     color: '#FFFFFF',

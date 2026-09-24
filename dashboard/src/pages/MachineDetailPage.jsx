@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
+import { showAccessDenied } from '../components/common/AccessDeniedModal';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -14,6 +17,13 @@ import { fmt, formatDateTime, formatDate } from '../utils/formatters';
 
 export default function MachineDetailPage() {
   const { machineId } = useParams();
+  const { user } = useAuth();
+  const canReview = can(user, 'quality.inspections.review');
+  const requireReviewAccess = (action) => {
+    if (canReview) return true;
+    showAccessDenied(`You have view-only access to machine history. Review permission is required to ${action}.`);
+    return false;
+  };
   const [machine, setMachine]         = useState(null);
   const [performance, setPerformance] = useState(null);
   const [historySessions, setHistorySessions] = useState([]);
@@ -74,6 +84,7 @@ export default function MachineDetailPage() {
   }, [machineId]);
 
   const handleClearHistory = async () => {
+    if (!requireReviewAccess('clear inspection history')) return;
     if (!machine) return;
     if (!window.confirm(`Are you sure you want to clear all test inspection history for machine ${machine.machine_code}? This will start machine history cleanly at 0.`)) {
       return;
@@ -88,6 +99,7 @@ export default function MachineDetailPage() {
   };
 
   const handleDeleteSession = async (sId) => {
+    if (!requireReviewAccess('delete an inspection session')) return;
     if (!window.confirm(`Delete test session ${sId.slice(0, 8).toUpperCase()}?`)) return;
     try {
       await api.delete(`/api/inspections/clear-history/?session_id=${sId}`);

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CircleCheckBig, CircleX } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
@@ -22,6 +24,7 @@ import {
   CalibrationDashboard, CalibrationNavigation, EquipmentManagement,
   EquipmentRegistryForm, CalibrationHistoryCard, CalibrationPlanReport,
 } from '../components/calibration/CalibrationViews';
+import { showAccessDenied } from '../components/common/AccessDeniedModal';
 
 const VIEW_COPY = {
   dashboard: {
@@ -54,6 +57,7 @@ const EMPTY_STATUS_DATA = {
 const EMPTY_PLAN_FORM = { equipment: '', planned_date: '', remarks: '' };
 
 export default function CalibrationPage({ view = 'dashboard' }) {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { equipmentId } = useParams();
@@ -88,6 +92,12 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   const [planTarget, setPlanTarget] = useState(null);
   const [planForm, setPlanForm] = useState(EMPTY_PLAN_FORM);
   const [registryOpen, setRegistryOpen] = useState(false);
+  const canManage = can(user, 'calibration.manage');
+  const requireManageAccess = (action = 'edit calibration records') => {
+    if (canManage) return true;
+    showAccessDenied(`You have view-only access to Calibration. Manage permission is required to ${action}.`);
+    return false;
+  };
 
   useEffect(() => {
     const message = location.state?.success;
@@ -216,6 +226,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
 
   const handleRegister = async (event) => {
     event.preventDefault();
+    if (!requireManageAccess('register equipment')) return;
     const duplicate = equipment.some((item) => item.equipment_id?.trim().toLowerCase() === formData.equipment_id.trim().toLowerCase());
     if (duplicate) {
       setFormError('This equipment ID is already registered. Use a different equipment ID.');
@@ -242,6 +253,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   };
 
   const openEdit = (item) => {
+    if (!requireManageAccess('edit equipment')) return;
     setEditTarget(item);
     setFormData(Object.fromEntries(
       Object.keys(EMPTY_FORM).map((key) => [key, item[key] ?? ''])
@@ -259,6 +271,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
 
   const handleEdit = async (event) => {
     event.preventDefault();
+    if (!requireManageAccess('save equipment changes')) return;
     setSubmitting(true);
     setFormError('');
     try {
@@ -279,6 +292,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   };
 
   const openStatus = (item, action = 'accepted') => {
+    if (!requireManageAccess('record a calibration result')) return;
     if (item.state === 'rejected') {
       setFormError('');
       setSuccessMessage('');
@@ -303,6 +317,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
 
   const handleStatusUpdate = async (event) => {
     event.preventDefault();
+    if (!requireManageAccess('save a calibration result')) return;
     setSubmitting(true);
     setFormError('');
     try {
@@ -336,6 +351,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   };
 
   const openRegistry = () => {
+    if (!requireManageAccess('register equipment')) return;
     setFormData(EMPTY_FORM);
     setFormError('');
     setRegistryOpen(true);
@@ -349,6 +365,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   };
 
   const handleDisposition = async (disposition) => {
+    if (!requireManageAccess('change equipment disposition')) return;
     setSubmitting(true);
     setFormError('');
     try {
@@ -390,6 +407,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   }, []);
 
   const openPlanEditor = (row = null) => {
+    if (!requireManageAccess('edit the calibration plan')) return;
     setPlanTarget(row);
     setPlanForm(row ? {
       equipment: String(row.equipment_pk),
@@ -410,6 +428,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
 
   const savePlanEntry = async (event) => {
     event.preventDefault();
+    if (!requireManageAccess('save calibration plan changes')) return;
     setSubmitting(true);
     setFormError('');
     try {
@@ -434,6 +453,7 @@ export default function CalibrationPage({ view = 'dashboard' }) {
   };
 
   const removePlanEntry = async (row) => {
+    if (!requireManageAccess('remove a calibration plan entry')) return;
     if (!window.confirm(`Remove ${row.equipment_id} from the ${planYear} calibration plan?`)) return;
     try {
       await deleteCalibrationPlanEntry(row.id);

@@ -3,6 +3,9 @@ import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import api, { BASE_URL } from '../api/axios';
 import { useCompany } from '../context/CompanyContext';
+import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
+import { showAccessDenied } from '../components/common/AccessDeniedModal';
 import {
   ClipboardCheck,
   Calendar,
@@ -37,7 +40,20 @@ import {
 } from 'lucide-react';
 
 export default function JHInspectionReportsPage() {
+  const { user } = useAuth();
   const { companyName, companyCode, shiftHours: companyShiftHours, totalShiftsPerDay } = useCompany();
+  const canManageChecklist = can(user, 'production.jh.manage');
+  const requireChecklistManage = (action = 'manage the JH checklist') => {
+    if (canManageChecklist) return true;
+    showAccessDenied(`You have view-only access to JH reports. Manage permission is required to ${action}.`);
+    return false;
+  };
+  const openChecklistManager = () => {
+    if (!requireChecklistManage('upload a checklist')) return;
+    setShowUploadModal(true);
+    setUploadError('');
+    setUploadSuccessMsg('');
+  };
 
   // Active Tab: 'log' | 'matrix'
   const [activeTab, setActiveTab] = useState('log');
@@ -231,6 +247,7 @@ export default function JHInspectionReportsPage() {
   // Upload & parse file (.pdf or .xlsx)
   const handleParseFile = async (e) => {
     if (e) e.preventDefault();
+    if (!requireChecklistManage('upload a checklist')) return;
     if (!uploadFile) {
       setUploadError('Please select an Excel (.xlsx) or PDF file to upload.');
       return;
@@ -259,6 +276,7 @@ export default function JHInspectionReportsPage() {
 
   // Save confirmed items to DB
   const handleSaveParsedChecklist = async () => {
+    if (!requireChecklistManage('save checklist changes')) return;
     if (!parsedChecklistItems.length) return;
     setIsSavingChecklist(true);
     setUploadError('');
@@ -317,6 +335,7 @@ export default function JHInspectionReportsPage() {
 
   // Restore specific version
   const handleRestoreVersion = async (versionNumber) => {
+    if (!requireChecklistManage('restore a checklist version')) return;
     if (!window.confirm(`Are you sure you want to restore Version v${versionNumber} as the active checklist? The mobile operator terminal will immediately use these questions.`)) {
       return;
     }
@@ -339,6 +358,10 @@ export default function JHInspectionReportsPage() {
 
   // Inline edit handlers for preview table
   const handleEditPreviewItem = (index, field, value) => {
+    if (!canManageChecklist) {
+      requireChecklistManage('edit checklist items');
+      return;
+    }
     setParsedChecklistItems((prev) => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
@@ -347,10 +370,12 @@ export default function JHInspectionReportsPage() {
   };
 
   const handleDeletePreviewItem = (index) => {
+    if (!requireChecklistManage('delete checklist items')) return;
     setParsedChecklistItems((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const handleAddPreviewItem = () => {
+    if (!requireChecklistManage('add checklist items')) return;
     setParsedChecklistItems((prev) => [
       ...prev,
       {
@@ -479,11 +504,7 @@ export default function JHInspectionReportsPage() {
             )}
 
             <button
-              onClick={() => {
-                setShowUploadModal(true);
-                setUploadError('');
-                setUploadSuccessMsg('');
-              }}
+              onClick={openChecklistManager}
               className="btn btn-outline"
               style={{
                 display: 'flex',

@@ -54,6 +54,14 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  useEffect(() => {
+    const onFocus = () => {
+      if (localStorage.getItem('access_token')) refreshUser();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshUser]);
+
   return (
     <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
       {children}

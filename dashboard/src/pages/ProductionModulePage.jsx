@@ -1,15 +1,14 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { canOpenPath } from '../utils/access';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
-import { BarChart3, ArrowRight, Layers, CheckCircle2, Factory, Clock, ClipboardCheck } from 'lucide-react';
+import { BarChart3, ArrowRight, Clock, ClipboardCheck } from 'lucide-react';
 
 export default function ProductionModulePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-
   const productionCards = [
     {
       id: 'daily-production-reports',
@@ -39,7 +38,7 @@ export default function ProductionModulePage() {
         'Log shift downtime minutes (No Load, No Operator, U/M, Setting, Insp Wait, Tool Change, P/O, R/W, Tool Prob) automatically linked to submitted Daily Production Reports.',
       details: ['Operator & Machine Downtime Log', '9-Category Downtime Minutes Breakdown', 'Form QF/MF-06 Hanuman Engineering Format'],
       actionText: 'Open Downtime Reports',
-      link: isAdmin ? '/reports/downtime?view=history' : '/reports/downtime?view=full',
+      link: '/reports/downtime?view=full',
     },
     {
       id: 'jh-inspections',
@@ -70,7 +69,7 @@ export default function ProductionModulePage() {
 
         {/* Feature Cards Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '24px' }}>
-          {productionCards.map((card) => {
+          {productionCards.filter((card) => canOpenPath(user, card.link.split('?')[0])).map((card) => {
             const IconComponent = card.icon;
             return (
               <div
