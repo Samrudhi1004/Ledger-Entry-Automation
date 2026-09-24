@@ -18,16 +18,131 @@ from django.core.exceptions import ValidationError
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+from django.shortcuts import get_object_or_404
+from django.utils.text import slugify
+from django.db import transaction
 
-from .models import User
+from .models import User, AccessRole, AccessEvent
+from .access import ACCESS_GROUPS, COMMON_ACCESS
 from .serializers import (
     CustomTokenObtainPairSerializer,
     UserRegistrationSerializer,
     UserProfileSerializer,
     UserListSerializer,
     ChangePasswordSerializer,
+    AccessRoleSerializer, AccessAssignmentSerializer, AccessEventSerializer,
 )
-from .permissions import IsAdminUser, IsSupervisorOrAbove
+from .permissions import HasAccess
+
+
+class AccessCatalogView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({'groups': [
+            {'name': name, 'permissions': items}
+            for name, items in ACCESS_GROUPS
+        ], 'common': sorted(COMMON_ACCESS)})
+
+
+class AccessRoleListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(AccessRoleSerializer(AccessRole.objects.order_by('name'), many=True).data)
+
+    @transaction.atomic
+    def post(self, request):
+        if not request.user.has_access('roles.manage'):
+            return Response({'detail': 'Role management access required.'}, status=403)
+        serializer = AccessRoleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        slug = slugify(serializer.validated_data['name']).replace('-', '_')[:64]
+        if not slug or AccessRole.objects.filter(slug=slug).exists():
+            return Response({'name': 'Choose a unique role name.'}, status=400)
+        role = serializer.save(slug=slug)
+        AccessEvent.objects.create(actor=request.user, role=role, action='role_created',
+                                   after={'name': role.name, 'permissions': role.permissions})
+        return Response(AccessRoleSerializer(role).data, status=201)
+
+
+class AccessRoleDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, slug):
+        return Response(AccessRoleSerializer(get_object_or_404(AccessRole, slug=slug)).data)
+
+    @transaction.atomic
+    def patch(self, request, slug):
+        if not request.user.has_access('roles.manage'):
+            return Response({'detail': 'Role management access required.'}, status=403)
+        role = get_object_or_404(AccessRole, slug=slug)
+        if role.slug == 'admin':
+            return Response({'detail': 'The Admin role is protected.'}, status=400)
+        before = {'name': role.name, 'permissions': role.permissions}
+        serializer = AccessRoleSerializer(role, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        role = serializer.save()
+        AccessEvent.objects.create(actor=request.user, role=role, action='role_updated',
+                                   before=before, after={'name': role.name, 'permissions': role.permissions})
+        return Response(AccessRoleSerializer(role).data)
+
+    def delete(self, request, slug):
+        if not request.user.has_access('roles.manage'):
+            return Response({'detail': 'Role management access required.'}, status=403)
+        role = get_object_or_404(AccessRole, slug=slug)
+        if role.is_system or User.objects.filter(role=role.slug).exists():
+            return Response({'detail': 'This role is in use or is a system role.'}, status=400)
+        AccessEvent.objects.create(actor=request.user, action='role_deleted',
+                                   before={'slug': role.slug, 'name': role.name, 'permissions': role.permissions})
+        role.delete()
+        return Response(status=204)
+
+
+class UserAccessView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        if not request.user.has_access('users.view') and request.user.pk != pk:
+            return Response({'detail': 'Account access required.'}, status=403)
+        user = get_object_or_404(User, pk=pk)
+        return Response({'role': user.role, 'access_grants': user.access_grants,
+                         'access_denials': user.access_denials,
+                         'permissions': sorted(user.effective_access())})
+
+    @transaction.atomic
+    def put(self, request, pk):
+        if not request.user.has_access('users.manage'):
+            return Response({'detail': 'Account management access required.'}, status=403)
+        user = get_object_or_404(User.objects.select_for_update(), pk=pk)
+        if user.pk == request.user.pk or user.is_superuser:
+            return Response({'detail': 'This account cannot be reassigned here.'}, status=400)
+        serializer = AccessAssignmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        role = serializer.validated_data['role']
+        before = {'role': user.role, 'access_grants': user.access_grants,
+                  'access_denials': user.access_denials}
+        user.role = role.slug
+        user.access_grants = sorted(set(serializer.validated_data['access_grants']))
+        user.access_denials = sorted(set(serializer.validated_data['access_denials']))
+        user.save(update_fields=['role', 'access_grants', 'access_denials'])
+        AccessEvent.objects.create(actor=request.user, target_user=user, role=role,
+                                   action='user_access_updated', before=before,
+                                   after={'role': user.role, 'access_grants': user.access_grants,
+                                          'access_denials': user.access_denials})
+        return self.get(request, pk)
+
+
+class AccessEventListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not request.user.has_access('roles.manage'):
+            return Response({'detail': 'Role management access required.'}, status=403)
+        qs = AccessEvent.objects.select_related('actor', 'target_user')
+        if request.query_params.get('user'):
+            qs = qs.filter(target_user_id=request.query_params['user'])
+        return Response(AccessEventSerializer(qs[:100], many=True).data)
 
 
 # ─── Login (JWT) ──────────────────────────────────────────────────────────
@@ -72,10 +187,11 @@ class LogoutView(APIView):
 class RegisterView(generics.CreateAPIView):
     """
     POST /api/users/register/
-    Create a new user account (Supervisor / Inspector / Operator).
+    Create a new user account with a configured role and access profile.
     """
     serializer_class   = UserRegistrationSerializer
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'users.create'
 
 
 # ─── My Profile ───────────────────────────────────────────────────────────
@@ -160,7 +276,7 @@ class UserListView(generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == 'GET':
             return [IsAuthenticated()]
-        return [IsSupervisorOrAbove()]
+        return [HasAccess('users.create')]
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -186,8 +302,10 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_permissions(self):
         if self.request.method == 'DELETE':
-            return [IsAdminUser()]
-        return [IsSupervisorOrAbove()]
+            return [HasAccess('users.manage')]
+        if self.request.method == 'GET':
+            return [HasAccess('users.view')]
+        return [HasAccess('users.manage')]
 
     def patch(self, request, *args, **kwargs):
         try:
@@ -204,8 +322,13 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
             # Handle both JSON boolean and string representations
             if isinstance(is_active_val, str):
                 is_active_val = is_active_val.lower() == 'true'
+            previous_active = user_obj.is_active
             user_obj.is_active = bool(is_active_val)
             user_obj.save(update_fields=['is_active'])
+            AccessEvent.objects.create(actor=request.user, target_user=user_obj,
+                                       action='user_status_updated',
+                                       before={'is_active': previous_active},
+                                       after={'is_active': user_obj.is_active})
 
             from .serializers import UserListSerializer
             serializer = UserListSerializer(user_obj)
@@ -252,7 +375,7 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
             }, status=status.HTTP_404_NOT_FOUND)
 
         # 1. Admin permission check
-        if not (request.user and request.user.is_authenticated and (request.user.role == User.Role.ADMIN or request.user.is_superuser)):
+        if not request.user.has_access('users.manage'):
             return Response({
                 "success": False,
                 "message": "Only administrators can delete user accounts."

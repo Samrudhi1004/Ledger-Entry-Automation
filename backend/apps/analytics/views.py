@@ -7,7 +7,7 @@ from django.core.cache import cache
 from datetime import datetime, timedelta
 
 from apps.inspections.models import InspectionSession
-from apps.users.permissions import IsSupervisorOrAbove
+from apps.users.permissions import HasAccess
 
 
 class InspectionReportView(APIView):
@@ -15,7 +15,8 @@ class InspectionReportView(APIView):
     GET /api/analytics/report/?from=2025-01-01&to=2025-01-31&machine=MCH-001
     Returns inspection statistics for a date range.
     """
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.analytics.view'
 
     def get(self, request):
         from_date    = request.query_params.get('from')
@@ -65,7 +66,8 @@ class OOCTrendView(APIView):
     GET /api/analytics/ooc-trend/?days=7&plant=1
     Returns daily out-of-spec count for trend chart on dashboard.
     """
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.analytics.view'
 
     def get(self, request):
         days     = int(request.query_params.get('days', 7))
@@ -117,7 +119,8 @@ class MachinePerformanceView(APIView):
     GET /api/analytics/machine/<machine_id>/performance/?days=30
     OOC rate, inspection count, and pass rate for a specific machine.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.live.view'
 
     def get(self, request, machine_id):
         days  = int(request.query_params.get('days', 30))
@@ -147,7 +150,8 @@ class OperatorStatsView(APIView):
     GET /api/analytics/operator/<operator_id>/stats/?days=30
     Inspection count and OOC rate per operator.
     """
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.analytics.view'
 
     def get(self, request, operator_id):
         days  = int(request.query_params.get('days', 30))
@@ -176,7 +180,8 @@ class ParameterOOCRateView(APIView):
     GET /api/analytics/parameters/ooc-rate/?part=PN-001
     Which parameters fail most often? Fetched from PostgreSQL JSONB.
     """
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.analytics.view'
 
     def get(self, request):
         part_number = request.query_params.get('part', '')
@@ -228,7 +233,8 @@ class DailyCompletedReportsView(APIView):
     Returns ONLY 100% completed daily reports (all required 11 inspection slots: 1PC#1..#3 + 1..8/HR).
     Excludes drafts, in-progress, pending, partially completed, or rejected sessions.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.daily.view'
 
     def get(self, request):
         start_date     = request.query_params.get('start_date') or request.query_params.get('from')
@@ -317,7 +323,8 @@ class MonthlyOEEReportView(APIView):
     GET /api/analytics/oee-report/export/?machine=VMC-19&year=2026&month=9
     Generates and returns the Monthly OEE Excel Report.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.analytics.view'
 
     def get(self, request):
         machine_code = request.query_params.get('machine')
@@ -362,7 +369,8 @@ class OEEDataAPIView(APIView):
     GET /api/analytics/oee-report/data/?machine=VMC-19&year=2026&month=9
     Returns the calculated OEE data in JSON format for the frontend viewer.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.analytics.view'
 
     def get(self, request):
         machine_code = request.query_params.get('machine')

@@ -1,6 +1,7 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
+import { canOpenPath } from '../../utils/access';
 import { useState, useEffect } from 'react';
 import CompanyDetailsModal from '../common/CompanyDetailsModal';
 import {
@@ -10,7 +11,6 @@ import {
   Users,
   Sliders,
   Factory,
-  Gauge,
   LogOut,
   ChevronDown,
   ChevronRight,
@@ -27,10 +27,24 @@ import {
 
 const MODULES = [
   {
+    key: 'hr',
+    label: 'HR',
+    icon: Users,
+    to: '/users',
+    items: [],
+  },
+  {
     key: 'production_old',
     label: 'Production Module',
     icon: Layers,
     to: '/production',
+    items: [],
+  },
+  {
+    key: 'quality_analyzer',
+    label: 'Quality Analyzer',
+    icon: BarChart3,
+    to: '/quality-analyzer',
     items: [],
   },
   {
@@ -64,20 +78,6 @@ const MODULES = [
   },
 
   // Enterprise Modules
-  {
-    key: 'quality_analyzer',
-    label: 'Quality Analyzer',
-    icon: BarChart3,
-    to: '/quality-analyzer',
-    items: [],
-  },
-  {
-    key: 'hr',
-    label: 'HR',
-    icon: Users,
-    to: '/users',
-    items: [],
-  },
   {
     key: 'purchase',
     label: 'Purchase',
@@ -133,16 +133,6 @@ const MODULES = [
   },
 ];
 
-const CALIBRATION_MODULES = [
-  {
-    key: 'calibration',
-    label: 'Calibration Equipment',
-    icon: Gauge,
-    to: '/calibration',
-    items: [],
-  },
-];
-
 export default function Sidebar({ pendingCount = 0 }) {
   const { user, logout } = useAuth();
   const { logoUrl } = useCompany() || {};
@@ -178,54 +168,12 @@ export default function Sidebar({ pendingCount = 0 }) {
   const initials = user
     ? `${user.first_name?.[0] ?? ''}${user.last_name?.[0] ?? ''}`.toUpperCase() || user.username?.[0]?.toUpperCase()
     : '?';
-  const isCalibrator = user?.role === 'calibrator';
-
-  // For calibrators, add Messages and Document Control to their modules
-  const calibratorModules = [
-    ...CALIBRATION_MODULES,
-    {
-      key: 'messages',
-      label: 'Messages',
-      icon: MessageSquare,
-      to: '/messages',
-      items: [],
-    },
-    {
-      key: 'document_control',
-      label: 'Document Control',
-      icon: FolderOpen,
-      to: '/document-control',
-      items: [
-        { label: 'Documents (L1 : L4)', to: '/document-control/documents' },
-        { label: 'Change Requests (DCR)', to: '/document-control/dcr' },
-      ],
-    },
-  ];
-
-  const visibleModules = isCalibrator
-    ? calibratorModules
-    : MODULES.filter((module) => {
-        if (user?.role === 'admin') return true;
-        if (user?.role === 'supervisor') {
-          return ['master_database', 'development', 'quality_analyzer', 'production_old', 'tasks', 'messages', 'document_control'].includes(module.key);
-        }
-        if (user?.role === 'inspector') {
-          // Inspector gets: quality_analyzer, production, tasks, and messages
-          return ['production_old', 'quality_analyzer', 'tasks', 'messages'].includes(module.key);
-        }
-        if (user?.role === 'operator') {
-          return ['production_old', 'quality_analyzer'].includes(module.key);
-        }
-        return true;
-      }).map((m) => {
-        if (m.key === 'document_control' && user?.role !== 'admin') {
-          return {
-            ...m,
-            items: (m.items || []).filter((item) => item.to !== '/document-control/approvals'),
-          };
-        }
-        return m;
-      });
+  const visibleModules = MODULES
+    .filter((module) => canOpenPath(user, module.to))
+    .map((module) => ({
+      ...module,
+      items: (module.items || []).filter((item) => canOpenPath(user, item.to)),
+    }));
 
   return (
     <aside className="sidebar">
@@ -275,10 +223,7 @@ export default function Sidebar({ pendingCount = 0 }) {
       {/* Nav */}
       <nav className="sidebar-nav">
         {visibleModules.map((m) => {
-          let module = m;
-          if (module.key === 'hr' && user?.role !== 'admin') {
-            module = { ...m, items: m.items.filter(item => item.to !== '/users') };
-          }
+          const module = m;
           const ModuleIcon = module.icon;
 
           if (module.to) {
@@ -409,7 +354,7 @@ export default function Sidebar({ pendingCount = 0 }) {
                   marginTop: '2px',
                 }}
               >
-                {user?.role ?? 'supervisor'}
+                {user?.role_name ?? user?.role ?? 'User'}
               </div>
             </div>
             <button

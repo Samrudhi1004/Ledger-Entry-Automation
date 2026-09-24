@@ -117,7 +117,7 @@ class DocumentControlSystemTests(TestCase):
             'approver_id': self.admin.id,
         })
         self.assertEqual(res.status_code, 403)
-        self.assertIn('Operators and Inspectors', res.data.get('error', ''))
+        self.assertIn('Change request creation access required', res.data.get('error', ''))
 
         # 2. Quality Engineer (Inspector) attempts DCR -> 403 Forbidden
         self.client.force_authenticate(user=self.inspector)

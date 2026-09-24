@@ -27,6 +27,11 @@ export const uploadDocument = (formData) =>
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 
+export const getDocumentRoles = () => api.get('/documents/roles/');
+
+export const updateDocumentAccess = (id, allowed_role_slugs) =>
+  api.patch(`/documents/${id}/access/`, { allowed_role_slugs });
+
 export const submitForReview = (id, comment = '') =>
   api.post(`/documents/${id}/submit_review/`, { comment });
 
@@ -89,4 +94,3 @@ export const markNotificationUnread = (id) =>
 
 export const markAllNotificationsRead = () =>
   api.post('/notifications/mark-all-read/');
-

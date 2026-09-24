@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import api from '../api/axios';
@@ -20,12 +21,12 @@ import {
 
 export default function DowntimeReportsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const canManageDowntime = can(user, 'production.downtime.manage');
   const [searchParams] = useSearchParams();
   const viewMode = searchParams.get('view'); // 'history' | 'full' (default: 'full')
 
   // Navigation Tabs: 'active' | 'history'
-  const [activeTab, setActiveTab] = useState((viewMode === 'history' || isAdmin) ? 'history' : 'active');
+  const [activeTab, setActiveTab] = useState(viewMode === 'history' ? 'history' : 'active');
 
   const [reports, setReports] = useState([]);
   const [historyList, setHistoryList] = useState([]);
@@ -44,12 +45,10 @@ export default function DowntimeReportsPage() {
   // Search filter for history tab
   const [historySearch, setHistorySearch] = useState('');
 
-  // Update activeTab if query param changes
+  // Keep the optional history deep-link, while using the same screen for every role.
   useEffect(() => {
-    if (viewMode === 'history' || isAdmin) {
-      setActiveTab('history');
-    }
-  }, [viewMode, isAdmin]);
+    setActiveTab(viewMode === 'history' ? 'history' : 'active');
+  }, [viewMode]);
 
   // Load Machines metadata
   useEffect(() => {
@@ -66,7 +65,6 @@ export default function DowntimeReportsPage() {
 
   // Fetch Downtime Reports matching active filters
   const fetchDowntimeReports = useCallback(async () => {
-    if (viewMode === 'history' || isAdmin) return;
     setLoading(true);
     setError(null);
     try {
@@ -84,33 +82,36 @@ export default function DowntimeReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [dateFilter, shiftFilter, machineFilter, viewMode, isAdmin]);
+  }, [dateFilter, shiftFilter, machineFilter]);
 
   // Fetch Date-Wise Downtime History
   const fetchDowntimeHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
       const res = await api.get('/api/inspections/downtime-reports/history/');
-      const data = Array.isArray(res.data) ? res.data : [];
+      const data = Array.isArray(res.data)
+        ? res.data
+        : (res.data?.history || res.data?.results || []);
       setHistoryList(data);
     } catch (err) {
       console.error('Failed to fetch downtime history', err);
+      setError('Failed to load Downtime Reports history. Please check server connection.');
     } finally {
       setHistoryLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (viewMode !== 'history' && !isAdmin) {
+    if (activeTab === 'active') {
       fetchDowntimeReports();
     }
-  }, [fetchDowntimeReports, viewMode, isAdmin]);
+  }, [activeTab, fetchDowntimeReports]);
 
   useEffect(() => {
-    if (activeTab === 'history' || viewMode === 'history' || isAdmin) {
+    if (activeTab === 'history' || viewMode === 'history') {
       fetchDowntimeHistory();
     }
-  }, [activeTab, viewMode, isAdmin, fetchDowntimeHistory]);
+  }, [activeTab, viewMode, fetchDowntimeHistory]);
 
   // Handle cell edit for downtime fields
   const handleCellChange = (index, field, val) => {
@@ -162,6 +163,10 @@ export default function DowntimeReportsPage() {
 
   // SUBMIT & Save Date-Wise Downtime Report
   const handleSubmitDowntimeReport = async () => {
+    if (!canManageDowntime) {
+      setError('You have view access only. Manage access is required to submit downtime reports.');
+      return;
+    }
     if (reports.length === 0) {
       setError('No downtime entries available to submit.');
       return;
@@ -299,185 +304,7 @@ export default function DowntimeReportsPage() {
 
   const allCompleted = reports.length > 0 && reports.every((r) => r.status === 'COMPLETED');
 
-  // IF MODE IS 'history' OR USER IS ADMIN, render pure Date-by-Date History view ONLY!
-  if (viewMode === 'history' || isAdmin) {
-    return (
-      <>
-        <Header
-          title="Downtime Reports"
-          subtitle="Form QF/MF-06 : Date-Wise Quality Inspection & Machine Breakdown History"
-        />
-
-        <div className="page-content" style={{ padding: '16px 20px', backgroundColor: '#F8FAFC', minHeight: '100vh' }}>
-          <Breadcrumbs items={[{ label: 'Reports', to: '/reports' }, { label: 'Downtime Analysis' }]} />
-
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '20px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-
-            {/* Toolbar */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A', margin: 0 }}>
-                  Date-Wise Submitted Downtime Reports History
-                </h3>
-                <p style={{ fontSize: '12px', color: '#64748B', margin: '2px 0 0 0' }}>
-                  Form QF/MF-06 Hanuman Engineering Works : Browse and download past submitted reports
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#F8FAFC', padding: '6px 12px', borderRadius: '8px', border: '1px solid #CBD5E1' }}>
-                  <Search size={15} color="#475569" />
-                  <input
-                    type="text"
-                    placeholder="Search by date, shift, supervisor..."
-                    value={historySearch}
-                    onChange={(e) => setHistorySearch(e.target.value)}
-                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', color: '#0F172A', width: '220px' }}
-                  />
-                </div>
-
-                <button
-                  onClick={fetchDowntimeHistory}
-                  className="btn btn-ghost"
-                  style={{ padding: '6px 12px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600', color: '#475569' }}
-                >
-                  <RefreshCw size={14} className={historyLoading ? 'spin' : ''} />
-                  Refresh
-                </button>
-              </div>
-            </div>
-
-            {/* History Table */}
-            {historyLoading ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
-                <RefreshCw size={24} className="spin" style={{ marginBottom: '8px' }} />
-                <div style={{ fontSize: '13px', fontWeight: '600' }}>Loading Downtime History...</div>
-              </div>
-            ) : filteredHistory.length === 0 ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
-                <AlertCircle size={28} color="#94A3B8" style={{ marginBottom: '8px' }} />
-                <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>No Historical Reports Found</h3>
-                <p style={{ fontSize: '12px', color: '#64748B' }}>
-                  No submitted downtime reports match your search.
-                </p>
-              </div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', border: '1px solid #CBD5E1' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#F1F5F9', color: '#0F172A', fontWeight: '800', textAlign: 'left' }}>
-                      <th style={{ padding: '12px 14px', borderBottom: '2px solid #CBD5E1' }}>Date</th>
-                      <th style={{ padding: '12px 14px', borderBottom: '2px solid #CBD5E1' }}>Shift</th>
-                      <th style={{ padding: '12px 14px', borderBottom: '2px solid #CBD5E1' }}>Machines Included</th>
-                      <th style={{ padding: '12px 14px', borderBottom: '2px solid #CBD5E1' }}>Total Breakdown Time</th>
-                      <th style={{ padding: '12px 14px', borderBottom: '2px solid #CBD5E1' }}>Submitted By</th>
-                      <th style={{ padding: '12px 14px', borderBottom: '2px solid #CBD5E1' }}>Status</th>
-                      <th style={{ padding: '12px 14px', borderBottom: '2px solid #CBD5E1', textAlign: 'center' }}>Download Form QF/MF-06</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredHistory.map((item, idx) => (
-                      <tr key={item.key || idx} style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
-
-                        <td style={{ padding: '12px 14px', fontWeight: '800', color: '#0F172A', fontSize: '14px' }}>
-                          {item.date}
-                        </td>
-
-                        <td style={{ padding: '12px 14px', fontWeight: '700', color: '#0284C7' }}>
-                          {item.shift === 'General' ? 'General Shift' : `Shift ${item.shift}`}
-                        </td>
-
-                        <td style={{ padding: '12px 14px', color: '#334155' }}>
-                          <span style={{ fontWeight: '700', color: '#0F172A' }}>{item.count} Machines: </span>
-                          <span style={{ fontSize: '12px', color: '#64748B' }}>{item.machines.join(', ')}</span>
-                        </td>
-
-                        <td style={{ padding: '12px 14px', fontWeight: '800', color: '#0369A1', fontSize: '14px' }}>
-                          {item.total_downtime} Minutes
-                        </td>
-
-                        <td style={{ padding: '12px 14px', color: '#475569', fontWeight: '600' }}>
-                          {item.submitted_by}
-                        </td>
-
-                        <td style={{ padding: '12px 14px' }}>
-                          <span
-                            style={{
-                              padding: '4px 10px',
-                              borderRadius: '12px',
-                              fontSize: '11px',
-                              fontWeight: '800',
-                              backgroundColor: item.status === 'COMPLETED' ? '#F0FDF4' : '#FEF3C7',
-                              color: item.status === 'COMPLETED' ? '#166534' : '#92400E',
-                              border: item.status === 'COMPLETED' ? '1px solid #86EFAC' : '1px solid #FDE68A',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <CheckCircle2 size={12} />
-                            {item.status === 'COMPLETED' ? 'Submitted' : 'Pending'}
-                          </span>
-                        </td>
-
-                        <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                            <button
-                              onClick={() => handleExportExcel(item.date, item.shift)}
-                              title="Export Form QF/MF-06 Excel Sheet"
-                              style={{
-                                padding: '6px 12px',
-                                borderRadius: '6px',
-                                fontSize: '12px',
-                                fontWeight: '700',
-                                backgroundColor: '#F0FDF4',
-                                color: '#166534',
-                                border: '1px solid #86EFAC',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                              }}
-                            >
-                              <FileSpreadsheet size={14} />
-                              Download Excel (.xlsx)
-                            </button>
-
-                            <button
-                              onClick={() => handleExportPDF(item.date, item.shift)}
-                              title="Export Form QF/MF-06 PDF Report"
-                              style={{
-                                padding: '6px 12px',
-                                borderRadius: '6px',
-                                fontSize: '12px',
-                                fontWeight: '700',
-                                backgroundColor: '#FEF2F2',
-                                color: '#991B1B',
-                                border: '1px solid #FECACA',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                              }}
-                            >
-                              <Printer size={14} />
-                              Download PDF
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      </>
-    );
-  }
-
-  // OTHERWISE (Opened from PRODUCTION MODULE), render BOTH Fill/Edit AND History tabs!
+  // Shared downtime screen for both view and manage access.
   return (
     <>
       <Header
@@ -508,7 +335,7 @@ export default function DowntimeReportsPage() {
             }}
           >
             <FileText size={15} />
-            Fill / Edit Downtime Report
+            {canManageDowntime ? 'Fill / Edit Downtime Report' : 'View Downtime Report'}
           </button>
 
           <button
@@ -546,6 +373,12 @@ export default function DowntimeReportsPage() {
             )}
           </button>
         </div>
+
+        {!canManageDowntime && activeTab === 'active' && (
+          <div style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', padding: '9px 12px', borderRadius: '8px', marginBottom: '12px', fontSize: '12px', fontWeight: '600' }}>
+            View-only access: downtime values and submission are locked. Use the history tab to review submitted reports.
+          </div>
+        )}
 
         {/* Global Alert Messages */}
         {error && (
@@ -724,10 +557,10 @@ export default function DowntimeReportsPage() {
 
                         const inputStyle = {
                           ...cellInputStyle,
-                          backgroundColor: isSubmitted ? '#F1F5F9' : '#FFFFFF',
-                          color: isSubmitted ? '#475569' : '#0F172A',
-                          cursor: isSubmitted ? 'not-allowed' : 'text',
-                          border: isSubmitted ? '1px solid #E2E8F0' : '1px solid #CBD5E1',
+                          backgroundColor: !canManageDowntime ? '#F1F5F9' : '#FFFFFF',
+                          color: !canManageDowntime ? '#475569' : '#0F172A',
+                          cursor: !canManageDowntime ? 'not-allowed' : 'text',
+                          border: !canManageDowntime ? '1px solid #E2E8F0' : '1px solid #CBD5E1',
                         };
 
                         return (
@@ -766,33 +599,33 @@ export default function DowntimeReportsPage() {
                               {r.rw || 0}
                             </td>
 
-                            {/* PERMANENTLY LOCKED DOWNTIME FIELDS IF SUBMITTED */}
+                            {/* View users are read-only; Manage users can correct submitted rows. */}
                             <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1' }}>
-                              <input type="number" min="0" value={r.no_load ?? 0} onChange={(e) => handleCellChange(idx, 'no_load', e.target.value)} disabled={isSubmitted} style={inputStyle} />
+                              <input type="number" min="0" value={r.no_load ?? 0} onChange={(e) => handleCellChange(idx, 'no_load', e.target.value)} disabled={!canManageDowntime} style={inputStyle} />
                             </td>
                             <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1' }}>
-                              <input type="number" min="0" value={r.no_operator ?? 0} onChange={(e) => handleCellChange(idx, 'no_operator', e.target.value)} disabled={isSubmitted} style={inputStyle} />
+                              <input type="number" min="0" value={r.no_operator ?? 0} onChange={(e) => handleCellChange(idx, 'no_operator', e.target.value)} disabled={!canManageDowntime} style={inputStyle} />
                             </td>
                             <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1' }}>
-                              <input type="number" min="0" value={r.um ?? 0} onChange={(e) => handleCellChange(idx, 'um', e.target.value)} disabled={isSubmitted} style={inputStyle} />
+                              <input type="number" min="0" value={r.um ?? 0} onChange={(e) => handleCellChange(idx, 'um', e.target.value)} disabled={!canManageDowntime} style={inputStyle} />
                             </td>
                             <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1' }}>
-                              <input type="number" min="0" value={r.setting ?? 0} onChange={(e) => handleCellChange(idx, 'setting', e.target.value)} disabled={isSubmitted} style={inputStyle} />
+                              <input type="number" min="0" value={r.setting ?? 0} onChange={(e) => handleCellChange(idx, 'setting', e.target.value)} disabled={!canManageDowntime} style={inputStyle} />
                             </td>
                             <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1' }}>
-                              <input type="number" min="0" value={r.inspection_wait ?? 0} onChange={(e) => handleCellChange(idx, 'inspection_wait', e.target.value)} disabled={isSubmitted} style={inputStyle} />
+                              <input type="number" min="0" value={r.inspection_wait ?? 0} onChange={(e) => handleCellChange(idx, 'inspection_wait', e.target.value)} disabled={!canManageDowntime} style={inputStyle} />
                             </td>
                             <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1' }}>
-                              <input type="number" min="0" value={r.tool_change ?? 0} onChange={(e) => handleCellChange(idx, 'tool_change', e.target.value)} disabled={isSubmitted} style={inputStyle} />
+                              <input type="number" min="0" value={r.tool_change ?? 0} onChange={(e) => handleCellChange(idx, 'tool_change', e.target.value)} disabled={!canManageDowntime} style={inputStyle} />
                             </td>
                             <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1' }}>
-                              <input type="number" min="0" value={r.power_off ?? 0} onChange={(e) => handleCellChange(idx, 'power_off', e.target.value)} disabled={isSubmitted} style={inputStyle} />
+                              <input type="number" min="0" value={r.power_off ?? 0} onChange={(e) => handleCellChange(idx, 'power_off', e.target.value)} disabled={!canManageDowntime} style={inputStyle} />
                             </td>
                             <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1' }}>
-                              <input type="number" min="0" value={r.rework ?? 0} onChange={(e) => handleCellChange(idx, 'rework', e.target.value)} disabled={isSubmitted} style={inputStyle} />
+                              <input type="number" min="0" value={r.rework ?? 0} onChange={(e) => handleCellChange(idx, 'rework', e.target.value)} disabled={!canManageDowntime} style={inputStyle} />
                             </td>
                             <td style={{ padding: '2px 1px', border: '1px solid #CBD5E1' }}>
-                              <input type="number" min="0" value={r.tool_problem ?? 0} onChange={(e) => handleCellChange(idx, 'tool_problem', e.target.value)} disabled={isSubmitted} style={inputStyle} />
+                              <input type="number" min="0" value={r.tool_problem ?? 0} onChange={(e) => handleCellChange(idx, 'tool_problem', e.target.value)} disabled={!canManageDowntime} style={inputStyle} />
                             </td>
 
                             {/* TOTAL DOWN TIME */}
@@ -816,7 +649,7 @@ export default function DowntimeReportsPage() {
                                   value={r.remarks || ''}
                                   onChange={(e) => handleCellChange(idx, 'remarks', e.target.value)}
                                   placeholder="Justify diff..."
-                                  disabled={isSubmitted}
+                                  disabled={!canManageDowntime}
                                   style={{ ...inputStyle, width: '75px', textAlign: 'left', padding: '2px 4px' }}
                                 />
                               </div>
@@ -852,11 +685,11 @@ export default function DowntimeReportsPage() {
             </div>
 
             {/* Bottom Submit Action Bar */}
-            {reports.length > 0 && (
+            {canManageDowntime && reports.length > 0 && (
               <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
                 <button
                   onClick={handleSubmitDowntimeReport}
-                  disabled={saving || allCompleted}
+                  disabled={saving}
                   style={{
                     padding: '10px 24px',
                     borderRadius: '6px',
@@ -865,15 +698,15 @@ export default function DowntimeReportsPage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    backgroundColor: allCompleted ? '#64748B' : '#16A34A',
+                    backgroundColor: saving ? '#64748B' : '#16A34A',
                     color: '#FFFFFF',
                     border: 'none',
-                    cursor: allCompleted ? 'not-allowed' : 'pointer',
-                    boxShadow: allCompleted ? 'none' : '0 3px 8px rgba(22, 163, 74, 0.3)',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    boxShadow: saving ? 'none' : '0 3px 8px rgba(22, 163, 74, 0.3)',
                   }}
                 >
                   <CheckCircle2 size={16} />
-                  {saving ? 'Submitting Report...' : (allCompleted ? 'Downtime Report Submitted' : 'SUBMIT DOWNTIME REPORT')}
+                  {saving ? 'Saving Report...' : (allCompleted ? 'SAVE DOWNTIME CHANGES' : 'SUBMIT DOWNTIME REPORT')}
                 </button>
               </div>
             )}

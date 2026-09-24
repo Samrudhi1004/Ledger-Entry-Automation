@@ -44,23 +44,24 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
     fileType.includes('powerpoint') ||
     fileType.includes('spreadsheet') ||
     fileType.includes('excel');
+  const documentUrl = currentDoc.delivery_url || currentDoc.cloudinary_url;
 
   const levelInfo = LEVEL_COLORS[currentDoc.doc_level] || LEVEL_COLORS.L2;
 
   // Resolve embed URL based on file type and selected engine
   const getEmbedUrl = () => {
-    if (!currentDoc.cloudinary_url) return null;
+    if (!documentUrl) return null;
     if (isPdf) {
-      return `${currentDoc.cloudinary_url}#toolbar=1&navpanes=0`;
+      return `${documentUrl}#toolbar=1&navpanes=0`;
     }
     if (isOfficeDoc) {
       if (engine === 'office') {
-        return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(currentDoc.cloudinary_url)}`;
+        return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(documentUrl)}`;
       }
-      return `https://docs.google.com/viewer?url=${encodeURIComponent(currentDoc.cloudinary_url)}&embedded=true`;
+      return `https://docs.google.com/viewer?url=${encodeURIComponent(documentUrl)}&embedded=true`;
     }
     // Default fallback for any other document: try Google Docs Viewer
-    return `https://docs.google.com/viewer?url=${encodeURIComponent(currentDoc.cloudinary_url)}&embedded=true`;
+    return `https://docs.google.com/viewer?url=${encodeURIComponent(documentUrl)}&embedded=true`;
   };
 
   const embedUrl = getEmbedUrl();
@@ -396,9 +397,9 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
               </button>
             )}
 
-            {currentDoc.cloudinary_url && (
+            {documentUrl && (
               <a
-                href={currentDoc.cloudinary_url}
+                href={documentUrl}
                 target="_blank"
                 rel="noreferrer"
                 title="Open directly in new browser tab"
@@ -565,7 +566,7 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
           justifyContent: 'center',
           overflow: 'hidden',
         }}>
-          {currentDoc.cloudinary_url ? (
+          {documentUrl ? (
             isImage ? (
               <div style={{
                 width: '100%',
@@ -578,7 +579,7 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
                 overflow: 'auto',
               }}>
                 <img
-                  src={currentDoc.cloudinary_url}
+                  src={documentUrl}
                   alt={currentDoc.title}
                   style={{
                     maxWidth: '100%',
@@ -636,7 +637,7 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
                   Click below to open or download the original file.
                 </p>
                 <a
-                  href={currentDoc.cloudinary_url}
+                  href={documentUrl}
                   target="_blank"
                   rel="noreferrer"
                   style={{

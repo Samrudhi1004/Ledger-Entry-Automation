@@ -96,6 +96,14 @@ class Document(models.Model):
         related_name='approved_documents'
     )
 
+    # Optional role allow-list. An empty list keeps the document visible to
+    # every user who already has document-control access.
+    allowed_roles = models.ManyToManyField(
+        'users.AccessRole',
+        blank=True,
+        related_name='controlled_documents',
+    )
+
     # Optional links to other entities
     related_part = models.ForeignKey(
         'parts.Part',
@@ -156,6 +164,7 @@ class DocumentActivity(models.Model):
         ('downloaded',       'Downloaded'),
         ('obsoleted',        'Marked Obsolete'),
         ('comment',          'Comment Added'),
+        ('access_updated',  'Visibility Access Updated'),
     ]
 
     document     = models.ForeignKey(

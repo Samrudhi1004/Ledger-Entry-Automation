@@ -3,6 +3,7 @@ import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 import { getTasks, resolveIssue, acceptTask, completeTask, flagIssue } from '../api/tasks';
 import { formatDateTime } from '../utils/formatters';
 import TaskModal from '../components/tasks/TaskModal';
@@ -156,7 +157,8 @@ function TaskRow({ task, currentUser, onResolve, onAccept, onComplete, onFlagIss
   const [expanded, setExpanded] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const cfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending;
-  const isAllocator = task.allocated_by?.id === currentUser?.id || currentUser?.role === 'admin';
+  const isAllocator = can(currentUser, 'tasks.allocate') &&
+    (task.allocated_by?.id === currentUser?.id || can(currentUser, 'tasks.manage_all'));
   const isAssignee = task.allocated_to?.id === currentUser?.id;
 
   const needsExpansion = task.description && (task.description.length > 40 || task.description.includes('\n'));
@@ -347,9 +349,9 @@ function AdminTasksView({ tasks, loading, refreshing, onRefresh, onAllocate, onR
             <button className="btn btn-ghost btn-sm" onClick={onRefresh} disabled={refreshing} title="Refresh">
               <RefreshCw size={14} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
             </button>
-            <button className="btn btn-primary" onClick={onAllocate}>
+            {can(currentUser, 'tasks.allocate') && <button className="btn btn-primary" onClick={onAllocate}>
               <Plus size={16} /> Allocate Task
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -441,9 +443,9 @@ function UserTasksView({ tasks, loading, refreshing, onRefresh, onAllocate, onRe
           <button className="btn btn-ghost btn-sm" onClick={onRefresh} disabled={refreshing} title="Refresh">
             <RefreshCw size={14} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
           </button>
-          <button className="btn btn-primary" onClick={onAllocate}>
+          {can(currentUser, 'tasks.allocate') && <button className="btn btn-primary" onClick={onAllocate}>
             <Plus size={16} /> Allocate Task
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -561,28 +563,13 @@ export default function TasksPage() {
     }
   };
 
-  if (user?.role === 'operator') {
-    return (
-      <div className="page-container" style={{ padding: '64px 24px', textAlign: 'center' }}>
-        <Header title="Tasks" />
-        <div style={{ background: 'var(--bg-elevated)', padding: 32, borderRadius: 12, border: '1px solid var(--border)', display: 'inline-block', marginTop: 40 }}>
-          <ClipboardList size={48} style={{ color: 'var(--accent-blue)', marginBottom: 16 }} />
-          <h2 style={{ marginBottom: 8 }}>Task View Available on Mobile App</h2>
-          <p style={{ color: 'var(--text-secondary)', maxWidth: 400 }}>
-            As an operator, you can view and complete your assigned tasks directly from the mobile app while you are out on the floor.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="page-container">
       <Header title="Tasks Management" subtitle="Allocate and track operational tasks" />
       
       <div className="page-content" style={{ padding: '24px' }}>
         <Breadcrumbs items={[{ label: 'Tasks' }]} />
-        {user?.role === 'admin' ? (
+        {can(user, 'tasks.view_all') ? (
           <AdminTasksView
             tasks={tasks}
             loading={loading}

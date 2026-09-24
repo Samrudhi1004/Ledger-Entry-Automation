@@ -4,6 +4,7 @@ import {
   Download, Send, Eye, RefreshCw, UserCheck, Shield, ChevronRight, X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 import {
   getDCRs, getDCRById, submitDCRReview, rejectDCRReview,
   approveDCR, rejectDCRApproval, getDCRPDFUrl
@@ -165,15 +166,11 @@ export default function DocumentControlDCRPage() {
     }
   };
 
-  const isAssignedReviewer = selectedDcr && (
-    selectedDcr.assigned_cft_reviewer === user?.id || user?.role === 'admin'
-  );
-  const isAssignedApprover = selectedDcr && (
-    selectedDcr.assigned_approver === user?.id || user?.role === 'admin'
-  );
+  const isAssignedReviewer = selectedDcr?.assigned_cft_reviewer === user?.id;
+  const isAssignedApprover = selectedDcr?.assigned_approver === user?.id;
 
-  const canPerformReview = selectedDcr?.status === 'awaiting_review' && isAssignedReviewer;
-  const canPerformApproval = selectedDcr?.status === 'awaiting_approval' && isAssignedApprover && user?.role === 'admin';
+  const canPerformReview = selectedDcr?.status === 'awaiting_review' && isAssignedReviewer && can(user, 'document.dcr.review');
+  const canPerformApproval = selectedDcr?.status === 'awaiting_approval' && isAssignedApprover && can(user, 'document.dcr.approve');
 
   return (
     <>
@@ -233,7 +230,7 @@ export default function DocumentControlDCRPage() {
           📝 My Requests
         </button>
 
-        {user?.role === 'admin' && (
+        {can(user, 'document.dcr.approve') && (
           <button
             onClick={() => setActiveTab('all')}
             style={{
@@ -251,7 +248,7 @@ export default function DocumentControlDCRPage() {
           </button>
         )}
 
-        {['admin', 'supervisor', 'calibrator'].includes(user?.role) && (
+        {can(user, 'document.dcr.create') && (
           <button
             onClick={() => setShowRaiseModal(true)}
             style={{

@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 import { updateProfile, uploadProfilePhoto, changePassword, requestEmailVerification } from '../api/auth';
 import {
   User, Mail, Phone, Lock, Camera, CheckCircle2, AlertCircle,
@@ -17,9 +18,10 @@ export default function ProfilePage() {
     admin: 'ADMINISTRATOR',
     supervisor: 'SUPERVISOR',
     operator: 'MACHINE OPERATOR',
-    quality_engineer: 'QUALITY INSPECTOR',
+    quality_engineer: 'QUALITY ENGINEER',
+    inspector: 'QUALITY INSPECTOR',
     calibrator: 'CALIBRATION ENGINEER',
-  }[user?.role] || (user?.role ? user.role.toUpperCase() : 'USER');
+  }[user?.role] || (user?.role_name ? user.role_name.toUpperCase() : 'USER');
 
   const initials = user
     ? (`${user.first_name?.[0] ?? ''}${user.last_name?.[0] ?? ''}`).toUpperCase() || user.username?.[0]?.toUpperCase()
@@ -182,8 +184,8 @@ export default function ProfilePage() {
         <div style={{ maxWidth: 1040, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
           <Breadcrumbs items={[{ label: 'My Profile' }]} />
 
-          {/* ── Admin Sub-Navigation Tabs (Only visible to admin) ────────────── */}
-          {user?.role === 'admin' && (
+          {/* ── Company settings navigation ────────────── */}
+          {can(user, 'quality.machines.manage') && (
             <div
               style={{
                 display: 'flex',
@@ -234,7 +236,7 @@ export default function ProfilePage() {
               >
                 <Building2 size={16} /> Company Details
                 <span className="badge badge-purple" style={{ fontSize: '0.68rem', padding: '2px 6px', marginLeft: 4 }}>
-                  ADMIN
+                  EDIT
                 </span>
               </NavLink>
             </div>

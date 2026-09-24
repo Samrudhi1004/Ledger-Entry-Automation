@@ -2,6 +2,8 @@
 Serializers for the Document Control module.
 """
 
+import json
+
 from django.db import models
 from rest_framework import serializers
 from .models import (
@@ -10,6 +12,8 @@ from .models import (
     DocumentChangeRequest,
     DCRNotification,
 )
+from apps.users.models import AccessRole
+from .storage import document_delivery_url
 
 
 def get_user_display(user):
@@ -37,6 +41,8 @@ class DocumentListSerializer(serializers.ModelSerializer):
     uploaded_by_name  = serializers.SerializerMethodField()
     reviewed_by_name  = serializers.SerializerMethodField()
     approved_by_name  = serializers.SerializerMethodField()
+    allowed_roles     = serializers.SerializerMethodField()
+    delivery_url      = serializers.SerializerMethodField()
     file_size_display = serializers.ReadOnlyField()
 
     class Meta:
@@ -45,10 +51,11 @@ class DocumentListSerializer(serializers.ModelSerializer):
             'id', 'document_number', 'title', 'description',
             'doc_level', 'doc_level_display',
             'status', 'revision', 'revision_number', 'is_latest_revision',
-            'cloudinary_url', 'file_name', 'file_size', 'file_size_display', 'file_type',
+            'cloudinary_url', 'delivery_url', 'file_name', 'file_size', 'file_size_display', 'file_type',
             'uploaded_by', 'uploaded_by_name',
             'reviewed_by', 'reviewed_by_name', 'reviewed_at',
             'approved_by', 'approved_by_name', 'approved_at',
+            'allowed_roles',
             'revision_date', 'effective_date', 'expiry_date',
             'created_at', 'updated_at',
         ]
@@ -62,6 +69,15 @@ class DocumentListSerializer(serializers.ModelSerializer):
 
     def get_approved_by_name(self, obj):
         return get_user_display(obj.approved_by)
+
+    def get_delivery_url(self, obj):
+        return document_delivery_url(obj)
+
+    def get_allowed_roles(self, obj):
+        return [
+            {'slug': role.slug, 'name': role.name}
+            for role in obj.allowed_roles.all()
+        ]
 
 
 class DocumentDetailSerializer(DocumentListSerializer):
@@ -101,6 +117,9 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
     revision        = serializers.CharField(required=False, allow_blank=True, default='0')
     revision_date   = serializers.DateField(required=False, allow_null=True)
     status          = serializers.CharField(required=False, allow_blank=True, default='draft')
+    allowed_role_slugs = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True, write_only=True
+    )
 
     class Meta:
         model = Document
@@ -110,7 +129,56 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
             'effective_date', 'expiry_date',
             'reviewed_by', 'approved_by', 'status',
             'related_part', 'related_machine',
+            'allowed_role_slugs',
         ]
+
+    def to_internal_value(self, data):
+        # Multipart requests arrive as a QueryDict. Convert it to a regular
+        # mapping before replacing the JSON role list; assigning a Python list
+        # back into QueryDict turns it into a string and ListField rejects it.
+        if hasattr(data, 'items'):
+            data = {key: value for key, value in data.items()}
+        else:
+            data = dict(data)
+        raw_roles = data.get('allowed_role_slugs')
+        if isinstance(raw_roles, str):
+            try:
+                data['allowed_role_slugs'] = json.loads(raw_roles)
+            except (TypeError, ValueError):
+                data['allowed_role_slugs'] = [slug.strip() for slug in raw_roles.split(',') if slug.strip()]
+        return super().to_internal_value(data)
+
+    def validate_allowed_role_slugs(self, value):
+        slugs = sorted(set(value))
+        roles = list(AccessRole.objects.filter(slug__in=slugs))
+        found = {role.slug for role in roles}
+        unknown = sorted(set(slugs) - found)
+        if unknown:
+            raise serializers.ValidationError(f'Unknown roles: {", ".join(unknown)}')
+        return roles
+
+    def create(self, validated_data):
+        roles = validated_data.pop('allowed_role_slugs', [])
+        document = super().create(validated_data)
+        document.allowed_roles.set(roles)
+        return document
+
+
+class DocumentAccessSerializer(serializers.Serializer):
+    """Validates the role allow-list edited after a document is uploaded."""
+
+    allowed_role_slugs = serializers.ListField(
+        child=serializers.CharField(), required=True, allow_empty=True
+    )
+
+    def validate_allowed_role_slugs(self, value):
+        slugs = sorted(set(value))
+        roles = list(AccessRole.objects.filter(slug__in=slugs))
+        found = {role.slug for role in roles}
+        unknown = sorted(set(slugs) - found)
+        if unknown:
+            raise serializers.ValidationError(f'Unknown roles: {", ".join(unknown)}')
+        return roles
 
 
 
@@ -149,10 +217,9 @@ class DCRCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         user = self.context['request'].user
-        # Exclude operator and inspector (quality_engineer) from raising DCRs
-        if getattr(user, 'role', '') in ['operator', 'quality_engineer']:
+        if not user.has_access('document.dcr.create'):
             raise serializers.ValidationError(
-                "Operators and Inspectors are not authorized to submit Document Change Requests."
+                "Change request creation access required."
             )
 
         cft = attrs.get('assigned_cft_reviewer')
@@ -161,16 +228,16 @@ class DCRCreateSerializer(serializers.ModelSerializer):
 
         if not cft:
             raise serializers.ValidationError({"assigned_cft_reviewer": "A CFT Reviewer must be assigned."})
-        if getattr(cft, 'role', '') == 'operator':
-            raise serializers.ValidationError({"assigned_cft_reviewer": "Reviewer cannot be an Operator."})
+        if not cft.has_access('document.dcr.review'):
+            raise serializers.ValidationError({"assigned_cft_reviewer": "Reviewer needs change request review access."})
 
-        if cal and getattr(cal, 'role', '') == 'operator':
-            raise serializers.ValidationError({"assigned_calibrator": "Calibrator cannot be an Operator."})
+        if cal and not cal.has_access('document.dcr.review'):
+            raise serializers.ValidationError({"assigned_calibrator": "Calibrator needs change request review access."})
 
         if not app:
             raise serializers.ValidationError({"assigned_approver": "An Approver must be assigned."})
-        if getattr(app, 'role', '') == 'operator':
-            raise serializers.ValidationError({"assigned_approver": "Approver cannot be an Operator."})
+        if not app.has_access('document.dcr.approve'):
+            raise serializers.ValidationError({"assigned_approver": "Approver needs change request approval access."})
 
         return attrs
 

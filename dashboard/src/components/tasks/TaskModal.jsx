@@ -8,14 +8,16 @@ import { AlertCircle, CheckSquare, User } from 'lucide-react';
 const ROLE_OPTIONS = [
   { value: '',                 label: 'All Roles' },
   { value: 'supervisor',       label: 'Supervisor' },
-  { value: 'quality_engineer', label: 'Inspector' },
+  { value: 'quality_engineer', label: 'Quality Engineer' },
+  { value: 'inspector',         label: 'Inspector' },
   { value: 'operator',         label: 'Operator' },
 ];
 
 function getRoleLabel(role) {
   switch (role) {
     case 'supervisor':       return 'Supervisor';
-    case 'quality_engineer': return 'Inspector';
+    case 'quality_engineer': return 'Quality Engineer';
+    case 'inspector':        return 'Inspector';
     case 'operator':         return 'Operator';
     case 'admin':            return 'Admin';
     default: return role || 'User';

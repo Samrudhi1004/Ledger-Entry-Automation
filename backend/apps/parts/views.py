@@ -6,7 +6,6 @@ from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
 
 from .models import (
     Part, InspectionTemplate, InspectionParameter, ProcessParameter,
@@ -18,7 +17,7 @@ from .serializers import (
     InspectionParameterSerializer, ProcessParameterSerializer,
     TemplateChangeRequestSerializer
 )
-from apps.users.permissions import IsAdminUser, IsQualityEngineer, IsSupervisorOrAbove
+from apps.users.permissions import HasAccess
 from .services.template_mailer import (
     notify_template_submitted,
     notify_template_reviewed,
@@ -33,6 +32,7 @@ from .services.template_mailer import (
 )
 
 logger = logging.getLogger('apps.parts')
+from apps.users.access import OPERATIONAL_READ
 
 
 # ─── Parts ────────────────────────────────────────────────────────────────
@@ -42,7 +42,8 @@ class PartListCreateView(generics.ListCreateAPIView):
     GET  /api/parts/?machine=1    → filter by machine
     POST /api/parts/              → create part (QE / Admin)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = OPERATIONAL_READ
 
     def get_serializer_class(self):
         if self.request.method == 'GET':
@@ -61,21 +62,22 @@ class PartListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsSupervisorOrAbove()]
-        return [IsAuthenticated()]
+            return [HasAccess('quality.parts.manage')]
+        return [HasAccess(OPERATIONAL_READ)]
 
 
 class PartDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET/PUT/DELETE /api/parts/<part_number>/"""
     serializer_class   = PartSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = OPERATIONAL_READ
     queryset           = Part.objects.select_related('machine').all()
     lookup_field       = 'part_number'
 
     def get_permissions(self):
         if self.request.method in ['PUT', 'PATCH', 'DELETE']:
-            return [IsSupervisorOrAbove()]
-        return [IsAuthenticated()]
+            return [HasAccess('quality.parts.manage')]
+        return [HasAccess(OPERATIONAL_READ)]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -91,7 +93,8 @@ class TemplateListCreateView(generics.ListCreateAPIView):
     GET  /api/parts/<part_number>/templates/?type=first_piece    → filter by type
     POST /api/parts/<part_number>/templates/                     → create template (Supervisor/QE/Admin)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = OPERATIONAL_READ
 
     def get_serializer_class(self):
         if self.request.method == 'GET':
@@ -123,8 +126,8 @@ class TemplateListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsSupervisorOrAbove()]
-        return [IsAuthenticated()]
+            return [HasAccess('quality.templates.manage')]
+        return [HasAccess(OPERATIONAL_READ)]
 
 
 class TemplateDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -134,8 +137,8 @@ class TemplateDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_permissions(self):
         if self.request.method in ['PUT', 'PATCH', 'DELETE']:
-            return [IsSupervisorOrAbove()]
-        return [IsAuthenticated()]
+            return [HasAccess('quality.templates.manage')]
+        return [HasAccess(OPERATIONAL_READ)]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -149,7 +152,8 @@ class TemplatePublishView(APIView):
     POST /api/parts/templates/<id>/publish/
     Publishes and broadcasts the configured template to shop floor operators and quality inspectors.
     """
-    permission_classes = [IsAuthenticated, IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.templates.manage'
 
     def post(self, request, pk):
         try:
@@ -184,7 +188,8 @@ class TemplateSubmitReviewView(APIView):
     POST /api/parts/templates/<id>/submit-review/
     Submits an inspection template for review, optionally assigning reviewer and approver.
     """
-    permission_classes = [IsAuthenticated, IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'development.parameters.manage'
 
     def post(self, request, pk):
         template = get_object_or_404(
@@ -231,7 +236,8 @@ class TemplateReviewActionView(APIView):
         action: 'recommend' | 'reject'
         comments: str
     """
-    permission_classes = [IsAuthenticated, IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'development.parameters.manage'
 
     def post(self, request, pk):
         template = get_object_or_404(InspectionTemplate, pk=pk)
@@ -278,7 +284,8 @@ class TemplateApproveActionView(APIView):
         action: 'approve' | 'reject'
         comments: str
     """
-    permission_classes = [IsAuthenticated, IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'development.parameters.manage'
 
     def post(self, request, pk):
         template = get_object_or_404(InspectionTemplate, pk=pk)
@@ -327,7 +334,13 @@ class TemplateChangeRequestListCreateView(APIView):
     GET  /api/parts/templates/<template_id>/change-requests/  -> List DCRs for template
     POST /api/parts/templates/<template_id>/change-requests/  -> Raise a new DCR
     """
-    permission_classes = [IsAuthenticated, IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'development.parameters.manage'
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [HasAccess('development.parameters.view')]
+        return super().get_permissions()
 
     def get(self, request, template_id):
         template = get_object_or_404(InspectionTemplate, pk=template_id)
@@ -384,7 +397,8 @@ class TemplateChangeRequestReviewView(APIView):
         action: 'recommend' | 'reject'
         remarks: str
     """
-    permission_classes = [IsAuthenticated, IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'development.parameters.manage'
 
     def post(self, request, pk):
         dcr = get_object_or_404(TemplateChangeRequest, pk=pk)
@@ -428,7 +442,8 @@ class TemplateChangeRequestApproveView(APIView):
         action: 'approve' | 'reject'
         remarks: str
     """
-    permission_classes = [IsAuthenticated, IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'development.parameters.manage'
 
     def post(self, request, pk):
         dcr = get_object_or_404(TemplateChangeRequest, pk=pk)
@@ -547,7 +562,8 @@ class ActiveTemplateView(APIView):
     Returns the active template for a part + inspection type.
     This is the primary endpoint called by Flutter before starting inspection.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = OPERATIONAL_READ
 
     def get(self, request, part_number, inspection_type):
         from urllib.parse import unquote
@@ -583,7 +599,8 @@ class ParameterListCreateView(generics.ListCreateAPIView):
     POST /api/parts/templates/<template_id>/parameters/  → add parameter (Supervisor/QE/Admin)
     """
     serializer_class   = InspectionParameterSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = OPERATIONAL_READ
 
     def get_queryset(self):
         return InspectionParameter.objects.filter(
@@ -596,8 +613,8 @@ class ParameterListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsSupervisorOrAbove()]
-        return [IsAuthenticated()]
+            return [HasAccess(('quality.parameters.manage', 'development.parameters.manage'))]
+        return [HasAccess(OPERATIONAL_READ)]
 
 
 class ParameterDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -607,8 +624,8 @@ class ParameterDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_permissions(self):
         if self.request.method in ['PUT', 'PATCH', 'DELETE']:
-            return [IsSupervisorOrAbove()]
-        return [IsAuthenticated()]
+            return [HasAccess(('quality.parameters.manage', 'development.parameters.manage'))]
+        return [HasAccess(OPERATIONAL_READ)]
 
 
 # ─── Process Parameters ───────────────────────────────────────────────────
@@ -618,7 +635,8 @@ class ProcessParameterListCreateView(generics.ListCreateAPIView):
     POST /api/parts/templates/<template_id>/process-parameters/  → add process parameter (Supervisor/Admin)
     """
     serializer_class   = ProcessParameterSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = OPERATIONAL_READ
 
     def get_queryset(self):
         template_id = self.kwargs['template_id']
@@ -630,8 +648,8 @@ class ProcessParameterListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsSupervisorOrAbove()]
-        return [IsAuthenticated()]
+            return [HasAccess(('quality.parameters.manage', 'development.parameters.manage'))]
+        return [HasAccess(OPERATIONAL_READ)]
 
 
 class ProcessParameterDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -641,15 +659,16 @@ class ProcessParameterDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_permissions(self):
         if self.request.method in ['PUT', 'PATCH', 'DELETE']:
-            return [IsSupervisorOrAbove()]
-        return [IsAuthenticated()]
+            return [HasAccess(('quality.parameters.manage', 'development.parameters.manage'))]
+        return [HasAccess(OPERATIONAL_READ)]
 
 
 class AllParameterListView(generics.ListAPIView):
     """GET /api/parts/parameters/all/"""
     from .serializers import GlobalInspectionParameterSerializer
     serializer_class = GlobalInspectionParameterSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasAccess]
+    access_key = 'development.parameters.view'
     pagination_class = None
     queryset = InspectionParameter.objects.select_related('template__part__machine', 'template__created_by').all().order_by('-id')
 
@@ -658,7 +677,8 @@ class AllProcessParameterListView(generics.ListAPIView):
     """GET /api/parts/process-parameters/all/"""
     from .serializers import GlobalProcessParameterSerializer
     serializer_class = GlobalProcessParameterSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasAccess]
+    access_key = 'development.parameters.view'
     pagination_class = None
     queryset = ProcessParameter.objects.select_related('template__part__machine', 'template__created_by').all().order_by('-id')
 
@@ -686,8 +706,14 @@ class DrawingViewSet(viewsets.ModelViewSet):
         'reviewed_by', 'approved_by', 'rejected_by'
     ).prefetch_related('versions__uploaded_by').all()
     serializer_class = DrawingDocumentSerializer
-    permission_classes = [IsAuthenticated, IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'development.drawings.manage'
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'history', 'download_file'):
+            return [HasAccess('development.drawings.view')]
+        return super().get_permissions()
 
     @transaction.atomic
     def perform_create(self, serializer):
@@ -892,8 +918,14 @@ class ControlPlanViewSet(viewsets.ModelViewSet):
         'reviewed_by', 'approved_by', 'rejected_by'
     ).prefetch_related('versions__uploaded_by').all()
     serializer_class = ControlPlanDocumentSerializer
-    permission_classes = [IsAuthenticated, IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'development.control_plans.manage'
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'history', 'download_file'):
+            return [HasAccess('development.control_plans.view')]
+        return super().get_permissions()
 
     @transaction.atomic
     def perform_create(self, serializer):

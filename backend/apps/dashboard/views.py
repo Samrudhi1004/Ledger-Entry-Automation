@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from apps.inspections.models import InspectionSession
 from apps.machines.models import Machine, Plant
-from apps.users.permissions import IsSupervisorOrAbove
+from apps.users.permissions import HasAccess
 
 
 class LiveStatusView(APIView):
@@ -15,7 +15,8 @@ class LiveStatusView(APIView):
     GET /api/dashboard/live/?plant=1
     Returns current active sessions and their progress for a plant.
     """
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.live.view'
 
     def get(self, request):
         plant_id = request.query_params.get('plant')
@@ -53,7 +54,8 @@ class ShiftSummaryView(APIView):
     GET /api/dashboard/shift-summary/?plant=1&shift=A
     Returns today's inspection summary for a shift.
     """
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.live.view'
 
     def get(self, request):
         plant_id = request.query_params.get('plant')

@@ -11,6 +11,7 @@ import {
   Edit3,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { canOpenPath } from '../utils/access';
 import { getDocuments, getDCRs } from '../api/documentControl';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
@@ -18,10 +19,7 @@ import Breadcrumbs from '../components/layout/Breadcrumbs';
 export default function DocumentControlPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdmin      = user?.role === 'admin';
-  const isSupervisor = user?.role === 'supervisor';
-  const isCalibrator = user?.role === 'calibrator';
-  const canManage    = isAdmin || isSupervisor || isCalibrator;
+  const isAdmin = canOpenPath(user, '/document-control/approvals');
 
   const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, pendingDcr: 0 });
 
@@ -85,11 +83,7 @@ export default function DocumentControlPage() {
     },
   ];
 
-  const visibleCards = moduleCards.filter((c) => {
-    if (c.adminOnly && !isAdmin) return false;
-    if (!canManage && !c.showAlways) return false;
-    return true;
-  });
+  const visibleCards = moduleCards.filter((card) => canOpenPath(user, card.to));
 
   const statItems = [
     { label: 'Total Documents', value: stats.total, icon: FileText, color: '#4f46e5', bg: 'rgba(99,102,241,0.1)' },

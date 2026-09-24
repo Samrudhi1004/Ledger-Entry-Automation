@@ -9,6 +9,7 @@ class AuthProvider with ChangeNotifier {
   bool _isAuthenticated = false;
   String? _username;
   String? _userRole;
+  Set<String> _permissions = {};
   String? _assignedShift;
   String? _fullName;
   String? _firstName;
@@ -38,9 +39,13 @@ class AuthProvider with ChangeNotifier {
   String? get profilePhotoUrl => _profilePhotoUrl;
   bool get isLoading => _isLoading;
 
-  bool get isOperator => _userRole == 'operator' || _userRole == null;
-  bool get isInspector => _userRole == 'quality_engineer' || _userRole == 'inspector';
-  bool get isSupervisor => _userRole == 'supervisor' || _userRole == 'admin';
+  bool hasAccess(String key) => _permissions.contains(key);
+  bool get isOperator => hasAccess('production.jh.submit') && !isSupervisor && !isInspector;
+  // Role identity is intentional here: Quality Engineer and Inspector may
+  // share quality permissions, but only Inspector gets the mobile workflow.
+  bool get isInspector => _userRole == 'inspector';
+  bool get isQualityEngineer => _userRole == 'quality_engineer';
+  bool get isSupervisor => hasAccess('quality.inspections.review');
 
   String? _lastErrorMessage;
   String? get lastErrorMessage => _lastErrorMessage;
@@ -72,6 +77,7 @@ class AuthProvider with ChangeNotifier {
           try {
             final info = jsonDecode(userInfoStr);
             _userRole = info['role'] ?? 'operator';
+            _permissions = Set<String>.from(info['permissions'] ?? []);
             _assignedShift = info['assigned_shift'] ?? 'ALL';
             _userId = info['id'];
             _fullName = (info['full_name'] != null && info['full_name'].toString().isNotEmpty)
@@ -98,6 +104,7 @@ class AuthProvider with ChangeNotifier {
           _username = null;
           _userId = null;
           _userRole = null;
+          _permissions = {};
           _assignedShift = null;
           _fullName = null;
         } else if (refreshStatus == true) {
@@ -121,6 +128,7 @@ class AuthProvider with ChangeNotifier {
                 await prefs.setString('user_info', jsonEncode({
                   'id': idFromJwt,
                   'role': roleFromJwt,
+                  'permissions': _permissions.toList(),
                   'assigned_shift': shiftFromJwt,
                   'full_name': _fullName ?? _username,
                 }));
@@ -139,6 +147,7 @@ class AuthProvider with ChangeNotifier {
         _username = null;
         _userId = null;
         _userRole = null;
+        _permissions = {};
         _assignedShift = null;
         _fullName = null;
       }
@@ -164,6 +173,7 @@ class AuthProvider with ChangeNotifier {
         _plantName = profile['plant_name'] ?? '';
         _profilePhotoUrl = profile['profile_photo_url'];
         _userRole = profile['role'] ?? _userRole;
+        _permissions = Set<String>.from(profile['permissions'] ?? []);
         _assignedShift = profile['assigned_shift'] ?? _assignedShift ?? 'ALL';
         if (profile['id'] != null) {
           _userId = int.tryParse(profile['id'].toString());
@@ -178,6 +188,7 @@ class AuthProvider with ChangeNotifier {
         await prefs.setString('user_info', jsonEncode({
           'id': _userId,
           'role': _userRole,
+          'permissions': _permissions.toList(),
           'assigned_shift': _assignedShift,
           'full_name': _fullName,
         }));
@@ -208,6 +219,7 @@ class AuthProvider with ChangeNotifier {
         final userData = result['data']?['user'];
         if (userData != null) {
           _userRole = userData['role'] ?? 'operator';
+          _permissions = Set<String>.from(userData['permissions'] ?? []);
           _assignedShift = userData['assigned_shift'] ?? 'ALL';
           if (userData['id'] != null) {
             _userId = int.tryParse(userData['id'].toString());
@@ -218,11 +230,13 @@ class AuthProvider with ChangeNotifier {
           await prefs.setString('user_info', jsonEncode({
             'id': _userId,
             'role': _userRole,
+            'permissions': _permissions.toList(),
             'assigned_shift': _assignedShift,
             'full_name': _fullName,
           }));
         } else {
           _userRole = 'operator';
+          _permissions = {};
           _assignedShift = 'ALL';
         }
         notifyListeners();
@@ -252,6 +266,7 @@ class AuthProvider with ChangeNotifier {
     _username = null;
     _userId = null;
     _userRole = null;
+    _permissions = {};
     _fullName = null;
     _isLoading = false;
     notifyListeners();
@@ -267,6 +282,7 @@ class AuthProvider with ChangeNotifier {
     _username = null;
     _userId = null;
     _userRole = null;
+    _permissions = {};
     _fullName = null;
     _isLoading = false;
     notifyListeners();

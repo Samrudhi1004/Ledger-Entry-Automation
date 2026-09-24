@@ -13,7 +13,7 @@ from datetime import datetime
 
 from django.db import transaction
 from django.db.models import Q
-from django.shortcuts import redirect
+from django.shortcuts import redirect, get_object_or_404
 from django.http import HttpResponse
 from django.utils import timezone
 from django.contrib.auth import get_user_model
@@ -38,10 +38,12 @@ except ImportError:
     FILETYPE_AVAILABLE = False
 
 from .models import Document, DocumentActivity, DocumentChangeRequest, DCRNotification
+from apps.users.models import AccessRole
 from .serializers import (
     DocumentListSerializer,
     DocumentDetailSerializer,
     DocumentCreateSerializer,
+    DocumentAccessSerializer,
     DocumentActivitySerializer,
     DCRCreateSerializer,
     DCRReviewSerializer,
@@ -51,6 +53,7 @@ from .serializers import (
     DCRDetailSerializer,
     DCRNotificationSerializer,
 )
+from .storage import document_delivery_url
 from .services.dcr_mailer import (
     notify_dcr_submitted,
     notify_dcr_reviewed,
@@ -68,8 +71,6 @@ from .services.dcr_pdf import generate_dcr_pdf
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
-# Non-operator roles permitted to upload or initiate DCRs
-ELIGIBLE_ROLES = ('admin', 'supervisor', 'calibrator')
 FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50 MB
 
 
@@ -140,14 +141,26 @@ class DocumentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = Document.objects.select_related(
             'uploaded_by', 'approved_by', 'reviewed_by'
-        ).filter(is_latest_revision=True)
+        ).prefetch_related('allowed_roles').filter(is_latest_revision=True)
 
         user = self.request.user
-        user_role = getattr(user, 'role', '')
-
-        # Operators and inspectors only see approved documents
-        if user_role in ('operator', 'quality_engineer'):
+        if not user.has_access('document.view_unapproved'):
             qs = qs.filter(status=Document.Status.APPROVED)
+
+        # Documents without an allow-list remain visible to all users with
+        # document access. A role allow-list is enforced for every non-admin
+        # viewer, including users who can upload documents; the uploader keeps
+        # owner visibility so they can continue managing their document.
+        is_manager = (
+            user.is_superuser or
+            getattr(user, 'role', '') == 'admin'
+        )
+        if not is_manager:
+            qs = qs.filter(
+                Q(allowed_roles__isnull=True) |
+                Q(allowed_roles__slug=user.role) |
+                Q(uploaded_by=user)
+            ).distinct()
 
         params = self.request.query_params
         # Filter by Document Level (L1, L2, L3, L4)
@@ -179,9 +192,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
         return DocumentListSerializer
 
     def create(self, request, *args, **kwargs):
-        user_role = getattr(request.user, 'role', '')
-        if user_role not in ELIGIBLE_ROLES:
-            return Response({'error': 'Operators and Inspectors cannot upload documents.'}, status=403)
+        if not request.user.has_access('document.upload'):
+            return Response({'error': 'Document upload access required.'}, status=403)
 
         file = request.FILES.get('file')
         if not file:
@@ -248,9 +260,42 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
         return Response(DocumentListSerializer(doc).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['get'], url_path='roles')
+    def roles(self, request):
+        """Return current roles for document visibility selectors."""
+        if not (request.user.has_access('document.view') or request.user.has_access('document.upload')):
+            return Response({'error': 'Document access required.'}, status=403)
+        return Response(list(AccessRole.objects.order_by('name').values('slug', 'name')))
+
+    @action(detail=True, methods=['patch'], url_path='access')
+    def access(self, request, pk=None):
+        """Replace the document role allow-list without changing its file."""
+        # Check ownership before visibility filtering so an uploader can still
+        # restore access after removing their own role.
+        doc = get_object_or_404(Document, pk=pk)
+        is_owner = doc.uploaded_by_id == request.user.id
+        if not is_owner:
+            return Response({'error': 'Only the document uploader can change its access.'}, status=403)
+
+        serializer = DocumentAccessSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        roles = serializer.validated_data['allowed_role_slugs']
+        before = sorted(doc.allowed_roles.values_list('slug', flat=True))
+        doc.allowed_roles.set(roles)
+        after = sorted(role.slug for role in roles)
+        DocumentActivity.objects.create(
+            document=doc,
+            action='access_updated',
+            performed_by=request.user,
+            comment=f"Document visibility roles changed from {before or ['all']} to {after or ['all']}.",
+        )
+        return Response(DocumentDetailSerializer(doc).data)
+
     @action(detail=True, methods=['post'], url_path='submit_review')
     def submit_review(self, request, pk=None):
         doc = self.get_object()
+        if not request.user.has_access('document.upload'):
+            return Response({'error': 'Permission denied.'}, status=403)
         user = request.user
 
         # Allow assigned reviewer, uploader, or admin/supervisor
@@ -280,6 +325,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         doc = self.get_object()
+        if not request.user.has_access('document.approve'):
+            return Response({'error': 'Permission denied.'}, status=403)
         user = request.user
 
         # Allow assigned approver or admin
@@ -310,6 +357,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         doc = self.get_object()
+        if not request.user.has_access('document.approve'):
+            return Response({'error': 'Permission denied.'}, status=403)
         user = request.user
 
         # Allow assigned reviewer, approver, or admin
@@ -338,8 +387,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     def revise(self, request, pk=None):
         """Upload a new revision of an existing document."""
         original = self.get_object()
-        user_role = getattr(request.user, 'role', '')
-        if user_role not in ELIGIBLE_ROLES:
+        if not request.user.has_access('document.upload'):
             return Response({'error': 'Permission denied.'}, status=403)
 
         file = request.FILES.get('file')
@@ -371,7 +419,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 description=request.data.get('description') or original.description,
                 category=original.category,
                 doc_level=original.doc_level,
-                status=Document.Status.APPROVED if user_role == 'admin' else Document.Status.DRAFT,
+                status=Document.Status.APPROVED if request.user.has_access('document.approve') else Document.Status.DRAFT,
                 revision=rev_label,
                 revision_number=next_rev_num,
                 is_latest_revision=True,
@@ -386,6 +434,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 related_machine=original.related_machine,
                 effective_date=request.data.get('effective_date') or original.effective_date,
             )
+            new_doc.allowed_roles.set(original.allowed_roles.all())
             DocumentActivity.objects.create(
                 document=new_doc, action='revised', performed_by=request.user,
                 comment=f'New revision {rev_label} uploaded. Supersedes {original.revision}.',
@@ -412,7 +461,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if not doc.cloudinary_url:
             return Response({'error': 'No file attached.'}, status=404)
         DocumentActivity.objects.create(document=doc, action='downloaded', performed_by=request.user)
-        return redirect(doc.cloudinary_url)
+        return redirect(document_delivery_url(doc))
 
     @action(detail=True, methods=['get'])
     def history(self, request, pk=None):
@@ -423,7 +472,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def obsolete(self, request, pk=None):
         doc = self.get_object()
-        if getattr(request.user, 'role', '') != 'admin':
+        if not request.user.has_access('document.approve'):
             return Response({'error': 'Only admins can mark documents as obsolete.'}, status=403)
         doc.status = Document.Status.OBSOLETE
         doc.save(update_fields=['status', 'updated_at'])
@@ -487,7 +536,7 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
             ).order_by('-created_at')
 
         # Default: if admin, show all; otherwise show requests involving user
-        if getattr(user, 'role', '') == 'admin':
+        if user.has_access('document.dcr.approve'):
             return qs.order_by('-created_at')
         return qs.filter(
             Q(raised_by=user) |
@@ -505,10 +554,9 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """Submit a new Document Change Request (Form DKI/MR/F/05)."""
-        user_role = getattr(request.user, 'role', '')
-        if user_role in ('operator', 'quality_engineer'):
+        if not request.user.has_access('document.dcr.create'):
             return Response(
-                {'error': 'Operators and Inspectors cannot submit Document Change Requests.'},
+                {'error': 'Change request creation access required.'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -545,9 +593,7 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
         user = request.user
 
         is_assigned = (dcr.assigned_cft_reviewer_id == user.id)
-        is_admin = (getattr(user, 'role', '') == 'admin')
-
-        if not (is_assigned or is_admin):
+        if not (is_assigned and user.has_access('document.dcr.review')):
             return Response({'error': 'Only the assigned CFT Reviewer or Admin can review this DCR.'}, status=403)
 
         if dcr.status != DocumentChangeRequest.Status.AWAITING_REVIEW:
@@ -589,9 +635,7 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
         user = request.user
 
         is_assigned = (dcr.assigned_cft_reviewer_id == user.id)
-        is_admin = (getattr(user, 'role', '') == 'admin')
-
-        if not (is_assigned or is_admin):
+        if not (is_assigned and user.has_access('document.dcr.review')):
             return Response({'error': 'Only the assigned CFT Reviewer or Admin can reject this DCR.'}, status=403)
 
         serializer = DCRRejectSerializer(data=request.data)
@@ -628,9 +672,7 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
         user = request.user
 
         is_assigned = (dcr.assigned_approver_id == user.id)
-        is_admin = (getattr(user, 'role', '') == 'admin')
-
-        if not (is_assigned or is_admin):
+        if not (is_assigned and user.has_access('document.dcr.approve')):
             return Response({'error': 'Only the assigned Approver or Admin can grant final DCR approval.'}, status=403)
 
         if dcr.status != DocumentChangeRequest.Status.AWAITING_APPROVAL:
@@ -669,9 +711,7 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
         user = request.user
 
         is_assigned = (dcr.assigned_approver_id == user.id)
-        is_admin = (getattr(user, 'role', '') == 'admin')
-
-        if not (is_assigned or is_admin):
+        if not (is_assigned and user.has_access('document.dcr.approve')):
             return Response({'error': 'Only the assigned Approver or Admin can reject DCR at approval stage.'}, status=403)
 
         serializer = DCRRejectSerializer(data=request.data)
@@ -714,17 +754,23 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='assignable-users')
     def assignable_users(self, request):
         """Returns all active users so anyone can be selected as reviewer or approver."""
-        eligible_users = User.objects.filter(is_active=True).values('id', 'first_name', 'last_name', 'username', 'role', 'email').order_by('first_name', 'username')
+        eligible_users = User.objects.filter(is_active=True).order_by('first_name', 'username')
 
         result = []
         for u in eligible_users:
-            full_name = f"{u['first_name']} {u['last_name']}".strip() or u['username']
+            can_review = u.has_access('document.dcr.review')
+            can_approve = u.has_access('document.dcr.approve')
+            if not (can_review or can_approve):
+                continue
+            full_name = u.get_full_name() or u.username
             result.append({
-                'id': u['id'],
+                'id': u.id,
                 'name': full_name,
-                'username': u['username'],
-                'role': u['role'],
-                'email': u['email'],
+                'username': u.username,
+                'role': u.role,
+                'can_review': can_review,
+                'can_approve': can_approve,
+                'email': u.email,
             })
         return Response(result)
 

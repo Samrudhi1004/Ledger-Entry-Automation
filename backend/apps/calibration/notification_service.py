@@ -12,20 +12,18 @@ from apps.users.models import User
 from .models import CalibrationEmailLog, CalibrationEquipment
 
 
-def _role_emails(*roles):
-    return list(
-        User.objects.filter(role__in=roles, is_active=True)
-        .exclude(email='')
-        .values_list('email', flat=True)
-    )
+def _access_emails(permission, excluding=None):
+    return [user.email for user in User.objects.filter(is_active=True).exclude(email='')
+            if user.has_access(permission) and not (excluding and user.has_access(excluding))]
 
 
 def _calibrator_emails():
-    return _role_emails(User.Role.CALIBRATOR)
+    return _access_emails('calibration.manage', excluding='roles.manage')
 
 
 def _admin_emails():
-    return _role_emails(User.Role.ADMIN)
+    return [user.email for user in User.objects.filter(is_active=True).exclude(email='')
+            if user.has_access('roles.manage') and user.has_access('calibration.view')]
 
 
 def _unique_emails(*email_lists):

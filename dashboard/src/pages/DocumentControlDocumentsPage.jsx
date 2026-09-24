@@ -7,10 +7,12 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCompany } from '../context/CompanyContext';
+import { can } from '../utils/access';
 import {
   getDocuments, uploadDocument,
   approveDocument, rejectDocument, submitForReview,
   getDocumentHistory, getDownloadUrl, getAssignableUsers,
+  getDocumentRoles, updateDocumentAccess,
 } from '../api/documentControl';
 import DocumentViewerModal from '../components/document_control/DocumentViewerModal';
 import DCRSubmissionModal from '../components/document_control/DCRSubmissionModal';
@@ -67,7 +69,7 @@ function StatusBadge({ status }) {
 }
 
 // ── Upload Modal ──────────────────────────────────────────────────────────────
-function UploadModal({ onClose, onSuccess }) {
+function UploadModal({ onClose, onSuccess, userRole }) {
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -81,6 +83,8 @@ function UploadModal({ onClose, onSuccess }) {
     status: 'approved', // 'approved' (Active Master) or 'under_review' (Send for Sign-off)
   });
   const [users, setUsers] = useState([]);
+  const [roles, setRoles] = useState([]);
+  const [selectedRoleSlugs, setSelectedRoleSlugs] = useState(() => userRole ? [userRole] : []);
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -90,6 +94,9 @@ function UploadModal({ onClose, onSuccess }) {
     getAssignableUsers()
       .then(res => setUsers(res.data || []))
       .catch(err => console.error("Failed to fetch users", err));
+    getDocumentRoles()
+      .then(res => setRoles(res.data || []))
+      .catch(err => console.error("Failed to fetch document roles", err));
   }, []);
 
   const handleDrop = (e) => {
@@ -116,10 +123,18 @@ function UploadModal({ onClose, onSuccess }) {
       if (form.reviewed_by) fd.append('reviewed_by', form.reviewed_by);
       if (form.approved_by) fd.append('approved_by', form.approved_by);
       fd.append('status', form.status);
+      fd.append('allowed_role_slugs', JSON.stringify(selectedRoleSlugs));
       await uploadDocument(fd);
       onSuccess();
     } catch (err) {
-      setError(err.response?.data?.error || 'Upload failed. Please try again.');
+      const response = err.response?.data;
+      const details = response && typeof response === 'object'
+        ? Object.entries(response)
+          .flatMap(([field, messages]) => (Array.isArray(messages) ? messages : [messages])
+            .map((message) => `${field}: ${message}`))
+          .join(' ')
+        : '';
+      setError(details || response?.error || response?.detail || 'Upload failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -340,6 +355,56 @@ function UploadModal({ onClose, onSuccess }) {
             </div>
           </div>
 
+          {/* Role visibility allow-list */}
+          <div style={{
+            background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px',
+            padding: '12px 14px', marginBottom: '14px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151' }}>
+                  Document Visibility by Role
+                </label>
+                <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>
+                  Select roles that may view this document. Leave all unchecked to allow every role with document access.
+                </p>
+              </div>
+              {selectedRoleSlugs.length > 0 && (
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#4338ca', whiteSpace: 'nowrap' }}>
+                  {selectedRoleSlugs.length} selected
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '7px', marginTop: '10px' }}>
+              {roles.map((role) => {
+                const checked = selectedRoleSlugs.includes(role.slug);
+                return (
+                  <label key={role.slug} style={{
+                    display: 'flex', alignItems: 'center', gap: '7px', padding: '8px 9px',
+                    border: `1px solid ${checked ? '#c7d2fe' : '#e2e8f0'}`,
+                    borderRadius: '8px', background: checked ? '#eef2ff' : '#fff',
+                    color: checked ? '#3730a3' : '#475569', cursor: 'pointer', fontSize: '12px', fontWeight: 600
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => setSelectedRoleSlugs((current) => checked
+                        ? current.filter((slug) => slug !== role.slug)
+                        : [...current, role.slug])}
+                      style={{ accentColor: '#4f46e5' }}
+                    />
+                    {role.name}
+                  </label>
+                );
+              })}
+              {roles.length === 0 && (
+                <span style={{ gridColumn: '1 / -1', fontSize: '12px', color: '#94a3b8' }}>
+                  No roles are available yet. The document will be visible to all document users.
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* Release Workflow Selection */}
           <div style={{
             background: '#f8fafc',
@@ -433,6 +498,106 @@ function UploadModal({ onClose, onSuccess }) {
   );
 }
 
+// ── Document Visibility Modal ────────────────────────────────────────────────
+function DocumentAccessModal({ doc, onClose, onSuccess }) {
+  const [roles, setRoles] = useState([]);
+  const [selectedRoleSlugs, setSelectedRoleSlugs] = useState(
+    (doc.allowed_roles || []).map((role) => role.slug)
+  );
+  const [loading, setLoading] = useState(false);
+  const [loadingRoles, setLoadingRoles] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    getDocumentRoles()
+      .then((res) => setRoles(res.data || []))
+      .catch(() => setError('Unable to load the current role list.'))
+      .finally(() => setLoadingRoles(false));
+  }, []);
+
+  const handleSave = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await updateDocumentAccess(doc.id, selectedRoleSlugs);
+      onSuccess();
+    } catch (err) {
+      setError(err.response?.data?.detail || err.response?.data?.error || 'Unable to save document visibility.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(15,23,42,0.55)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+    }}>
+      <div style={{
+        width: '100%', maxWidth: '640px', maxHeight: '88vh', overflow: 'hidden',
+        background: '#fff', borderRadius: '18px', boxShadow: '0 25px 60px rgba(0,0,0,0.22)',
+        display: 'flex', flexDirection: 'column'
+      }}>
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '18px', color: '#0f172a' }}>Document Visibility</h3>
+            <p style={{ margin: '5px 0 0', color: '#64748b', fontSize: '12px' }}>
+              {doc.document_number} : {doc.title}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} style={{ border: 'none', background: 'none', color: '#64748b', cursor: 'pointer', fontSize: 22 }}>×</button>
+        </div>
+
+        <div style={{ padding: '20px 24px', overflowY: 'auto' }}>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Who can see this document?</div>
+            <p style={{ margin: '5px 0 0', fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
+              Tick the roles that should have access. Leave every role unchecked to make it visible to all users who have Document Control access. New roles appear here automatically.
+            </p>
+          </div>
+
+          {error && <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: 12 }}>{error}</div>}
+
+          {loadingRoles ? (
+            <div style={{ padding: 24, textAlign: 'center', color: '#64748b', fontSize: 13 }}>Loading roles...</div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 9 }}>
+              {roles.map((role) => {
+                const checked = selectedRoleSlugs.includes(role.slug);
+                return (
+                  <label key={role.slug} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '11px 12px',
+                    border: `1px solid ${checked ? '#a5b4fc' : '#e2e8f0'}`,
+                    borderRadius: 9, background: checked ? '#eef2ff' : '#fff',
+                    color: checked ? '#3730a3' : '#475569', cursor: 'pointer', fontSize: 13, fontWeight: 600
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => setSelectedRoleSlugs((current) => checked
+                        ? current.filter((slug) => slug !== role.slug)
+                        : [...current, role.slug])}
+                      style={{ accentColor: '#4f46e5' }}
+                    />
+                    <span>{role.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: '14px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" onClick={onClose} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+          <button type="button" onClick={handleSave} disabled={loading || loadingRoles} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#4f46e5', color: '#fff', cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+            {loading ? 'Saving...' : 'Save Visibility'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page Component ───────────────────────────────────────────────────────
 export default function DocumentControlDocumentsPage() {
   const { user } = useAuth();
@@ -455,15 +620,18 @@ export default function DocumentControlDocumentsPage() {
 
   // Modals state
   const [showUpload, setShowUpload] = useState(false);
+  const [accessDoc, setAccessDoc] = useState(null);
   const [selectedViewerDoc, setSelectedViewerDoc] = useState(null);
   const [selectedDCRDoc, setSelectedDCRDoc] = useState(null);
   const [historyDoc, setHistoryDoc] = useState(null);
   const [historyLogs, setHistoryLogs] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  const userRole = user?.role || '';
-  const canUpload = ['admin', 'supervisor', 'calibrator'].includes(userRole);
-  const canRaiseDCR = ['admin', 'supervisor', 'calibrator'].includes(userRole);
+  const canUpload = can(user, 'document.upload');
+  const canManageDocumentAccess = (doc) => (
+    String(doc.uploaded_by) === String(user?.id)
+  );
+  const canRaiseDCR = can(user, 'document.dcr.create');
 
   const fetchDocs = async () => {
     setLoading(true);
@@ -817,6 +985,11 @@ export default function DocumentControlDocumentsPage() {
                         📎 {doc.file_name} <span style={{ color: '#cbd5e1' }}>•</span> {formatSize(doc.file_size)}
                       </div>
                     )}
+                    <div style={{ fontSize: '10px', color: '#6366f1', marginTop: '4px', fontWeight: 600 }}>
+                      {doc.allowed_roles?.length
+                        ? `Visible to: ${doc.allowed_roles.map((role) => role.name).join(', ')}`
+                        : 'Visible to all document users'}
+                    </div>
                   </td>
 
                   {/* 5. Rev. No. */}
@@ -888,6 +1061,20 @@ export default function DocumentControlDocumentsPage() {
                         </button>
                       )}
 
+                      {canManageDocumentAccess(doc) && (
+                        <button
+                          title="Edit document visibility"
+                          onClick={() => setAccessDoc(doc)}
+                          style={{
+                            background: '#ecfeff', border: '1px solid #a5f3fc', borderRadius: '7px',
+                            padding: '5px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                            color: '#0e7490', fontSize: '11px', fontWeight: '600'
+                          }}
+                        >
+                          <User size={12} /> Access
+                        </button>
+                      )}
+
                       <button
                         title="Audit history"
                         onClick={(e) => openHistory(doc, e)}
@@ -912,6 +1099,18 @@ export default function DocumentControlDocumentsPage() {
         <UploadModal
           onClose={() => setShowUpload(false)}
           onSuccess={() => { setShowUpload(false); fetchDocs(); }}
+          userRole={user?.role}
+        />
+      )}
+
+      {accessDoc && (
+        <DocumentAccessModal
+          doc={accessDoc}
+          onClose={() => setAccessDoc(null)}
+          onSuccess={() => {
+            setAccessDoc(null);
+            fetchDocs();
+          }}
         />
       )}
 

@@ -5,6 +5,7 @@ from django.core.mail import EmailMessage
 from django.conf import settings
 from .models import BugReport
 from .serializers import BugReportSerializer
+from apps.users.permissions import HasAccess
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,8 +16,8 @@ class BugReportListCreateView(generics.ListCreateAPIView):
     
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
+            return [HasAccess('support.create')]
+        return [HasAccess('support.manage')]
 
     def get_queryset(self):
         return BugReport.objects.all()

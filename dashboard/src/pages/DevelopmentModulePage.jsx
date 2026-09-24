@@ -5,11 +5,14 @@ import {
   ArrowRight,
   FileSpreadsheet
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { canOpenPath } from '../utils/access';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 
 export default function DevelopmentModulePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const cards = [
     {
@@ -36,6 +39,7 @@ export default function DevelopmentModulePage() {
     },
   ];
 
+  const visibleCards = cards.filter((card) => canOpenPath(user, card.to));
   return (
     <>
       <Header
@@ -62,7 +66,7 @@ export default function DevelopmentModulePage() {
               gap: '24px',
             }}
           >
-            {cards.map((card, idx) => {
+            {visibleCards.map((card, idx) => {
               const IconComponent = card.icon;
               return (
                 <div
