@@ -94,4 +94,3 @@ export const markNotificationUnread = (id) =>
 
 export const markAllNotificationsRead = () =>
   api.post('/notifications/mark-all-read/');
-
