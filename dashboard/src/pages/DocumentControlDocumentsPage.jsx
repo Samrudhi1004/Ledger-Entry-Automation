@@ -12,7 +12,7 @@ import {
   getDocuments, uploadDocument,
   approveDocument, rejectDocument, submitForReview,
   getDocumentHistory, getDownloadUrl, getAssignableUsers,
-  getDocumentRoles, updateDocumentAccess,
+  getDocumentRoles, getDocumentAccess, saveDocumentAccess,
 } from '../api/documentControl';
 import DocumentViewerModal from '../components/document_control/DocumentViewerModal';
 import DCRSubmissionModal from '../components/document_control/DCRSubmissionModal';
@@ -69,35 +69,35 @@ function StatusBadge({ status }) {
 }
 
 // ── Upload Modal ──────────────────────────────────────────────────────────────
-function UploadModal({ onClose, onSuccess, userRole }) {
+function UploadModal({ onClose, onSuccess }) {
+  const today = new Date().toISOString().split('T')[0];
+
   const [form, setForm] = useState({
     title: '',
     description: '',
     doc_level: 'L2',
     document_number: '',
     revision: '0',
-    revision_date: new Date().toISOString().split('T')[0],
-    effective_date: new Date().toISOString().split('T')[0],
+    revision_date: today,
+    effective_date: today,
     reviewed_by: '',
     approved_by: '',
-    status: 'approved', // 'approved' (Active Master) or 'under_review' (Send for Sign-off)
+    status: 'approved', // 'approved' = Active Master, 'under_review' = Send for Review
   });
   const [users, setUsers] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [selectedRoleSlugs, setSelectedRoleSlugs] = useState(() => userRole ? [userRole] : []);
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const dropRef = useRef();
 
+  // Only fetch users when the review workflow is selected
   useEffect(() => {
-    getAssignableUsers()
-      .then(res => setUsers(res.data || []))
-      .catch(err => console.error("Failed to fetch users", err));
-    getDocumentRoles()
-      .then(res => setRoles(res.data || []))
-      .catch(err => console.error("Failed to fetch document roles", err));
-  }, []);
+    if (form.status === 'under_review') {
+      getAssignableUsers()
+        .then(res => setUsers(res.data || []))
+        .catch(err => console.error('Failed to fetch users', err));
+    }
+  }, [form.status]);
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -109,6 +109,9 @@ function UploadModal({ onClose, onSuccess, userRole }) {
     e.preventDefault();
     if (!file) return setError('Please select a file.');
     if (!form.title.trim()) return setError('Description / Procedure Title is required.');
+    if (form.status === 'under_review' && !form.reviewed_by)
+      return setError('Please select a Reviewer before sending for review.');
+
     setLoading(true); setError('');
     try {
       const fd = new FormData();
@@ -120,10 +123,13 @@ function UploadModal({ onClose, onSuccess, userRole }) {
       if (form.revision.trim()) fd.append('revision', form.revision.trim());
       if (form.revision_date) fd.append('revision_date', form.revision_date);
       if (form.effective_date) fd.append('effective_date', form.effective_date);
-      if (form.reviewed_by) fd.append('reviewed_by', form.reviewed_by);
-      if (form.approved_by) fd.append('approved_by', form.approved_by);
       fd.append('status', form.status);
-      fd.append('allowed_role_slugs', JSON.stringify(selectedRoleSlugs));
+      // Only send reviewer/approver when going through review workflow
+      if (form.status === 'under_review') {
+        if (form.reviewed_by) fd.append('reviewed_by', form.reviewed_by);
+        if (form.approved_by) fd.append('approved_by', form.approved_by);
+      }
+      fd.append('allowed_role_slugs', JSON.stringify([])); // no role restriction — access managed per-user
       await uploadDocument(fd);
       onSuccess();
     } catch (err) {
@@ -139,6 +145,8 @@ function UploadModal({ onClose, onSuccess, userRole }) {
       setLoading(false);
     }
   };
+
+  const isReview = form.status === 'under_review';
 
   return (
     <div style={{
@@ -164,7 +172,8 @@ function UploadModal({ onClose, onSuccess, userRole }) {
         </div>
 
         <form onSubmit={handleSubmit} style={{ padding: '20px 26px 24px', maxHeight: '82vh', overflowY: 'auto' }}>
-          {/* Drag-and-drop zone */}
+
+          {/* ── Drag-and-drop zone ── */}
           <div
             ref={dropRef}
             onDrop={handleDrop}
@@ -184,7 +193,7 @@ function UploadModal({ onClose, onSuccess, userRole }) {
                 <Paperclip size={20} color="#6366f1" style={{ marginBottom: '6px' }} />
                 <p style={{ margin: 0, fontWeight: '600', color: '#6366f1', fontSize: '13px' }}>{file.name}</p>
                 <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#94a3b8' }}>
-                  {(file.size / 1024 / 1024).toFixed(2)} MB : click to change
+                  {(file.size / 1024 / 1024).toFixed(2)} MB · click to change
                 </p>
               </div>
             ) : (
@@ -209,7 +218,7 @@ function UploadModal({ onClose, onSuccess, userRole }) {
             </div>
           )}
 
-          {/* Level & Doc No Grid */}
+          {/* ── Level & Doc No ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
@@ -218,10 +227,7 @@ function UploadModal({ onClose, onSuccess, userRole }) {
               <select
                 value={form.doc_level}
                 onChange={(e) => setForm(p => ({ ...p, doc_level: e.target.value }))}
-                style={{
-                  width: '100%', padding: '9px 12px', borderRadius: '8px',
-                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: '#fff'
-                }}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: '#fff' }}
               >
                 <option value="L1">L1 : Quality Manual & Policy</option>
                 <option value="L2">L2 : Standard Operating Procedure (SOP/QSP)</option>
@@ -229,7 +235,6 @@ function UploadModal({ onClose, onSuccess, userRole }) {
                 <option value="L4">L4 : Form / Format / Checklist</option>
               </select>
             </div>
-
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
                 Doc No. (e.g. QSP-04-01)
@@ -238,15 +243,12 @@ function UploadModal({ onClose, onSuccess, userRole }) {
                 value={form.document_number}
                 onChange={(e) => setForm(p => ({ ...p, document_number: e.target.value }))}
                 placeholder="e.g. QSP-04-01 (or auto-generate)"
-                style={{
-                  width: '100%', padding: '9px 12px', borderRadius: '8px',
-                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
-                }}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
               />
             </div>
           </div>
 
-          {/* Description / Procedure Title */}
+          {/* ── Description / Procedure Title ── */}
           <div style={{ marginBottom: '14px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
               Description (Procedure Title) *
@@ -255,14 +257,11 @@ function UploadModal({ onClose, onSuccess, userRole }) {
               value={form.title}
               onChange={(e) => setForm(p => ({ ...p, title: e.target.value }))}
               placeholder="e.g. Product Safety, Business Planning, Plant Facility..."
-              style={{
-                width: '100%', padding: '9px 12px', borderRadius: '8px',
-                border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
-              }}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
             />
           </div>
 
-          {/* Rev. No., Rev. Date & Effective Date Grid */}
+          {/* ── Rev. No., Rev. Date & Effective Date ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1.2fr', gap: '10px', marginBottom: '14px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
@@ -272,13 +271,9 @@ function UploadModal({ onClose, onSuccess, userRole }) {
                 value={form.revision}
                 onChange={(e) => setForm(p => ({ ...p, revision: e.target.value }))}
                 placeholder="0"
-                style={{
-                  width: '100%', padding: '9px 12px', borderRadius: '8px',
-                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
-                }}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
               />
             </div>
-
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
                 Rev. Date
@@ -287,13 +282,9 @@ function UploadModal({ onClose, onSuccess, userRole }) {
                 type="date"
                 value={form.revision_date}
                 onChange={(e) => setForm(p => ({ ...p, revision_date: e.target.value }))}
-                style={{
-                  width: '100%', padding: '9px 10px', borderRadius: '8px',
-                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
-                }}
+                style={{ width: '100%', padding: '9px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
               />
             </div>
-
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
                 Effective from
@@ -302,155 +293,126 @@ function UploadModal({ onClose, onSuccess, userRole }) {
                 type="date"
                 value={form.effective_date}
                 onChange={(e) => setForm(p => ({ ...p, effective_date: e.target.value }))}
-                style={{
-                  width: '100%', padding: '9px 10px', borderRadius: '8px',
-                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box'
-                }}
+                style={{ width: '100%', padding: '9px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
               />
             </div>
           </div>
 
-          {/* Reviewer & Approver Sign-off Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
-                Reviewer (Reviewed by)
-              </label>
-              <select
-                value={form.reviewed_by}
-                onChange={(e) => setForm(p => ({ ...p, reviewed_by: e.target.value }))}
-                style={{
-                  width: '100%', padding: '9px 12px', borderRadius: '8px',
-                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: '#fff'
-                }}
-              >
-                <option value="">Select Reviewer (Optional)</option>
-                {users.map(u => (
-                  <option key={u.id} value={u.id}>
-                    {(u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username} {u.role ? `(${u.role})` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
-                Approver (Approved by)
-              </label>
-              <select
-                value={form.approved_by}
-                onChange={(e) => setForm(p => ({ ...p, approved_by: e.target.value }))}
-                style={{
-                  width: '100%', padding: '9px 12px', borderRadius: '8px',
-                  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: '#fff'
-                }}
-              >
-                <option value="">Select Approver (Optional)</option>
-                {users.map(u => (
-                  <option key={u.id} value={u.id}>
-                    {(u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username} {u.role ? `(${u.role})` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Role visibility allow-list */}
+          {/* ── Release Workflow Status ── */}
           <div style={{
-            background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px',
-            padding: '12px 14px', marginBottom: '14px'
+            background: '#f8fafc', border: `1px solid ${isReview ? '#c7d2fe' : '#e2e8f0'}`,
+            borderRadius: '12px', padding: '14px 16px', marginBottom: '14px',
+            transition: 'border-color 0.2s ease'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151' }}>
-                  Document Visibility by Role
-                </label>
-                <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>
-                  Select roles that may view this document. Leave all unchecked to allow every role with document access.
-                </p>
-              </div>
-              {selectedRoleSlugs.length > 0 && (
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#4338ca', whiteSpace: 'nowrap' }}>
-                  {selectedRoleSlugs.length} selected
-                </span>
-              )}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '7px', marginTop: '10px' }}>
-              {roles.map((role) => {
-                const checked = selectedRoleSlugs.includes(role.slug);
-                return (
-                  <label key={role.slug} style={{
-                    display: 'flex', alignItems: 'center', gap: '7px', padding: '8px 9px',
-                    border: `1px solid ${checked ? '#c7d2fe' : '#e2e8f0'}`,
-                    borderRadius: '8px', background: checked ? '#eef2ff' : '#fff',
-                    color: checked ? '#3730a3' : '#475569', cursor: 'pointer', fontSize: '12px', fontWeight: 600
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => setSelectedRoleSlugs((current) => checked
-                        ? current.filter((slug) => slug !== role.slug)
-                        : [...current, role.slug])}
-                      style={{ accentColor: '#4f46e5' }}
-                    />
-                    {role.name}
-                  </label>
-                );
-              })}
-              {roles.length === 0 && (
-                <span style={{ gridColumn: '1 / -1', fontSize: '12px', color: '#94a3b8' }}>
-                  No roles are available yet. The document will be visible to all document users.
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Release Workflow Selection */}
-          <div style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: '10px',
-            padding: '12px 14px',
-            marginBottom: '14px'
-          }}>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '10px' }}>
               Release Workflow Status
             </label>
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#1e293b' }}>
-                <input
-                  type="radio"
-                  name="doc_status"
-                  value="approved"
-                  checked={form.status === 'approved'}
-                  onChange={() => setForm(p => ({ ...p, status: 'approved' }))}
-                  style={{ accentColor: '#4f46e5' }}
-                />
-                <span style={{ fontWeight: '600' }}>Active Master</span>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>(Already approved procedure)</span>
-              </label>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#1e293b' }}>
-                <input
-                  type="radio"
-                  name="doc_status"
-                  value="under_review"
-                  checked={form.status === 'under_review'}
-                  onChange={() => setForm(p => ({ ...p, status: 'under_review' }))}
-                  style={{ accentColor: '#4f46e5' }}
-                />
-                <span style={{ fontWeight: '600' }}>Send for Review & Approval</span>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>(Triggers notifications)</span>
-              </label>
-            </div>
-            <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>
-              {form.status === 'approved'
-                ? 'Document will be immediately registered and active in the Matrix Register.'
-                : 'Assigned Reviewer will be notified via email and in-app bell to review and recommend.'}
-            </p>
+            {/* Active Master radio */}
+            <label style={{
+              display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer',
+              padding: '10px 12px', borderRadius: '8px', marginBottom: '8px',
+              background: !isReview ? '#eef2ff' : '#fff',
+              border: `1px solid ${!isReview ? '#a5b4fc' : '#e2e8f0'}`,
+              transition: 'all 0.15s ease'
+            }}>
+              <input
+                type="radio"
+                name="doc_status"
+                value="approved"
+                checked={!isReview}
+                onChange={() => setForm(p => ({ ...p, status: 'approved', reviewed_by: '', approved_by: '' }))}
+                style={{ accentColor: '#4f46e5', marginTop: '2px' }}
+              />
+              <div>
+                <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>Active Master</span>
+                <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '8px' }}>(Already approved procedure)</span>
+                {!isReview && (
+                  <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#6366f1', fontWeight: 500 }}>
+                    Document will be immediately registered and active in the Document Library.
+                  </p>
+                )}
+              </div>
+            </label>
+
+            {/* Send for Review radio */}
+            <label style={{
+              display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer',
+              padding: '10px 12px', borderRadius: '8px',
+              background: isReview ? '#fefce8' : '#fff',
+              border: `1px solid ${isReview ? '#fde68a' : '#e2e8f0'}`,
+              transition: 'all 0.15s ease'
+            }}>
+              <input
+                type="radio"
+                name="doc_status"
+                value="under_review"
+                checked={isReview}
+                onChange={() => setForm(p => ({ ...p, status: 'under_review' }))}
+                style={{ accentColor: '#4f46e5', marginTop: '2px' }}
+              />
+              <div style={{ flex: 1 }}>
+                <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>Send for Review & Approval</span>
+                <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '8px' }}>(Triggers notifications)</span>
+                {isReview && (
+                  <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#92400e', fontWeight: 500 }}>
+                    Assigned Reviewer will be notified via email and in-app bell to review and recommend.
+                  </p>
+                )}
+              </div>
+            </label>
+
+            {/* ── Conditional Reviewer / Approver panel ── */}
+            {isReview && (
+              <div style={{
+                marginTop: '12px', padding: '12px 14px',
+                background: '#fff', border: '1px solid #fde68a', borderRadius: '10px',
+                animation: 'fadeIn 0.2s ease'
+              }}>
+                <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#92400e', fontWeight: 600 }}>
+                  Select who will review and approve this document:
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                      Reviewer * <span style={{ color: '#dc2626' }}>Required</span>
+                    </label>
+                    <select
+                      value={form.reviewed_by}
+                      onChange={(e) => setForm(p => ({ ...p, reviewed_by: e.target.value }))}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: `1px solid ${!form.reviewed_by ? '#fca5a5' : '#e2e8f0'}`, fontSize: '13px', outline: 'none', background: '#fff' }}
+                    >
+                      <option value="">Select Reviewer</option>
+                      {users.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {(u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username} {u.role ? `(${u.role})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                      Approver <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
+                    </label>
+                    <select
+                      value={form.approved_by}
+                      onChange={(e) => setForm(p => ({ ...p, approved_by: e.target.value }))}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: '#fff' }}
+                    >
+                      <option value="">Select Approver (Optional)</option>
+                      {users.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {(u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username} {u.role ? `(${u.role})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Scope / Remarks (Optional) */}
+          {/* ── Scope / Notes (Optional) ── */}
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
               Scope / Notes (Optional)
@@ -462,13 +424,13 @@ function UploadModal({ onClose, onSuccess, userRole }) {
               placeholder="Brief summary of document scope or applicability..."
               style={{
                 width: '100%', padding: '9px 12px', borderRadius: '8px',
-                border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box',
-                fontFamily: 'inherit'
+                border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none',
+                boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical'
               }}
             />
           </div>
 
-          {/* Submit button */}
+          {/* ── Submit ── */}
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
             <button
               type="button"
@@ -485,11 +447,17 @@ function UploadModal({ onClose, onSuccess, userRole }) {
               disabled={loading}
               style={{
                 padding: '9px 20px', borderRadius: '8px', border: 'none',
-                background: '#6366f1', color: '#fff', cursor: loading ? 'not-allowed' : 'pointer',
-                fontSize: '13px', fontWeight: '700'
+                background: loading ? '#a5b4fc' : '#6366f1',
+                color: '#fff', cursor: loading ? 'not-allowed' : 'pointer',
+                fontSize: '13px', fontWeight: '700', transition: 'background 0.15s ease'
               }}
             >
-              {loading ? 'Uploading...' : (form.status === 'approved' ? 'Save & Register Master' : 'Save & Send for Review')}
+              {loading
+                ? 'Uploading...'
+                : isReview
+                  ? 'Save & Send for Review'
+                  : 'Save & Register Master'
+              }
             </button>
           </div>
         </form>
@@ -498,100 +466,287 @@ function UploadModal({ onClose, onSuccess, userRole }) {
   );
 }
 
-// ── Document Visibility Modal ────────────────────────────────────────────────
+
+// ── Document Access Modal (Per-User Permission Matrix) ───────────────────────
+const ROLE_COLORS = {
+  admin:            { bg: '#fef3c7', color: '#92400e' },
+  supervisor:       { bg: '#ede9fe', color: '#5b21b6' },
+  inspector:        { bg: '#ecfdf5', color: '#065f46' },
+  quality_engineer: { bg: '#eff6ff', color: '#1e40af' },
+  calibrator:       { bg: '#fff7ed', color: '#9a3412' },
+  operator:         { bg: '#f1f5f9', color: '#334155' },
+};
+
+const PERMS = [
+  { key: 'can_preview',  label: 'Preview' },
+  { key: 'can_download', label: 'Download' },
+  { key: 'can_print',    label: 'Print' },
+  { key: 'can_edit',     label: 'Edit (DCR)' },
+  { key: 'can_delete',   label: 'Delete' },
+];
+
 function DocumentAccessModal({ doc, onClose, onSuccess }) {
-  const [roles, setRoles] = useState([]);
-  const [selectedRoleSlugs, setSelectedRoleSlugs] = useState(
-    (doc.allowed_roles || []).map((role) => role.slug)
-  );
-  const [loading, setLoading] = useState(false);
-  const [loadingRoles, setLoadingRoles] = useState(true);
-  const [error, setError] = useState('');
+  const [users, setUsers]     = useState([]);     // all org users from API
+  const [perms, setPerms]     = useState({});     // { userId: { can_preview, ... } }
+  const [search, setSearch]   = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
 
   useEffect(() => {
-    getDocumentRoles()
-      .then((res) => setRoles(res.data || []))
-      .catch(() => setError('Unable to load the current role list.'))
-      .finally(() => setLoadingRoles(false));
-  }, []);
+    getDocumentAccess(doc.id)
+      .then((res) => {
+        const usersData = res.data?.users || [];
+        setUsers(usersData);
+        // Build initial perms map from API response
+        const map = {};
+        usersData.forEach((u) => {
+          map[u.user_id] = {
+            can_preview:  u.can_preview,
+            can_download: u.can_download,
+            can_print:    u.can_print,
+            can_edit:     u.can_edit,
+            can_delete:   u.can_delete,
+          };
+        });
+        setPerms(map);
+      })
+      .catch(() => setError('Unable to load user list. Please try again.'))
+      .finally(() => setLoading(false));
+  }, [doc.id]);
+
+  const toggle = (userId, permKey) => {
+    setPerms((prev) => ({
+      ...prev,
+      [userId]: {
+        ...prev[userId],
+        [permKey]: !prev[userId]?.[permKey],
+      },
+    }));
+  };
+
+  const toggleRow = (userId) => {
+    const current = perms[userId] || {};
+    const allOn = PERMS.every((p) => current[p.key]);
+    const next = {};
+    PERMS.forEach((p) => { next[p.key] = !allOn; });
+    setPerms((prev) => ({ ...prev, [userId]: next }));
+  };
+
+  const toggleColumn = (permKey) => {
+    const allOn = users.every((u) => perms[u.user_id]?.[permKey]);
+    setPerms((prev) => {
+      const next = { ...prev };
+      users.forEach((u) => {
+        next[u.user_id] = { ...(next[u.user_id] || {}), [permKey]: !allOn };
+      });
+      return next;
+    });
+  };
 
   const handleSave = async () => {
-    setLoading(true);
+    setSaving(true);
     setError('');
     try {
-      await updateDocumentAccess(doc.id, selectedRoleSlugs);
+      const permissions = users.map((u) => ({
+        user_id:      u.user_id,
+        can_preview:  perms[u.user_id]?.can_preview  || false,
+        can_download: perms[u.user_id]?.can_download || false,
+        can_print:    perms[u.user_id]?.can_print    || false,
+        can_edit:     perms[u.user_id]?.can_edit     || false,
+        can_delete:   perms[u.user_id]?.can_delete   || false,
+      }));
+      await saveDocumentAccess(doc.id, permissions);
       onSuccess();
     } catch (err) {
-      setError(err.response?.data?.detail || err.response?.data?.error || 'Unable to save document visibility.');
+      setError(err.response?.data?.detail || err.response?.data?.error || 'Failed to save access settings.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
+  const filtered = users.filter((u) => {
+    const q = search.toLowerCase();
+    return (
+      u.full_name.toLowerCase().includes(q) ||
+      u.username.toLowerCase().includes(q) ||
+      u.role.toLowerCase().includes(q)
+    );
+  });
+
+  const hasAnyAccess = (userId) =>
+    PERMS.some((p) => perms[userId]?.[p.key]);
+
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(15,23,42,0.55)',
+      position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(15,23,42,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
     }}>
       <div style={{
-        width: '100%', maxWidth: '640px', maxHeight: '88vh', overflow: 'hidden',
-        background: '#fff', borderRadius: '18px', boxShadow: '0 25px 60px rgba(0,0,0,0.22)',
-        display: 'flex', flexDirection: 'column'
+        width: '100%', maxWidth: '860px', maxHeight: '90vh',
+        background: '#fff', borderRadius: '20px',
+        boxShadow: '0 30px 70px rgba(0,0,0,0.25)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden'
       }}>
-        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '18px', color: '#0f172a' }}>Document Visibility</h3>
-            <p style={{ margin: '5px 0 0', color: '#64748b', fontSize: '12px' }}>
-              {doc.document_number} : {doc.title}
-            </p>
+
+        {/* Header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>
+                Document Access Control
+              </h3>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>
+                {doc.document_number} : {doc.title}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 22, color: '#94a3b8', padding: '0 4px' }}
+            >×</button>
           </div>
-          <button type="button" onClick={onClose} style={{ border: 'none', background: 'none', color: '#64748b', cursor: 'pointer', fontSize: 22 }}>×</button>
+
+          {/* Info banner */}
+          <div style={{
+            marginTop: 12, padding: '10px 14px', background: '#f0f9ff',
+            border: '1px solid #bae6fd', borderRadius: 8, fontSize: 12, color: '#0369a1'
+          }}>
+            <strong>How it works:</strong> Tick permission boxes for each user.
+            Leaving all boxes unchecked hides the document from that user.
+            The document uploader and all Admins always have full access.
+          </div>
         </div>
 
-        <div style={{ padding: '20px 24px', overflowY: 'auto' }}>
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Who can see this document?</div>
-            <p style={{ margin: '5px 0 0', fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
-              Tick the roles that should have access. Leave every role unchecked to make it visible to all users who have Document Control access. New roles appear here automatically.
-            </p>
-          </div>
+        {/* Search bar */}
+        <div style={{ padding: '12px 24px', borderBottom: '1px solid #f1f5f9' }}>
+          <input
+            type="text"
+            placeholder="Search by name, username, or role..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0',
+              fontSize: 13, outline: 'none', boxSizing: 'border-box'
+            }}
+          />
+        </div>
 
-          {error && <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: 12 }}>{error}</div>}
-
-          {loadingRoles ? (
-            <div style={{ padding: 24, textAlign: 'center', color: '#64748b', fontSize: 13 }}>Loading roles...</div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 9 }}>
-              {roles.map((role) => {
-                const checked = selectedRoleSlugs.includes(role.slug);
-                return (
-                  <label key={role.slug} style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '11px 12px',
-                    border: `1px solid ${checked ? '#a5b4fc' : '#e2e8f0'}`,
-                    borderRadius: 9, background: checked ? '#eef2ff' : '#fff',
-                    color: checked ? '#3730a3' : '#475569', cursor: 'pointer', fontSize: 13, fontWeight: 600
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => setSelectedRoleSlugs((current) => checked
-                        ? current.filter((slug) => slug !== role.slug)
-                        : [...current, role.slug])}
-                      style={{ accentColor: '#4f46e5' }}
-                    />
-                    <span>{role.name}</span>
-                  </label>
-                );
-              })}
+        {/* Table */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {error && (
+            <div style={{ margin: '12px 24px', padding: '10px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: 12 }}>
+              {error}
             </div>
+          )}
+
+          {loading ? (
+            <div style={{ padding: 40, textAlign: 'center', color: '#64748b', fontSize: 13 }}>Loading users...</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>No users found.</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 1 }}>
+                  <th style={{ padding: '10px 24px', textAlign: 'left', fontWeight: 700, color: '#374151', borderBottom: '1px solid #e2e8f0', width: '35%' }}>Name</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#374151', borderBottom: '1px solid #e2e8f0', width: '12%' }}>Role</th>
+                  {PERMS.map((p) => (
+                    <th
+                      key={p.key}
+                      title={`Click to toggle ${p.label} for all users`}
+                      onClick={() => toggleColumn(p.key)}
+                      style={{
+                        padding: '10px 8px', textAlign: 'center', fontWeight: 700,
+                        color: '#4338ca', borderBottom: '1px solid #e2e8f0',
+                        cursor: 'pointer', userSelect: 'none', fontSize: 11,
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {p.label}
+                      <div style={{ fontSize: 9, color: '#94a3b8', fontWeight: 500 }}>click to toggle all</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((u, idx) => {
+                  const anyAccess = hasAnyAccess(u.user_id);
+                  const roleStyle = ROLE_COLORS[u.role] || ROLE_COLORS.operator;
+                  return (
+                    <tr
+                      key={u.user_id}
+                      style={{
+                        background: anyAccess ? '#f0fdf4' : (idx % 2 === 0 ? '#fff' : '#fafafa'),
+                        transition: 'background 0.1s',
+                        borderBottom: '1px solid #f1f5f9'
+                      }}
+                    >
+                      {/* Name + username */}
+                      <td
+                        style={{ padding: '10px 24px', cursor: 'pointer' }}
+                        title="Click to toggle all permissions for this user"
+                        onClick={() => toggleRow(u.user_id)}
+                      >
+                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13 }}>{u.full_name}</div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>@{u.username}</div>
+                      </td>
+
+                      {/* Role badge */}
+                      <td style={{ padding: '10px 8px' }}>
+                        <span style={{
+                          ...roleStyle, padding: '2px 8px', borderRadius: 20,
+                          fontSize: 10, fontWeight: 700, border: '1px solid transparent'
+                        }}>
+                          {u.role.replace('_', ' ')}
+                        </span>
+                      </td>
+
+                      {/* Permission checkboxes */}
+                      {PERMS.map((p) => (
+                        <td key={p.key} style={{ padding: '10px 8px', textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={perms[u.user_id]?.[p.key] || false}
+                            onChange={() => toggle(u.user_id, p.key)}
+                            style={{ width: 16, height: 16, accentColor: '#4f46e5', cursor: 'pointer' }}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
 
-        <div style={{ padding: '14px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" onClick={onClose} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-          <button type="button" onClick={handleSave} disabled={loading || loadingRoles} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#4f46e5', color: '#fff', cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-            {loading ? 'Saving...' : 'Save Visibility'}
-          </button>
+        {/* Footer */}
+        <div style={{
+          padding: '14px 24px', borderTop: '1px solid #e2e8f0',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12
+        }}>
+          <span style={{ fontSize: 12, color: '#64748b' }}>
+            {users.filter((u) => hasAnyAccess(u.user_id)).length} of {users.length} user(s) have access
+          </span>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              type="button" onClick={onClose}
+              style={{
+                padding: '9px 18px', borderRadius: 8, border: '1px solid #e2e8f0',
+                background: '#fff', color: '#475569', cursor: 'pointer', fontWeight: 600, fontSize: 13
+              }}
+            >Cancel</button>
+            <button
+              type="button" onClick={handleSave} disabled={saving || loading}
+              style={{
+                padding: '9px 22px', borderRadius: 8, border: 'none',
+                background: saving ? '#a5b4fc' : '#4f46e5',
+                color: '#fff', cursor: saving ? 'not-allowed' : 'pointer',
+                fontWeight: 700, fontSize: 13
+              }}
+            >
+              {saving ? 'Saving...' : 'Save Access Settings'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -629,7 +784,9 @@ export default function DocumentControlDocumentsPage() {
 
   const canUpload = can(user, 'document.upload');
   const canManageDocumentAccess = (doc) => (
-    String(doc.uploaded_by) === String(user?.id)
+    String(doc.uploaded_by) === String(user?.id) ||
+    user?.role === 'admin' ||
+    user?.is_superuser
   );
   const canRaiseDCR = can(user, 'document.dcr.create');
 
@@ -1027,19 +1184,26 @@ export default function DocumentControlDocumentsPage() {
 
                   {/* 10. Preview */}
                   <td style={{ padding: '13px 14px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                    <button
-                      title="Open Document in Viewer"
-                      onClick={() => setSelectedViewerDoc(doc)}
-                      style={{
-                        background: '#e0e7ff', border: 'none', borderRadius: '7px',
-                        padding: '6px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        color: '#4338ca', fontSize: '12px', fontWeight: '600', transition: 'all 0.15s ease'
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#c7d2fe'}
-                      onMouseLeave={e => e.currentTarget.style.background = '#e0e7ff'}
-                    >
-                      <Eye size={13} /> Preview
-                    </button>
+                    {doc.my_permissions?.can_preview && (
+                      <button
+                        title="Open Document in Viewer"
+                        onClick={() => setSelectedViewerDoc(doc)}
+                        style={{
+                          background: '#e0e7ff', border: 'none', borderRadius: '7px',
+                          padding: '6px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px',
+                          color: '#4338ca', fontSize: '12px', fontWeight: '600', transition: 'all 0.15s ease'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#c7d2fe'}
+                        onMouseLeave={e => e.currentTarget.style.background = '#e0e7ff'}
+                      >
+                        <Eye size={13} /> Preview
+                      </button>
+                    )}
+                    {!doc.my_permissions?.can_preview && (
+                      <span style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic' }}>
+                        No Access
+                      </span>
+                    )}
                   </td>
 
                   {/* 11. Actions */}

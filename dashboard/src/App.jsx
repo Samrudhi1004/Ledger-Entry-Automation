@@ -2,6 +2,8 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
+import { MessageNotificationProvider } from './context/MessageNotificationContext';
+import { MessagingProvider } from './context/MessagingContext';
 import Sidebar from './components/layout/Sidebar';
 import LoginPage from './pages/LoginPage';
 import SessionDetailPage from './pages/SessionDetailPage';
@@ -68,7 +70,13 @@ function ProtectedLayout({ children, pendingCount }) {
     </div>
   );
 
-  return <WebSocketProvider plantId={PLANT_ID}>{layout}</WebSocketProvider>;
+  return (
+    <WebSocketProvider plantId={PLANT_ID}>
+      <MessagingProvider>
+        {layout}
+      </MessagingProvider>
+    </WebSocketProvider>
+  );
 }
 
 function RootRedirect() {
@@ -121,6 +129,7 @@ export default function App() {
   }, [user]);
 
   return (
+    <MessageNotificationProvider>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
@@ -463,5 +472,6 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </MessageNotificationProvider>
   );
 }

@@ -11,6 +11,7 @@ from .models import (
     DocumentActivity,
     DocumentChangeRequest,
     DCRNotification,
+    DocumentUserPermission,
 )
 from apps.users.models import AccessRole
 from .storage import document_delivery_url
@@ -44,6 +45,7 @@ class DocumentListSerializer(serializers.ModelSerializer):
     allowed_roles     = serializers.SerializerMethodField()
     delivery_url      = serializers.SerializerMethodField()
     file_size_display = serializers.ReadOnlyField()
+    my_permissions    = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -56,6 +58,7 @@ class DocumentListSerializer(serializers.ModelSerializer):
             'reviewed_by', 'reviewed_by_name', 'reviewed_at',
             'approved_by', 'approved_by_name', 'approved_at',
             'allowed_roles',
+            'my_permissions',
             'revision_date', 'effective_date', 'expiry_date',
             'created_at', 'updated_at',
         ]
@@ -79,6 +82,37 @@ class DocumentListSerializer(serializers.ModelSerializer):
             for role in obj.allowed_roles.all()
         ]
 
+    def get_my_permissions(self, obj):
+        """Return the logged-in user's permission flags for this document."""
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return None
+        user = request.user
+        # Admins and the uploader always have full access
+        is_admin = user.is_superuser or getattr(user, 'role', '') == 'admin'
+        is_uploader = obj.uploaded_by_id == user.id
+        if is_admin or is_uploader:
+            return {
+                'can_preview': True, 'can_download': True,
+                'can_print': True, 'can_edit': True, 'can_delete': True,
+                'can_manage_access': True,
+            }
+        try:
+            perm = DocumentUserPermission.objects.get(document=obj, user=user)
+            return {
+                'can_preview':  perm.can_preview,
+                'can_download': perm.can_download,
+                'can_print':    perm.can_print,
+                'can_edit':     perm.can_edit,
+                'can_delete':   perm.can_delete,
+                'can_manage_access': False,
+            }
+        except DocumentUserPermission.DoesNotExist:
+            return {
+                'can_preview': False, 'can_download': False,
+                'can_print': False, 'can_edit': False, 'can_delete': False,
+                'can_manage_access': False,
+            }
 
 class DocumentDetailSerializer(DocumentListSerializer):
     """Full detail serializer including activities, revision tree, and links."""
@@ -180,6 +214,38 @@ class DocumentAccessSerializer(serializers.Serializer):
             raise serializers.ValidationError(f'Unknown roles: {", ".join(unknown)}')
         return roles
 
+# ── New per-user document permission serializers ───────────────────────────────
+
+class DocumentUserPermissionReadSerializer(serializers.ModelSerializer):
+    """Read serializer — populates the Access modal user table."""
+    user_id   = serializers.UUIDField(source='user.id', read_only=True)
+    full_name = serializers.SerializerMethodField()
+    username  = serializers.CharField(source='user.username', read_only=True)
+    role      = serializers.CharField(source='user.role', read_only=True)
+
+    class Meta:
+        model = DocumentUserPermission
+        fields = [
+            'user_id', 'full_name', 'username', 'role',
+            'can_preview', 'can_download', 'can_print', 'can_edit', 'can_delete',
+        ]
+
+    def get_full_name(self, obj):
+        return get_user_display(obj.user)
+
+
+class BulkDocumentAccessSerializer(serializers.Serializer):
+    """Accepts the full permission matrix for one document in a single PATCH."""
+
+    class PermissionEntrySerializer(serializers.Serializer):
+        user_id      = serializers.IntegerField()
+        can_preview  = serializers.BooleanField(default=False)
+        can_download = serializers.BooleanField(default=False)
+        can_print    = serializers.BooleanField(default=False)
+        can_edit     = serializers.BooleanField(default=False)
+        can_delete   = serializers.BooleanField(default=False)
+
+    permissions = PermissionEntrySerializer(many=True)
 
 
 # ── DCR Serializers (DKI/MR/F/05) ─────────────────────────────────────────────

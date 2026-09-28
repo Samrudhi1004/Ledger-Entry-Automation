@@ -29,8 +29,16 @@ export const uploadDocument = (formData) =>
 
 export const getDocumentRoles = () => api.get('/documents/roles/');
 
-export const updateDocumentAccess = (id, allowed_role_slugs) =>
-  api.patch(`/documents/${id}/access/`, { allowed_role_slugs });
+// ── Per-user document access (new permission matrix) ───────────────────────
+// Fetch all org users + their current permissions for a specific document.
+// Only callable by the document uploader or an admin.
+export const getDocumentAccess = (id) =>
+  api.get(`/documents/${id}/access/`);
+
+// Save the full permission matrix for a document in one call.
+// permissions: [{ user_id, can_preview, can_download, can_print, can_edit, can_delete }]
+export const saveDocumentAccess = (id, permissions) =>
+  api.patch(`/documents/${id}/access/`, { permissions });
 
 export const submitForReview = (id, comment = '') =>
   api.post(`/documents/${id}/submit_review/`, { comment });

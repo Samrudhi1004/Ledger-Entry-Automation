@@ -49,7 +49,14 @@ export function WebSocketProvider({ children, plantId }) {
     connect();
     return () => {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-      wsRef.current?.close();
+      const ws = wsRef.current;
+      if (!ws) return;
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      } else if (ws.readyState === WebSocket.CONNECTING) {
+        // StrictMode: socket not open yet — defer close to avoid browser warning
+        ws.onopen = () => ws.close();
+      }
     };
   }, [connect]);
 

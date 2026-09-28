@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import api, { BASE_URL, WS_BASE_URL } from '../api/axios';
+import { useMessageNotifications } from './MessageNotificationContext';
 
 const MessagingContext = createContext();
 
@@ -20,11 +21,27 @@ export const MessagingProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [typingUsers, setTypingUsers] = useState({});
   const [onlineUsers, setOnlineUsers] = useState({}); // Track online status: { userId: true/false }
+  
+  // Reconnect keys to force useEffect to re-run on WebSocket close
+  const [notificationReconnectKey, setNotificationReconnectKey] = useState(0);
+  const [presenceReconnectKey, setPresenceReconnectKey] = useState(0);
+  
   const wsRef = useRef(null);
   const userNotificationWsRef = useRef(null);
   const presenceWsRef = useRef(null); // Presence tracking WebSocket
   const reconnectTimeoutRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  // Holds the pending conversation ID to open (from URL param) — readable inside callbacks
+  const pendingConversationIdRef = useRef(null);
+  // Stable ref to selectConversation so fetchConversations can call it without circular deps
+  const selectConversationRef = useRef(null);
+
+  // Stable ref for activeConversation — lets the notification WS onmessage
+  // read the current value without being a dep (avoids reconnect on every conversation switch)
+  const activeConversationRef = useRef(null);
+
+  // Global message notification bridge → feeds the top-right bell
+  const { pushMessageNotification } = useMessageNotifications();
 
   const API_BASE = `/api`;
   const WS_BASE = WS_BASE_URL;
@@ -37,7 +54,19 @@ export const MessagingProvider = ({ children }) => {
       const response = await api.get(`${API_BASE}/messaging/conversations/`);
       // Backend returns paginated response: { count, results: [...] }
       const data = response.data;
-      setConversations(Array.isArray(data) ? data : (data.results || []));
+      const convList = Array.isArray(data) ? data : (data.results || []);
+      setConversations(convList);
+
+      // ── Auto-select conversation from notification bell deep-link ──
+      // Done here (not in an effect) so it fires the instant data is available.
+      const pendingId = pendingConversationIdRef.current;
+      if (pendingId && selectConversationRef.current) {
+        const target = convList.find((c) => c.id === pendingId || c.id === Number(pendingId));
+        if (target) {
+          pendingConversationIdRef.current = null; // Clear it so we don't re-trigger
+          selectConversationRef.current(target);
+        }
+      }
     } catch (error) {
       console.error('Failed to fetch conversations:', error);
     }
@@ -432,6 +461,10 @@ export const MessagingProvider = ({ children }) => {
     }
   }, [fetchMessages, connectWebSocket]);
 
+  // Keep activeConversationRef and selectConversationRef current every render
+  activeConversationRef.current = activeConversation;
+  selectConversationRef.current = selectConversation;
+
   // Update message reactions (for optimistic updates)
   const updateMessageReactions = useCallback((messageId, reactions) => {
     setMessages(prev =>
@@ -501,6 +534,22 @@ export const MessagingProvider = ({ children }) => {
           // via 'message_sent' (sender) and 'new_message' (others). Adding here causes duplicates.
           const { conversation_id, message } = data.data;
 
+          // ── Push to global bell if message is from someone else ──
+          if (message.sender?.id !== user?.id) {
+            pushMessageNotification({
+              id: `msg-${message.id}`,
+              conversation_id,
+              sender_name: message.sender?.username || message.sender?.first_name || 'Someone',
+              preview: message.content
+                ? message.content.length > 60
+                  ? message.content.slice(0, 60) + '…'
+                  : message.content
+                : '📎 Attachment',
+              created_at: message.created_at,
+              is_read: false,
+            });
+          }
+
           setConversations(prev => {
             const conversationExists = prev.some(c => c.id === conversation_id);
 
@@ -522,7 +571,7 @@ export const MessagingProvider = ({ children }) => {
                       created_at: message.created_at
                     },
                     updated_at: message.created_at,
-                    unread_count: (conv.id !== activeConversation?.id && message.sender?.id !== user?.id)
+                    unread_count: (conv.id !== activeConversationRef.current?.id && message.sender?.id !== user?.id)
                       ? (conv.unread_count || 0) + 1
                       : conv.unread_count
                   }
@@ -547,11 +596,9 @@ export const MessagingProvider = ({ children }) => {
 
     ws.onclose = () => {
       console.log('User notification WebSocket closed, attempting to reconnect...');
-      // Reconnect after 5 seconds
+      // Increment key to trigger effect re-run after 5 seconds
       setTimeout(() => {
-        if (user) {
-          // Component will reconnect via this effect
-        }
+        if (user) setNotificationReconnectKey(prev => prev + 1);
       }, 5000);
     };
 
@@ -566,11 +613,15 @@ export const MessagingProvider = ({ children }) => {
 
     return () => {
       clearInterval(pingInterval);
+      // Handle both OPEN and CONNECTING states (the latter occurs in React StrictMode
+      // which double-invokes effects; closing a CONNECTING socket causes a browser warning).
       if (ws.readyState === WebSocket.OPEN) {
         ws.close();
+      } else if (ws.readyState === WebSocket.CONNECTING) {
+        ws.onopen = () => ws.close(); // defer close until it actually opens
       }
     };
-  }, [user, WS_BASE, activeConversation]);
+  }, [user, WS_BASE, notificationReconnectKey]); 
 
   // Connect to presence WebSocket for real-time online/offline status
   useEffect(() => {
@@ -635,11 +686,9 @@ export const MessagingProvider = ({ children }) => {
 
     ws.onclose = () => {
       console.log('Presence WebSocket closed, attempting to reconnect...');
-      // Reconnect after 5 seconds
+      // Increment key to trigger effect re-run after 5 seconds
       setTimeout(() => {
-        if (user) {
-          // Component will reconnect via this effect
-        }
+        if (user) setPresenceReconnectKey(prev => prev + 1);
       }, 5000);
     };
 
@@ -656,9 +705,11 @@ export const MessagingProvider = ({ children }) => {
       clearInterval(pingInterval);
       if (ws.readyState === WebSocket.OPEN) {
         ws.close();
+      } else if (ws.readyState === WebSocket.CONNECTING) {
+        ws.onopen = () => ws.close();
       }
     };
-  }, [user, WS_BASE]);
+  }, [user, WS_BASE, presenceReconnectKey]);
 
   // Load initial conversations
   useEffect(() => {
@@ -666,6 +717,7 @@ export const MessagingProvider = ({ children }) => {
       fetchConversations();
     }
   }, [user, fetchConversations]);
+
 
   // Cleanup on unmount
   useEffect(() => {
@@ -710,6 +762,22 @@ export const MessagingProvider = ({ children }) => {
     deleteMessage,
     clearHistory,
     leaveGroup,
+    setPendingConversationId: (id) => {
+      if (id) {
+        // Only select if it's not already the active one
+        if (activeConversationRef.current?.id !== id && activeConversationRef.current?.id !== Number(id)) {
+          pendingConversationIdRef.current = id;
+          // If conversations are already loaded, trigger auto-select immediately
+          if (conversations.length > 0) {
+            const target = conversations.find((c) => c.id === id || c.id === Number(id));
+            if (target && selectConversationRef.current) {
+              pendingConversationIdRef.current = null; // Consume the pending ID
+              selectConversationRef.current(target);
+            }
+          }
+        }
+      }
+    }
   };
 
   return (

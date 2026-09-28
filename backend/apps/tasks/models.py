@@ -26,3 +26,20 @@ class Task(models.Model):
 
     def __str__(self):
         return f"{self.title} (Allocated to {self.allocated_to.username})"
+
+
+class TaskAttachment(models.Model):
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='attachments')
+    file = models.FileField(upload_to='task_attachments/%Y/%m/')
+    file_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100)
+    file_size = models.PositiveIntegerField()
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'task_attachments'
+        ordering = ['uploaded_at']
+
+    def __str__(self):
+        return f"{self.file_name} ({self.task_id})"

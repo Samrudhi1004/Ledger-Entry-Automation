@@ -4,12 +4,14 @@ import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
 import { can } from '../utils/access';
-import { getTasks, resolveIssue, acceptTask, completeTask, flagIssue } from '../api/tasks';
+import { getTasks, resolveIssue, acceptTask, flagIssue } from '../api/tasks';
 import { formatDateTime } from '../utils/formatters';
 import TaskModal from '../components/tasks/TaskModal';
+import CompleteTaskModal from '../components/tasks/CompleteTaskModal';
 import {
   Plus, RefreshCw, CheckCircle2, Clock, AlertTriangle,
-  ListTodo, ChevronDown, ChevronUp, User, ClipboardList, Send
+  ListTodo, ChevronDown, ChevronUp, User, ClipboardList, Send,
+  Paperclip, ExternalLink, FileText
 } from 'lucide-react';
 
 function ResolveModal({ task, onClose, onConfirm }) {
@@ -156,6 +158,7 @@ function DeadlinePill({ deadlineStr, status }) {
 function TaskRow({ task, currentUser, onResolve, onAccept, onComplete, onFlagIssue, showAllocatedBy = true }) {
   const [expanded, setExpanded] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
+  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   const cfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending;
   const isAllocator = can(currentUser, 'tasks.allocate') &&
     (task.allocated_by?.id === currentUser?.id || can(currentUser, 'tasks.manage_all'));
@@ -231,9 +234,18 @@ function TaskRow({ task, currentUser, onResolve, onAccept, onComplete, onFlagIss
             </button>
           )}
           {task.status === 'completed' && (
-            <span style={{ color: 'var(--accent-green)', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-              <CheckCircle2 size={14} /> Done
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              <span style={{ color: 'var(--accent-green)', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <CheckCircle2 size={14} /> Done
+              </span>
+              {isAllocator && task.attachments?.length > 0 && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setAttachmentsExpanded(v => !v)} style={{ gap: 4, fontSize: '0.75rem' }}>
+                  {attachmentsExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                  <Paperclip size={12} />
+                  {attachmentsExpanded ? 'Hide Files' : `View Files (${task.attachments.length})`}
+                </button>
+              )}
+            </div>
           )}
         </td>
       </tr>
@@ -254,6 +266,72 @@ function TaskRow({ task, currentUser, onResolve, onAccept, onComplete, onFlagIss
               <button className="btn btn-primary btn-sm" onClick={() => onResolve(task)} style={{ flexShrink: 0 }}>
                 <CheckCircle2 size={13} /> Resolve &amp; Reopen
               </button>
+            </div>
+          </td>
+        </tr>
+      )}
+      {attachmentsExpanded && task.status === 'completed' && isAllocator && task.attachments?.length > 0 && (
+        <tr style={{ background: 'color-mix(in srgb, var(--accent-green) 4%, transparent)' }}>
+          <td colSpan={showAllocatedBy ? 6 : 5} style={{ padding: '12px 16px' }}>
+            <div style={{
+              background: 'color-mix(in srgb, var(--accent-green) 6%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--accent-green) 25%, transparent)',
+              borderRadius: 8, padding: '12px 16px'
+            }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--accent-green)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                Completion Attachments ({task.attachments.length})
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {task.attachments.map(att => {
+                  const isImage = att.content_type.startsWith('image/');
+                  const sizeMB = att.file_size < 1024 * 1024
+                    ? `${(att.file_size / 1024).toFixed(1)} KB`
+                    : `${(att.file_size / (1024 * 1024)).toFixed(1)} MB`;
+                  return (
+                    <a
+                      key={att.id}
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '6px 10px',
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        textDecoration: 'none',
+                        color: 'var(--text-primary)',
+                        minWidth: 160, maxWidth: 240,
+                        transition: 'border-color 0.15s',
+                      }}
+                      title={att.file_name}
+                    >
+                      {isImage ? (
+                        <img
+                          src={att.url}
+                          alt={att.file_name}
+                          style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: 36, height: 36, borderRadius: 4, flexShrink: 0,
+                          background: 'var(--bg-card)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <FileText size={18} color="var(--text-muted)" />
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {att.file_name}
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{sizeMB}</div>
+                      </div>
+                      <ExternalLink size={12} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                    </a>
+                  );
+                })}
+              </div>
             </div>
           </td>
         </tr>
@@ -502,6 +580,7 @@ export default function TasksPage() {
   const [showModal, setShowModal] = useState(false);
   const [resolvingTask, setResolvingTask] = useState(null);
   const [flaggingTask, setFlaggingTask] = useState(null);
+  const [completeTaskTarget, setCompleteTaskTarget] = useState(null);
 
   const fetchTasks = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -543,13 +622,8 @@ export default function TasksPage() {
     }
   };
 
-  const handleCompleteTask = async (task) => {
-    try {
-      await completeTask(task.id);
-      fetchTasks(true);
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to complete task');
-    }
+  const handleCompleteTask = (task) => {
+    setCompleteTaskTarget(task);
   };
 
   const handleFlagIssueSubmit = async (description) => {
@@ -619,6 +693,14 @@ export default function TasksPage() {
           task={flaggingTask}
           onClose={() => setFlaggingTask(null)}
           onConfirm={handleFlagIssueSubmit}
+        />
+      )}
+
+      {completeTaskTarget && (
+        <CompleteTaskModal
+          task={completeTaskTarget}
+          onClose={() => setCompleteTaskTarget(null)}
+          onCompleted={() => { setCompleteTaskTarget(null); fetchTasks(true); }}
         />
       )}
     </div>

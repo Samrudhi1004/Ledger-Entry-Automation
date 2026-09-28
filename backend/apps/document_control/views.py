@@ -37,7 +37,7 @@ try:
 except ImportError:
     FILETYPE_AVAILABLE = False
 
-from .models import Document, DocumentActivity, DocumentChangeRequest, DCRNotification
+from .models import Document, DocumentActivity, DocumentChangeRequest, DCRNotification, DocumentUserPermission
 from apps.users.models import AccessRole
 from .serializers import (
     DocumentListSerializer,
@@ -45,6 +45,8 @@ from .serializers import (
     DocumentCreateSerializer,
     DocumentAccessSerializer,
     DocumentActivitySerializer,
+    DocumentUserPermissionReadSerializer,
+    BulkDocumentAccessSerializer,
     DCRCreateSerializer,
     DCRReviewSerializer,
     DCRApproveSerializer,
@@ -151,15 +153,26 @@ class DocumentViewSet(viewsets.ModelViewSet):
         # document access. A role allow-list is enforced for every non-admin
         # viewer, including users who can upload documents; the uploader keeps
         # owner visibility so they can continue managing their document.
+        # ── Per-user permission visibility filter ────────────────────────────
+        # A document is visible if:
+        #   1. User is admin / superuser → no filter (sees everything)
+        #   2. User is the uploader → always visible
+        #   3. User has a DocumentUserPermission row with at least one True flag
+        # Legacy allowed_roles is ignored going forward.
         is_manager = (
             user.is_superuser or
             getattr(user, 'role', '') == 'admin'
         )
         if not is_manager:
+            accessible_doc_ids = DocumentUserPermission.objects.filter(
+                user=user
+            ).filter(
+                Q(can_preview=True) | Q(can_download=True) |
+                Q(can_print=True) | Q(can_edit=True) | Q(can_delete=True)
+            ).values_list('document_id', flat=True)
+
             qs = qs.filter(
-                Q(allowed_roles__isnull=True) |
-                Q(allowed_roles__slug=user.role) |
-                Q(uploaded_by=user)
+                Q(id__in=accessible_doc_ids) | Q(uploaded_by=user)
             ).distinct()
 
         params = self.request.query_params
@@ -267,29 +280,102 @@ class DocumentViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Document access required.'}, status=403)
         return Response(list(AccessRole.objects.order_by('name').values('slug', 'name')))
 
-    @action(detail=True, methods=['patch'], url_path='access')
+    @action(detail=True, methods=['get', 'patch'], url_path='access')
     def access(self, request, pk=None):
-        """Replace the document role allow-list without changing its file."""
-        # Check ownership before visibility filtering so an uploader can still
-        # restore access after removing their own role.
+        """GET: list all org users + their current permissions for this document.
+           PATCH: bulk-save the full permission matrix."""
         doc = get_object_or_404(Document, pk=pk)
-        is_owner = doc.uploaded_by_id == request.user.id
-        if not is_owner:
-            return Response({'error': 'Only the document uploader can change its access.'}, status=403)
 
-        serializer = DocumentAccessSerializer(data=request.data)
+        # Only the uploader or an admin may manage access.
+        is_admin = request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'
+        is_owner = doc.uploaded_by_id == request.user.id
+        if not is_admin and not is_owner:
+            return Response(
+                {'error': 'Only the document uploader or an admin can manage access.'},
+                status=403
+            )
+
+        if request.method == 'GET':
+            # Fetch ALL active org users (exclude the uploader and admins —
+            # they always have implicit full access and are not listed).
+            all_users = User.objects.filter(
+                is_active=True
+            ).exclude(
+                id=doc.uploaded_by_id
+            ).exclude(
+                role='admin'
+            ).exclude(
+                is_superuser=True
+            ).order_by('first_name', 'last_name', 'username')
+
+            # Build a lookup of existing permission rows
+            existing = {
+                str(p.user_id): p
+                for p in DocumentUserPermission.objects.filter(document=doc)
+            }
+
+            result = []
+            for u in all_users:
+                uid = str(u.id)
+                perm = existing.get(uid)
+                result.append({
+                    'user_id':      uid,
+                    'full_name':    f'{u.first_name} {u.last_name}'.strip() or u.username,
+                    'username':     u.username,
+                    'role':         u.role,
+                    'can_preview':  perm.can_preview  if perm else False,
+                    'can_download': perm.can_download if perm else False,
+                    'can_print':    perm.can_print    if perm else False,
+                    'can_edit':     perm.can_edit     if perm else False,
+                    'can_delete':   perm.can_delete   if perm else False,
+                })
+            return Response({'users': result})
+
+        # PATCH — replace the entire permission matrix atomically
+        serializer = BulkDocumentAccessSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        roles = serializer.validated_data['allowed_role_slugs']
-        before = sorted(doc.allowed_roles.values_list('slug', flat=True))
-        doc.allowed_roles.set(roles)
-        after = sorted(role.slug for role in roles)
+
+        permissions_data = serializer.validated_data['permissions']
+        before_snapshot = list(
+            DocumentUserPermission.objects.filter(document=doc).values(
+                'user_id', 'can_preview', 'can_download', 'can_print', 'can_edit', 'can_delete'
+            )
+        )
+
+        with transaction.atomic():
+            # Wipe existing rows and rebuild
+            DocumentUserPermission.objects.filter(document=doc).delete()
+            to_create = []
+            for entry in permissions_data:
+                # Skip rows where every flag is False (no access = no row needed)
+                if any([
+                    entry.get('can_preview'), entry.get('can_download'),
+                    entry.get('can_print'), entry.get('can_edit'), entry.get('can_delete')
+                ]):
+                    try:
+                        user_obj = User.objects.get(id=entry['user_id'])
+                    except User.DoesNotExist:
+                        continue
+                    to_create.append(DocumentUserPermission(
+                        document=doc,
+                        user=user_obj,
+                        can_preview=entry.get('can_preview', False),
+                        can_download=entry.get('can_download', False),
+                        can_print=entry.get('can_print', False),
+                        can_edit=entry.get('can_edit', False),
+                        can_delete=entry.get('can_delete', False),
+                    ))
+            DocumentUserPermission.objects.bulk_create(to_create)
         DocumentActivity.objects.create(
             document=doc,
             action='access_updated',
             performed_by=request.user,
-            comment=f"Document visibility roles changed from {before or ['all']} to {after or ['all']}.",
+            comment=(
+                f'Per-user access updated by {request.user.get_full_name() or request.user.username}. '
+                f'{len(to_create)} user(s) granted access.'
+            ),
         )
-        return Response(DocumentDetailSerializer(doc).data)
+        return Response({'detail': 'Access permissions saved successfully.', 'granted_count': len(to_create)})
 
     @action(detail=True, methods=['post'], url_path='submit_review')
     def submit_review(self, request, pk=None):
@@ -460,6 +546,18 @@ class DocumentViewSet(viewsets.ModelViewSet):
         doc = self.get_object()
         if not doc.cloudinary_url:
             return Response({'error': 'No file attached.'}, status=404)
+        
+        # Enforce download permission
+        is_manager = request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'
+        is_owner = doc.uploaded_by_id == request.user.id
+        if not is_manager and not is_owner:
+            try:
+                perm = DocumentUserPermission.objects.get(document=doc, user=request.user)
+                if not perm.can_download and not perm.can_preview:
+                    return Response({'error': 'You do not have permission to download or preview this document.'}, status=403)
+            except DocumentUserPermission.DoesNotExist:
+                return Response({'error': 'Permission denied.'}, status=403)
+
         DocumentActivity.objects.create(document=doc, action='downloaded', performed_by=request.user)
         return redirect(document_delivery_url(doc))
 

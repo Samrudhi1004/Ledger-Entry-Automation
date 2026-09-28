@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessagingProvider } from '../context/MessagingContext';
+import { useSearchParams } from 'react-router-dom';
+import { useMessaging } from '../context/MessagingContext';
 import ConversationList from '../components/messaging/ConversationList';
 import ChatWindow from '../components/messaging/ChatWindow';
 import UserSearch from '../components/messaging/UserSearch';
@@ -8,6 +9,7 @@ import CreateMeet from '../components/messaging/CreateMeet';
 import { Plus, MessageCircle, Users, ChevronDown, Video } from 'lucide-react';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
+import { useMessageNotifications } from '../context/MessageNotificationContext';
 import './MessagesPage.css';
 
 export default function MessagesPage() {
@@ -16,6 +18,25 @@ export default function MessagesPage() {
   const [showMeetCreation, setShowMeetCreation] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
+  const [searchParams] = useSearchParams();
+  const { markAllMessageNotificationsRead } = useMessageNotifications();
+
+  const initialConversationId = searchParams.get('conversation')
+    ? parseInt(searchParams.get('conversation'), 10)
+    : null;
+
+  const { setPendingConversationId } = useMessaging();
+
+  useEffect(() => {
+    if (initialConversationId) {
+      setPendingConversationId(initialConversationId);
+    }
+  }, [initialConversationId, setPendingConversationId]);
+
+  // Mark all message notifications read when user opens the messages page
+  useEffect(() => {
+    markAllMessageNotificationsRead();
+  }, [markAllMessageNotificationsRead]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -47,7 +68,7 @@ export default function MessagesPage() {
   };
 
   return (
-    <MessagingProvider>
+    <>
       <Header
         title="Messages"
         subtitle="Internal Team Communication & Real-time Direct Messaging"
@@ -107,6 +128,6 @@ export default function MessagesPage() {
           <CreateMeet onClose={() => setShowMeetCreation(false)} />
         )}
       </div>
-    </MessagingProvider>
+    </>
   );
 }
