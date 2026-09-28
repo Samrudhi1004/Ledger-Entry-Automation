@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
   ClipboardCheck, CheckCircle, XCircle, Download,
-  Eye, RefreshCw, MessageSquare, AlertTriangle, X, FileText, Clock,
+  Eye, RefreshCw, MessageSquare, AlertTriangle, X, FileText, Clock, Paperclip,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { can } from '../utils/access';
@@ -284,9 +284,9 @@ export default function DocumentControlApprovalsPage() {
                       { icon: '🔍', label: (doc.reviewed_at || doc.status === 'awaiting_approval') ? `✓ Reviewed by: ${doc.reviewed_by_name || 'Reviewer'}` : `Reviewer: ${doc.reviewed_by_name || 'Not assigned'}` },
                       { icon: '✍️', label: `Approver: ${doc.approved_by_name || 'Not assigned'}` },
                       { icon: '📅', label: `Date: ${formatDate(doc.created_at)}` },
-                      { icon: '📎', label: doc.file_name || 'No file' },
+                      { icon: <Paperclip size={13} style={{ flexShrink: 0 }} />, label: doc.file_name || 'No file' },
                     ].map((m, i) => (
-                      <span key={i} style={{ fontSize: '12px', color: '#64748b' }}>
+                      <span key={i} style={{ fontSize: '12px', color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         {m.icon} {m.label}
                       </span>
                     ))}

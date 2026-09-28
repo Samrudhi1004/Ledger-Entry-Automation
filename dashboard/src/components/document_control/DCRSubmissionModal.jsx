@@ -43,8 +43,9 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
   useEffect(() => {
     getAssignableUsers()
       .then(res => {
-        setUsers(res.data || []);
-        const defaultApprover = (res.data || []).find(u => u.can_approve);
+        const loadedUsers = res.data || [];
+        setUsers(loadedUsers);
+        const defaultApprover = loadedUsers.find(u => u.can_approve && String(u.id) !== String(currentUser?.id));
         if (defaultApprover) {
           setForm(prev => ({ ...prev, assigned_approver: defaultApprover.id }));
         }
@@ -53,7 +54,7 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
         console.error("Failed to load assignable users", err);
       })
       .finally(() => setLoadingUsers(false));
-  }, []);
+  }, [currentUser]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -101,8 +102,9 @@ export default function DCRSubmissionModal({ doc, onClose, onSuccess }) {
     value: u.id,
     label: `${u.name} (${u.role})`
   });
-  const reviewerOptions = users.filter(u => u.can_review).map(userOption);
-  const approverOptions = users.filter(u => u.can_approve).map(userOption);
+  const otherUsers = users.filter(u => String(u.id) !== String(currentUser?.id));
+  const reviewerOptions = otherUsers.filter(u => u.can_review).map(userOption);
+  const approverOptions = otherUsers.filter(u => u.can_approve).map(userOption);
   return (
     <div style={{
       position: 'fixed',

@@ -132,7 +132,7 @@ class MessageBubble extends StatelessWidget {
         : hasImage
             ? '📷 Photo'
             : replyAttachments.isNotEmpty
-                ? '📎 Attachment'
+                ? 'Attachment'
                 : 'Message';
 
     // Accent bar colour: green for sent-side quotes, teal for received-side

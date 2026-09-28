@@ -99,7 +99,8 @@ def notify_dcr_submitted(dcr):
     Notifies assigned CFT Reviewer and Calibrator (if assigned).
     """
     frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
-    action_url = f"{frontend_url}/document-control"
+    in_app_url = f"/document-control/dcr?tab=action_required&dcr={dcr.id}"
+    action_url = f"{frontend_url}/document-control/dcr?tab=action_required&dcr={dcr.id}"
     req_name = f"{dcr.raised_by.first_name} {dcr.raised_by.last_name}".strip() or dcr.raised_by.username
 
     recipients = []
@@ -116,7 +117,7 @@ def notify_dcr_submitted(dcr):
             title=f"DCR {dcr.dcr_number} assigned for your review",
             message=f"{req_name} raised a Change Request for document {dcr.document.document_number} ({dcr.document.title}).",
             action_type=DCRNotification.ActionType.REVIEW_REQUESTED,
-            action_url=action_url,
+            action_url=in_app_url,
         )
 
         # 2. Email Notification
@@ -156,7 +157,8 @@ def notify_dcr_reviewed(dcr):
         return
 
     frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
-    action_url = f"{frontend_url}/document-control"
+    in_app_url = f"/document-control/dcr?tab=action_required&dcr={dcr.id}"
+    action_url = f"{frontend_url}/document-control/dcr?tab=action_required&dcr={dcr.id}"
     rev_name = f"{dcr.reviewed_by.first_name} {dcr.reviewed_by.last_name}".strip() if dcr.reviewed_by else "CFT Reviewer"
 
     # 1. In-App Notification
@@ -166,7 +168,7 @@ def notify_dcr_reviewed(dcr):
         title=f"DCR {dcr.dcr_number} reviewed : awaiting your approval",
         message=f"{rev_name} completed the CFT review for {dcr.document.document_number}. Ready for final authorization.",
         action_type=DCRNotification.ActionType.APPROVAL_REQUESTED,
-        action_url=action_url,
+        action_url=in_app_url,
     )
 
     # 2. Email Notification
@@ -201,7 +203,8 @@ def notify_dcr_rejected(dcr, stage, rejected_by, reason):
     Called when a DCR is rejected at either review stage or approval stage.
     """
     frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
-    action_url = f"{frontend_url}/document-control"
+    in_app_url = f"/document-control/dcr?tab=my_requests&dcr={dcr.id}"
+    action_url = f"{frontend_url}/document-control/dcr?tab=my_requests&dcr={dcr.id}"
     rej_name = f"{rejected_by.first_name} {rejected_by.last_name}".strip() if rejected_by else "Reviewer"
 
     recipients = [dcr.raised_by]
@@ -217,7 +220,7 @@ def notify_dcr_rejected(dcr, stage, rejected_by, reason):
             title=f"DCR {dcr.dcr_number} was rejected at {stage_label}",
             message=f"Rejected by {rej_name}. Reason: {reason}",
             action_type=DCRNotification.ActionType.DCR_REJECTED,
-            action_url=action_url,
+            action_url=in_app_url,
         )
 
         if user.email:
@@ -250,7 +253,8 @@ def notify_dcr_approved(dcr):
     Unlocks revision upload for the requestor.
     """
     frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173').rstrip('/')
-    action_url = f"{frontend_url}/document-control"
+    in_app_url = f"/document-control/dcr?tab=my_requests&dcr={dcr.id}"
+    action_url = f"{frontend_url}/document-control/dcr?tab=my_requests&dcr={dcr.id}"
     app_name = f"{dcr.approved_by.first_name} {dcr.approved_by.last_name}".strip() if dcr.approved_by else "Admin"
 
     recipients = [dcr.raised_by]
@@ -264,7 +268,7 @@ def notify_dcr_approved(dcr):
             title=f"DCR {dcr.dcr_number} Approved! Ready for revision upload",
             message=f"Approved by {app_name}. The new document revision can now be uploaded and published.",
             action_type=DCRNotification.ActionType.DCR_APPROVED,
-            action_url=action_url,
+            action_url=in_app_url,
         )
 
         if user.email:

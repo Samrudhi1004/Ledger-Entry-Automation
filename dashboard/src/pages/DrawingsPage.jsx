@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { NavLink, useSearchParams } from 'react-router-dom';
 import { 
   FileText, 
   Upload, 
@@ -56,10 +56,17 @@ export default function DrawingsPage() {
   const [drawings, setDrawings] = useState([]);
   const [parts, setParts] = useState([]);
   const [assignableUsers, setAssignableUsers] = useState([]);
+  const eligibleSignoffUsers = useMemo(
+    () => assignableUsers.filter(u => String(u.id) !== String(user?.id)),
+    [assignableUsers, user]
+  );
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [searchParams] = useSearchParams();
+  const urlDrawingId = searchParams.get('drawing') || searchParams.get('id');
+  const urlAction = searchParams.get('action');
 
   // Upload New Drawing Modal State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -372,6 +379,23 @@ export default function DrawingsPage() {
     }
   };
 
+  useEffect(() => {
+    if (urlDrawingId && drawings.length > 0) {
+      const dwg = drawings.find((d) => String(d.id) === String(urlDrawingId));
+      if (dwg) {
+        if (urlAction === 'approve' || dwg.status === 'reviewed') {
+          handleOpenApproveModal(dwg);
+        } else if (urlAction === 'revision') {
+          handleOpenRevisionModal(dwg);
+        } else if (urlAction === 'review' || dwg.status === 'under_review') {
+          handleOpenReviewModal(dwg);
+        } else {
+          handleOpenHistory(dwg);
+        }
+      }
+    }
+  }, [urlDrawingId, urlAction, drawings]);
+
   const safeDrawings = Array.isArray(drawings) ? drawings : [];
   const filteredDrawings = safeDrawings.filter((dwg) => {
     const q = searchQuery.toLowerCase();
@@ -423,6 +447,31 @@ export default function DrawingsPage() {
           </span>
         );
     }
+  };
+
+  const getDrawingTypeBadge = (docType, docTypeDisplay) => {
+    const raw = (docType || '').toLowerCase();
+    const display = (docTypeDisplay || '').toLowerCase();
+
+    if (raw === 'customer' || display.includes('customer')) {
+      return (
+        <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '4px', background: '#ECFDF5', color: '#047857', fontWeight: '700', border: '1px solid #A7F3D0', whiteSpace: 'nowrap' }}>
+          CUSTOMER
+        </span>
+      );
+    }
+    if (raw === 'tooling' || display.includes('tooling')) {
+      return (
+        <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '4px', background: '#FEF3C7', color: '#B45309', fontWeight: '700', border: '1px solid #FDE68A', whiteSpace: 'nowrap' }}>
+          TOOLING
+        </span>
+      );
+    }
+    return (
+      <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '4px', background: '#EEF2FF', color: '#4338CA', fontWeight: '700', border: '1px solid #C7D2FE', whiteSpace: 'nowrap' }}>
+        INTERNAL
+      </span>
+    );
   };
 
   if (!canView) {
@@ -637,9 +686,7 @@ export default function DrawingsPage() {
                         <td style={{ padding: '14px 18px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ fontSize: '13.5px', fontWeight: '600', color: '#0F172A' }}>{dwg.title}</span>
-                            <span style={{ fontSize: '10.5px', padding: '2px 6px', borderRadius: '4px', background: '#F1F5F9', color: '#475569', fontWeight: '700', textTransform: 'uppercase' }}>
-                              {dwg.doc_type_display || dwg.doc_type || 'Internal'}
-                            </span>
+                            {getDrawingTypeBadge(dwg.doc_type, dwg.doc_type_display)}
                           </div>
                           <span style={{ fontSize: '12px', color: '#64748B', display: 'block', marginTop: '2px' }}>
                             {dwg.description || 'No notes provided'}
@@ -1098,7 +1145,7 @@ export default function DrawingsPage() {
                   style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '13px' }}
                 >
                   <option value="">Select Quality Reviewer</option>
-                  {assignableUsers.map((u) => (
+                  {eligibleSignoffUsers.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                     </option>
@@ -1120,7 +1167,7 @@ export default function DrawingsPage() {
                   style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '13px' }}
                 >
                   <option value="">Select Final Approver</option>
-                  {assignableUsers.map((u) => (
+                  {eligibleSignoffUsers.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                     </option>
@@ -1567,7 +1614,7 @@ export default function DrawingsPage() {
                     style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '13px' }}
                   >
                     <option value="">Retain Existing Reviewer</option>
-                    {assignableUsers.map((u) => (
+                    {eligibleSignoffUsers.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                       </option>
@@ -1585,7 +1632,7 @@ export default function DrawingsPage() {
                     style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '13px' }}
                   >
                     <option value="">Retain Existing Approver</option>
-                    {assignableUsers.map((u) => (
+                    {eligibleSignoffUsers.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                       </option>

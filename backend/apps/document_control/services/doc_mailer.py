@@ -98,21 +98,32 @@ def notify_doc_approval_requested(doc):
 
 
 def notify_doc_approved(doc):
-    """Notify uploader and reviewer that document has been approved and is effective."""
+    """Notify uploader, reviewer, and approver that document has been approved and is effective."""
     recipients = []
-    if doc.uploaded_by:
-        recipients.append(doc.uploaded_by)
     if doc.reviewed_by and doc.reviewed_by != doc.uploaded_by:
         recipients.append(doc.reviewed_by)
-
-    title = f"Document Approved: {doc.document_number}"
-    msg = f"Controlled document {doc.document_number} : {doc.title} (Rev {doc.revision}) has been approved and is now active."
+    if doc.approved_by and doc.approved_by != doc.uploaded_by and doc.approved_by not in recipients:
+        recipients.append(doc.approved_by)
+    if doc.uploaded_by and doc.uploaded_by not in recipients:
+        recipients.append(doc.uploaded_by)
 
     for user in recipients:
+        if user == doc.reviewed_by:
+            role_text = "the Reviewer"
+        elif user == doc.approved_by:
+            role_text = "the Approver"
+        else:
+            role_text = "the Uploader"
+
+        if user == doc.uploaded_by:
+            msg = f"Controlled document {doc.document_number} : {doc.title} (Rev {doc.revision}) has been approved and is now active."
+        else:
+            msg = f"Controlled document {doc.document_number} : {doc.title} (Rev {doc.revision}) has been registered as an Active Master with you designated as {role_text}."
+
         DCRNotification.objects.create(
             document=doc,
             recipient=user,
-            title=title,
+            title=f"Active Master Released: {doc.document_number}",
             message=msg,
             action_type=DCRNotification.ActionType.DOC_APPROVED,
             action_url=f"/document-control/documents?preview={doc.id}"
@@ -122,25 +133,34 @@ def notify_doc_approved(doc):
     if emails:
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
         action_url = f"{frontend_url}/document-control/documents?preview={doc.id}"
-        approved_by_name = f"{doc.approved_by.first_name} {doc.approved_by.last_name}".strip() if doc.approved_by else "System"
+        reviewer_name = f"{doc.reviewed_by.first_name} {doc.reviewed_by.last_name}".strip() or doc.reviewed_by.username if doc.reviewed_by else "N/A"
+        approved_by_name = f"{doc.approved_by.first_name} {doc.approved_by.last_name}".strip() or doc.approved_by.username if doc.approved_by else "System"
+        uploader_name = f"{doc.uploaded_by.first_name} {doc.uploaded_by.last_name}".strip() or doc.uploaded_by.username if doc.uploaded_by else "System"
         details = {
             "Doc Number": doc.document_number,
             "Description": doc.title,
             "Level": doc.doc_level,
             "Revision": doc.revision,
+            "Reviewer": reviewer_name,
             "Approved by": approved_by_name,
+            "Released by": uploader_name,
             "Effective Date": str(doc.effective_date or 'Immediate'),
         }
         html = _render_email_template(
             header_title="Document Approved & Released",
             badge_text="APPROVED & ACTIVE",
             badge_color="#059669",
-            intro_text=f"The controlled document has been officially approved and published to the active Quality Register.",
+            intro_text="The controlled document has been officially approved and published to the active Quality Register.",
             details=details,
             action_url=action_url,
             action_text="View in Register"
         )
-        _send_async_email(f"[Document Control] Document Approved: {doc.document_number}", msg, html, emails)
+        _send_async_email(
+            f"[Document Control] Active Master Released: {doc.document_number}",
+            f"Controlled document {doc.document_number} : {doc.title} (Rev {doc.revision}) has been approved and is now active.",
+            html,
+            emails
+        )
 
 
 def notify_doc_rejected(doc, reason=""):

@@ -123,8 +123,10 @@ def notify_template_submitted(template, submitter_notes=None):
     process_count = template.process_parameters.count()
     total_count = product_count + process_count
 
+    in_app_url = f"/parameters?part={part.id}&operation={template.id}"
     action_url = f"{frontend_url}/parameters?part={part.id}&operation={template.id}"
     if machine:
+        in_app_url += f"&machine={machine.id}"
         action_url += f"&machine={machine.id}"
 
     details = {
@@ -146,7 +148,7 @@ def notify_template_submitted(template, submitter_notes=None):
             title=f"Review Assigned: {part.part_number} : {op_name}",
             message=f"{creator_name} submitted master parameters ({total_count} items) for your review.",
             action_type=DCRNotification.ActionType.REVIEW_REQUESTED,
-            action_url=action_url,
+            action_url=in_app_url,
         )
 
         if reviewer.email:
@@ -173,7 +175,7 @@ def notify_template_submitted(template, submitter_notes=None):
             title=f"Specification Submitted: {part.part_number} : {op_name}",
             message=f"{creator_name} submitted specifications for review. Final approval will be requested after review.",
             action_type=DCRNotification.ActionType.GENERAL,
-            action_url=action_url,
+            action_url=in_app_url,
         )
 
         if approver.email:
@@ -202,8 +204,10 @@ def notify_template_reviewed(template, reviewer_user, action, remarks=""):
     op_name = template.name or template.get_inspection_type_display()
     rev_name = _get_user_display_name(reviewer_user)
 
+    in_app_url = f"/parameters?part={part.id}&operation={template.id}"
     action_url = f"{frontend_url}/parameters?part={part.id}&operation={template.id}"
     if machine:
+        in_app_url += f"&machine={machine.id}"
         action_url += f"&machine={machine.id}"
 
     product_count = template.parameters.count()
@@ -228,7 +232,7 @@ def notify_template_reviewed(template, reviewer_user, action, remarks=""):
                 title=f"Ready for Final Sign-Off: {part.part_number} : {op_name}",
                 message=f"{rev_name} completed the review and recommended this specification for final approval.",
                 action_type=DCRNotification.ActionType.APPROVAL_REQUESTED,
-                action_url=action_url,
+                action_url=in_app_url,
             )
 
             if approver.email:
@@ -254,7 +258,7 @@ def notify_template_reviewed(template, reviewer_user, action, remarks=""):
                 title=f"Review Recommended: {part.part_number} : {op_name}",
                 message=f"{rev_name} recommended your specification. It is now awaiting final sign-off.",
                 action_type=DCRNotification.ActionType.GENERAL,
-                action_url=action_url,
+                action_url=in_app_url,
             )
             if creator.email:
                 subject = f"[Update] Specification Recommended: Part {part.part_number}"
@@ -280,7 +284,7 @@ def notify_template_reviewed(template, reviewer_user, action, remarks=""):
                 title=f"Revisions Requested: {part.part_number} : {op_name}",
                 message=f"Reviewer {rev_name} returned the specification for corrections: {remarks}",
                 action_type=DCRNotification.ActionType.DCR_REJECTED,
-                action_url=action_url,
+                action_url=in_app_url,
             )
             if creator.email:
                 subject = f"[Correction Required] Specification Returned: Part {part.part_number}"
@@ -308,8 +312,10 @@ def notify_template_approved(template, approver_user, action, remarks=""):
     op_name = template.name or template.get_inspection_type_display()
     app_name = _get_user_display_name(approver_user)
 
+    in_app_url = f"/parameters?part={part.id}&operation={template.id}"
     action_url = f"{frontend_url}/parameters?part={part.id}&operation={template.id}"
     if machine:
+        in_app_url += f"&machine={machine.id}"
         action_url += f"&machine={machine.id}"
 
     product_count = template.parameters.count()
@@ -337,7 +343,7 @@ def notify_template_approved(template, approver_user, action, remarks=""):
                 title=f"Specification Live: {part.part_number} : {op_name}",
                 message=f"Approved by {app_name}. Master parameters are now locked and live on shop floor mobile checklists.",
                 action_type=DCRNotification.ActionType.DOC_APPROVED,
-                action_url=action_url,
+                action_url=in_app_url,
             )
 
             if user.email:
@@ -362,7 +368,7 @@ def notify_template_approved(template, approver_user, action, remarks=""):
                 title=f"Rejected at Final Sign-Off: {part.part_number} : {op_name}",
                 message=f"Rejected by final approver {app_name}. Reason: {remarks}",
                 action_type=DCRNotification.ActionType.DOC_REJECTED,
-                action_url=action_url,
+                action_url=in_app_url,
             )
 
             if user.email:
@@ -391,8 +397,10 @@ def notify_template_dcr_event(dcr, event_type, actor_user, remarks=""):
     machine = getattr(part, 'machine', None)
     actor_name = _get_user_display_name(actor_user)
 
+    in_app_url = f"/parameters?part={part.id}&operation={template.id}&tab=dcr"
     action_url = f"{frontend_url}/parameters?part={part.id}&operation={template.id}&tab=dcr"
     if machine:
+        in_app_url += f"&machine={machine.id}"
         action_url += f"&machine={machine.id}"
 
     details = {
@@ -421,7 +429,7 @@ def notify_template_dcr_event(dcr, event_type, actor_user, remarks=""):
                 title=f"DCR {dcr.dcr_number} Raised: {part.part_number}",
                 message=f"{actor_name} raised a Change Request ({dcr.get_change_type_display()}) for parameter {dcr.parameter_code}.",
                 action_type=DCRNotification.ActionType.REVIEW_REQUESTED if role == 'reviewer' else DCRNotification.ActionType.GENERAL,
-                action_url=action_url,
+                action_url=in_app_url,
             )
             if user.email:
                 subject = f"[Action Required] DCR {dcr.dcr_number}: Review Assigned for Part {part.part_number}"
@@ -445,7 +453,7 @@ def notify_template_dcr_event(dcr, event_type, actor_user, remarks=""):
                 title=f"DCR {dcr.dcr_number} Reviewed: Ready for Approval",
                 message=f"{actor_name} reviewed DCR {dcr.dcr_number} for {part.part_number}. Ready for final sign-off.",
                 action_type=DCRNotification.ActionType.APPROVAL_REQUESTED,
-                action_url=action_url,
+                action_url=in_app_url,
             )
             if approver.email:
                 subject = f"[Action Required] DCR {dcr.dcr_number}: Ready for Approval ({part.part_number})"
@@ -473,7 +481,7 @@ def notify_template_dcr_event(dcr, event_type, actor_user, remarks=""):
                 title=f"DCR {dcr.dcr_number} Approved & Implemented",
                 message=f"Approved by {actor_name}. Parameters have been updated automatically in the master database.",
                 action_type=DCRNotification.ActionType.DCR_APPROVED,
-                action_url=action_url,
+                action_url=in_app_url,
             )
             if user.email:
                 subject = f"[Approved] DCR {dcr.dcr_number} Approved: Part {part.part_number}"
@@ -498,7 +506,7 @@ def notify_drawing_submitted(drawing, submitter_notes=''):
     """Notifies designated Reviewer and Approver when an Engineering Drawing is submitted."""
     actor_name = _get_user_display_name(drawing.created_by) if drawing.created_by else 'Engineering Supervisor'
     part_str = f"{drawing.part.part_number} : {drawing.part.part_name}" if drawing.part else "General Engineering Print"
-    action_url = "/development/drawings"
+    action_url = f"/development/drawings?drawing={drawing.id}&action=review"
 
     details = {
         "Drawing Number": drawing.drawing_number,
@@ -543,7 +551,7 @@ def notify_drawing_reviewed(drawing, reviewer_user, action, comments=''):
     """Notifies Approver or Submitter when an Engineering Drawing is reviewed."""
     actor_name = _get_user_display_name(reviewer_user)
     part_str = f"{drawing.part.part_number} : {drawing.part.part_name}" if drawing.part else "General Engineering Print"
-    action_url = "/development/drawings"
+    action_url = f"/development/drawings?drawing={drawing.id}&action={'approve' if action == 'recommend' else 'revision'}"
 
     details = {
         "Drawing Number": drawing.drawing_number,
@@ -606,7 +614,7 @@ def notify_drawing_approved(drawing, approver_user, action, comments=''):
     """Notifies Submitter and Reviewer when an Engineering Drawing is approved or rejected."""
     actor_name = _get_user_display_name(approver_user)
     part_str = f"{drawing.part.part_number} : {drawing.part.part_name}" if drawing.part else "General Engineering Print"
-    action_url = "/development/drawings"
+    action_url = f"/development/drawings?drawing={drawing.id}"
 
     details = {
         "Drawing Number": drawing.drawing_number,
@@ -664,7 +672,7 @@ def notify_control_plan_submitted(control_plan, submitter_notes=''):
     """Notifies designated Reviewer and Approver when a Process Control Plan is submitted."""
     actor_name = _get_user_display_name(control_plan.created_by) if control_plan.created_by else 'Process Engineer'
     part_str = f"{control_plan.part.part_number} : {control_plan.part.part_name}" if control_plan.part else "General Manufacturing Control Plan"
-    action_url = "/development/control-plans"
+    action_url = f"/development/control-plans?plan={control_plan.id}&action=review"
 
     details = {
         "Control Plan Number": control_plan.control_plan_number,
@@ -709,7 +717,7 @@ def notify_control_plan_reviewed(control_plan, reviewer_user, action, comments='
     """Notifies Approver or Submitter when a Process Control Plan is reviewed."""
     actor_name = _get_user_display_name(reviewer_user)
     part_str = f"{control_plan.part.part_number} : {control_plan.part.part_name}" if control_plan.part else "General Manufacturing Control Plan"
-    action_url = "/development/control-plans"
+    action_url = f"/development/control-plans?plan={control_plan.id}&action={'approve' if action == 'recommend' else 'revision'}"
 
     details = {
         "Control Plan Number": control_plan.control_plan_number,
@@ -773,7 +781,7 @@ def notify_control_plan_approved(control_plan, approver_user, action, comments='
     """Notifies Submitter and Reviewer when a Process Control Plan is approved or rejected."""
     actor_name = _get_user_display_name(approver_user)
     part_str = f"{control_plan.part.part_number} : {control_plan.part.part_name}" if control_plan.part else "General Manufacturing Control Plan"
-    action_url = "/development/control-plans"
+    action_url = f"/development/control-plans?plan={control_plan.id}"
 
     details = {
         "Control Plan Number": control_plan.control_plan_number,

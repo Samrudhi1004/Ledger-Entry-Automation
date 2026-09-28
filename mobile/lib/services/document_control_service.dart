@@ -49,7 +49,7 @@ class Document {
         status: json['status'] as String? ?? 'draft',
         revision: json['revision'] as String? ?? '0',
         docLevel: json['doc_level'] as String? ?? 'L2',
-        cloudinaryUrl: json['cloudinary_url'] as String?,
+        cloudinaryUrl: (json['delivery_url'] as String?) ?? (json['cloudinary_url'] as String?),
         fileName: json['file_name'] as String?,
         fileSize: json['file_size'] as int?,
         uploadedByName: json['uploaded_by_name'] as String?,
