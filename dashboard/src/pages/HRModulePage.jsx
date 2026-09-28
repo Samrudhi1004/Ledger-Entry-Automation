@@ -25,7 +25,7 @@ export default function HRModulePage() {
     <>
       <Header
         title="HR & Personnel"
-        subtitle="Human Resources Portal — Manage User Accounts, Operator Rosters, and Credentials"
+        subtitle="Human Resources Portal : Manage User Accounts, Operator Rosters, and Credentials"
       />
 
       <div className="page-content bg-gradient-animated">

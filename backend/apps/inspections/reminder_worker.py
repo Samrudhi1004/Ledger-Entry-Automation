@@ -132,7 +132,7 @@ class ReminderWorkerThread(threading.Thread):
 
 # H1+H2 FIX (step 3/3): Use a threading.Lock to protect _worker_started.
 #
-# Old code used a plain bool — two threads starting simultaneously could both
+# Old code used a plain bool : two threads starting simultaneously could both
 # read False and both call thread.start(), spawning two worker threads.
 # The Lock makes the check-and-set atomic, so only one thread ever wins.
 _worker_lock    = threading.Lock()
@@ -148,4 +148,4 @@ def start_reminder_worker():
             _worker_started = True
             logger.info("Reminder worker started (PID=%s).", os.getpid())
         else:
-            logger.debug("Reminder worker already running — skipped duplicate start.")
+            logger.debug("Reminder worker already running : skipped duplicate start.")

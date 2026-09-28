@@ -7,16 +7,16 @@ Reviewed: 9 September 2026. Scope: calibration dashboard, equipment registry and
 This is a report, not an implementation. Existing application changes were left intact. No equipment, plans, results, or account settings were intentionally changed in the running application.
 
 - Current local source, including the recent uncommitted calibration changes, reviewed.
-- Backend: `manage.py test apps.calibration --keepdb` — **19 tests passed**.
-- Frontend: `node --test src/utils/calibrationData.test.js` — **2 tests passed**.
-- Targeted lint for calibration page, views, fields, and utility — **passed**.
+- Backend: `manage.py test apps.calibration --keepdb` : **19 tests passed**.
+- Frontend: `node --test src/utils/calibrationData.test.js` : **2 tests passed**.
+- Targeted lint for calibration page, views, fields, and utility : **passed**.
 - Additional isolated probes used mocked database queries, without saving records. They reproduced incorrect plan/result matching, future registration dates being accepted, arbitrary history card numbers being accepted, and date overflow exceptions.
 - Browser authentication at `http://localhost:5173` failed with “No active account found with the given credentials.” A direct request to the configured local backend (`127.0.0.1:8000`) independently returned the same HTTP 401. The user reports that Chrome login works; the exact working URL is still needed to resolve the environment/account mismatch.
 - Consequently, authenticated desktop/mobile interaction, visual contrast measurements, printed-page rendering, and end-to-end submissions are **not browser-verified in this review**. UI recommendations below are grounded in the current components, CSS, and the screenshots supplied in this conversation. A passing test suite does not establish that these untested workflows are correct.
 
 ## Changes to apply first
 
-### 1. P1 — Match calibration results to the correct plan entry
+### 1. P1 : Match calibration results to the correct plan entry
 
 **Evidence:** [views.py:66](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/views.py:66).
 
@@ -31,7 +31,7 @@ This makes reports and unresolved-plan filters misleading. The PDF's month filte
 
 **Apply:** associate a result explicitly with its plan entry; preserve the scheduled-date snapshot. Define how rejection and subsequent recalibration attempts belong to the same cycle. Match results before applying presentation filters. Verify multi-cycle, rejected-then-accepted, and year-boundary examples.
 
-### 2. P1 — Stop recreating removed or rescheduled plan entries on page load
+### 2. P1 : Stop recreating removed or rescheduled plan entries on page load
 
 **Evidence:** [views.py:303](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/views.py:303), [views.py:364](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/views.py:364).
 
@@ -41,7 +41,7 @@ Every plan GET recreates an active instrument's next-due entry if missing. Remov
 
 This issue was introduced by the earlier read-time backfill change and needs correction.
 
-### 3. P1 — Keep equipment due dates, plans, and recorded results consistent
+### 3. P1 : Keep equipment due dates, plans, and recorded results consistent
 
 **Evidence:** [serializers.py:47](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/serializers.py:47), [views.py:151](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/views.py:151), [views.py:181](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/views.py:181).
 
@@ -49,17 +49,17 @@ Editing equipment recalculates its due date without updating its unresolved plan
 
 **Apply:** define one scheduling rule and one controlled reschedule operation. Update only unresolved schedule state, preserve completed history, and let users record a result against the applicable plan. Restrict edits to last-calibration dates once recorded history exists, or provide an audited correction flow.
 
-### 4. P1 — Validate calibration chronology and supported date ranges
+### 4. P1 : Validate calibration chronology and supported date ranges
 
 **Evidence:** [serializers.py:47](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/serializers.py:47), [serializers.py:68](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/serializers.py:68), [views.py:203](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/views.py:203), [calibrationData.js:133](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/utils/calibrationData.js:133).
 
-Isolated probes confirmed that registration accepts a last-calibration date in 2099, and the result serializer accepts an old date without checking equipment history. The result handler then replaces the current last-calibration/due dates, so an old entry can roll current state backward. Frequency `2147483647` causes Python `OverflowError` and JavaScript `RangeError` instead of a usable validation message. Calculated dates can also fall outside the plan's supported years 2000–2100.
+Isolated probes confirmed that registration accepts a last-calibration date in 2099, and the result serializer accepts an old date without checking equipment history. The result handler then replaces the current last-calibration/due dates, so an old entry can roll current state backward. Frequency `2147483647` causes Python `OverflowError` and JavaScript `RangeError` instead of a usable validation message. Calculated dates can also fall outside the plan's supported years 2000-2100.
 
 **Apply:** reject future last-calibration dates; validate chronology against the instrument's latest result; handle legitimate historical imports separately; validate frequency and the resulting date in both layers. Return field errors rather than exceptions.
 
 ## Workflow, identity, and reporting defects
 
-### 5. P2 — Keep history card numbers generated, stable, and consistent
+### 5. P2 : Keep history card numbers generated, stable, and consistent
 
 **Evidence:** [CalibrationPage.jsx:165](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/pages/CalibrationPage.jsx:165), [CalibrationFields.jsx:1](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/components/calibration/CalibrationFields.jsx:1), [serializers.py:43](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/serializers.py:43), [models.py:46](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/models.py:46).
 
@@ -67,7 +67,7 @@ The popup preview is read-only, but the edit form still allows manual history-ca
 
 **Apply:** normalize the equipment ID before previewing it. Generate and validate the authoritative number on the backend, return it after saving, display it read-only everywhere, and preserve it after issuance. Backfill only missing legacy values and check for existing collisions.
 
-### 6. P2 — Finish duplicate-ID validation in all entry paths
+### 6. P2 : Finish duplicate-ID validation in all entry paths
 
 **Evidence:** [CalibrationPage.jsx:116](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/pages/CalibrationPage.jsx:116), [CalibrationPage.jsx:179](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/pages/CalibrationPage.jsx:179), [serializers.py:22](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/serializers.py:22), [models.py:14](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/models.py:14).
 
@@ -75,7 +75,7 @@ The edit form's client check does not exclude the equipment being edited, so res
 
 **Apply:** normalize once, exclude the current record, use one registration entry path, and enforce normalized uniqueness in the database. Convert race-related uniqueness failures into a clear field error. Reuse existing equipment instead of allowing accidental duplicates.
 
-### 7. P2 — Close the plan editor after a successful save
+### 7. P2 : Close the plan editor after a successful save
 
 **Evidence:** [CalibrationPage.jsx:378](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/pages/CalibrationPage.jsx:378).
 
@@ -83,7 +83,7 @@ The edit form's client check does not exclude the equipment being edited, so res
 
 **Apply:** explicitly clear the plan form and close the editor in the success path; retain the submitting guard only for user cancellation. Verify successful add and edit both close once.
 
-### 8. P2 — Synchronize navigation, plan year, and temporary notices
+### 8. P2 : Synchronize navigation, plan year, and temporary notices
 
 **Evidence:** [CalibrationPage.jsx:77](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/pages/CalibrationPage.jsx:77), [CalibrationPage.jsx:93](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/pages/CalibrationPage.jsx:93), [CalibrationPage.jsx:116](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/pages/CalibrationPage.jsx:116).
 
@@ -91,7 +91,7 @@ The query-string year is read only when the component first mounts. Calibration 
 
 **Apply:** derive/synchronize the selected year from the URL, reset view-specific state on route changes, clear notices when leaving their owning view, and show loading or refreshing feedback during subsequent fetches. Test registration across a year boundary and switching tabs before the notice expires.
 
-### 9. P2 — Make Print include the entire filtered annual plan
+### 9. P2 : Make Print include the entire filtered annual plan
 
 **Evidence:** [CalibrationViews.jsx:473](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/components/calibration/CalibrationViews.jsx:473), [CalibrationViews.jsx:516](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/components/calibration/CalibrationViews.jsx:516).
 
@@ -99,7 +99,7 @@ Both the interactive table and print sheet render `visibleRows`, which contains 
 
 **Apply:** render all filtered entries for printing, or make Print use the generated PDF. Verify a plan with at least 21 entries and a multi-page history card.
 
-### 10. P2 — Correct compliance calculations and calendar meaning
+### 10. P2 : Correct compliance calculations and calendar meaning
 
 **Evidence:** [views.py:394](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/views.py:394), [serializers.py:16](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/serializers.py:16), [CalibrationViews.jsx:94](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/components/calibration/CalibrationViews.jsx:94).
 
@@ -107,7 +107,7 @@ Compliance counts distinct instruments with any on-time result rather than compl
 
 **Apply:** define the metric at the plan-cycle level and use the same dataset for counts and drilldowns. Build the calendar from plan entries or rename it explicitly as a next-due overview. Distinguish “no due plans” from demonstrated 100% compliance.
 
-### 11. P2 — Make certificate deep links dismissible
+### 11. P2 : Make certificate deep links dismissible
 
 **Evidence:** [CalibrationPage.jsx:348](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/pages/CalibrationPage.jsx:348).
 
@@ -115,7 +115,7 @@ For a history URL with `?certificate=...`, closing the preview sets it to null, 
 
 **Apply:** consume the certificate query parameter once, remove it on close, and expose a loading/error state with an explicit retry.
 
-### 12. P2 — Separate successful writes from failed refreshes; protect result transitions
+### 12. P2 : Separate successful writes from failed refreshes; protect result transitions
 
 **Evidence:** [CalibrationPage.jsx:240](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/pages/CalibrationPage.jsx:240), [CalibrationPage.jsx:292](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/dashboard/src/pages/CalibrationPage.jsx:292), [views.py:160](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/views.py:160), [views.py:225](D:/LIHATECH/mech-tech/Ledger-Entry-Automation/backend/apps/calibration/views.py:225).
 

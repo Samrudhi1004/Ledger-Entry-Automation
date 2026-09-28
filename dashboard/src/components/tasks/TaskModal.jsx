@@ -8,14 +8,16 @@ import { AlertCircle, CheckSquare, User } from 'lucide-react';
 const ROLE_OPTIONS = [
   { value: '',                 label: 'All Roles' },
   { value: 'supervisor',       label: 'Supervisor' },
-  { value: 'quality_engineer', label: 'Inspector' },
+  { value: 'quality_engineer', label: 'Quality Engineer' },
+  { value: 'inspector',         label: 'Inspector' },
   { value: 'operator',         label: 'Operator' },
 ];
 
 function getRoleLabel(role) {
   switch (role) {
     case 'supervisor':       return 'Supervisor';
-    case 'quality_engineer': return 'Inspector';
+    case 'quality_engineer': return 'Quality Engineer';
+    case 'inspector':        return 'Inspector';
     case 'operator':         return 'Operator';
     case 'admin':            return 'Admin';
     default: return role || 'User';
@@ -173,7 +175,7 @@ export default function TaskModal({ isOpen, onClose, onTaskCreated }) {
           {/* Step 1: Select Role */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">
-              Step 1 — Filter by Role
+              Step 1 : Filter by Role
             </label>
             <select
               value={roleFilter}
@@ -195,7 +197,7 @@ export default function TaskModal({ isOpen, onClose, onTaskCreated }) {
           {/* Step 2: Select Person */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">
-              Step 2 — Select Person *
+              Step 2 : Select Person *
             </label>
             <select
               name="allocated_to"

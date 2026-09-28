@@ -13,7 +13,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
 app = Celery('ledger_automation')
 
-# Read Celery config from Django settings — any key that starts with
+# Read Celery config from Django settings : any key that starts with
 # CELERY_ is automatically picked up (e.g. CELERY_BROKER_URL).
 app.config_from_object('django.conf:settings', namespace='CELERY')
 

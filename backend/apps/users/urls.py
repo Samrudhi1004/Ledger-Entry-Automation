@@ -13,6 +13,8 @@ from .views import (
     VerifyEmailView,
     ForgotPasswordRequestView,
     ResetPasswordConfirmView,
+    AccessCatalogView, AccessRoleListView, AccessRoleDetailView,
+    UserAccessView, AccessEventListView,
 )
 
 urlpatterns = [
@@ -38,6 +40,11 @@ urlpatterns = [
     path('password-reset/confirm/', ResetPasswordConfirmView.as_view(), name='password-reset-confirm'),
 
     # Admin: user management
+    path('access/catalog/', AccessCatalogView.as_view(), name='access-catalog'),
+    path('access/roles/', AccessRoleListView.as_view(), name='access-roles'),
+    path('access/roles/<slug:slug>/', AccessRoleDetailView.as_view(), name='access-role-detail'),
+    path('access/events/', AccessEventListView.as_view(), name='access-events'),
     path('',                 UserListView.as_view(),       name='user-list'),
+    path('<int:pk>/access/', UserAccessView.as_view(), name='user-access'),
     path('<int:pk>/',        UserDetailView.as_view(),     name='user-detail'),
 ]

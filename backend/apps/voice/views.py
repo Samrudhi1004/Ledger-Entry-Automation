@@ -60,7 +60,7 @@ class VoiceTranscribeView(APIView):
                 dest.write(chunk)
         save_duration_ms = (time.perf_counter() - t_save_start) * 1000
 
-        # Start background thread — returns job_id immediately, no waiting
+        # Start background thread : returns job_id immediately, no waiting
         t_dispatch_start = time.perf_counter()
         job_id = dispatch_transcription(str(file_path), request.user.id)
         dispatch_duration_ms = (time.perf_counter() - t_dispatch_start) * 1000
@@ -71,7 +71,7 @@ class VoiceTranscribeView(APIView):
             file_size_kb, save_duration_ms, dispatch_duration_ms, total_post_ms, job_id
         )
 
-        # S4 FIX: 'audio_path' removed — server-side file paths must never be
+        # S4 FIX: 'audio_path' removed : server-side file paths must never be
         # sent to clients (info disclosure). The client only needs job_id to poll.
         return Response(
             {

@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Modal from './Modal';
 import { useAuth } from '../../context/AuthContext';
+import { can } from '../../utils/access';
 import { getCompanyDetails } from '../../api/company';
 import { Edit3 } from 'lucide-react';
 
 export default function CompanyDetailsModal({ onClose }) {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = can(user, 'quality.machines.manage');
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [company, setCompany] = useState({
@@ -117,7 +118,7 @@ export default function CompanyDetailsModal({ onClose }) {
 
   const renderValue = (val, isMono = false) => {
     if (!val || val.trim() === '') {
-      return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+      return <span style={{ color: 'var(--text-muted)' }}>-</span>;
     }
     return (
       <span style={{ fontFamily: isMono ? 'monospace' : 'inherit', color: 'var(--text-primary)', fontWeight: 500 }}>

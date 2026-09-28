@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # ─── Lazy model loader (singleton) ───────────────────────────────────────
 # H5 FIX: _model_lock ensures only one thread ever loads the model.
 # Without it, two concurrent voice requests both see _whisper_model=None
-# and both load a 150 MB model — potentially crashing the server with OOM.
+# and both load a 150 MB model : potentially crashing the server with OOM.
 _model_lock        = threading.Lock()
 _whisper_model     = None
 _is_faster_whisper = False
@@ -59,7 +59,7 @@ def _get_local_model():
                     _whisper_model = WhisperModel(model_name, **load_kwargs)
                 except Exception as local_err:
                     if has_local_cache:
-                        # Cache present but failed (e.g. corrupted) — retry with download
+                        # Cache present but failed (e.g. corrupted) : retry with download
                         logger.warning(
                             "[PERF ENGINE] local_files_only load failed (%s), retrying with download...", local_err
                         )

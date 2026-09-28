@@ -81,7 +81,7 @@ CORS_ALLOWED_ORIGINS=https://your-dashboard.vercel.app,http://localhost:3000
 JWT_ACCESS_TOKEN_LIFETIME=60
 JWT_REFRESH_TOKEN_LIFETIME=90
 
-# Email (Mailjet REST API — Railway blocks SMTP ports 587/465)
+# Email (Mailjet REST API : Railway blocks SMTP ports 587/465)
 # Sign up at https://app.mailjet.com, then use your API Key and Secret Key.
 # EMAIL_HOST_USER  = Mailjet API Key
 # EMAIL_HOST_PASSWORD = Mailjet API Secret Key

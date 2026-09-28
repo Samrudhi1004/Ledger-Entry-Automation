@@ -1,11 +1,12 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import AllowAny
 
 from .models import Factory, Plant, Machine
 from .serializers import FactorySerializer, PlantSerializer, MachineSerializer, MachineListSerializer
-from apps.users.permissions import IsAdminUser, IsSupervisorOrAbove
+from apps.users.permissions import HasAccess
+from apps.users.access import OPERATIONAL_READ
 
 
 # ─── Factory ──────────────────────────────────────────────────────────────
@@ -20,7 +21,7 @@ class FactoryListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsSupervisorOrAbove()]
+            return [HasAccess('quality.machines.manage')]
         return [AllowAny()]
 
 
@@ -28,7 +29,10 @@ class FactoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET/PUT/DELETE /api/machines/factories/<id>/"""
     queryset           = Factory.objects.all()
     serializer_class   = FactorySerializer
-    permission_classes = [IsSupervisorOrAbove]
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [AllowAny()]
+        return [HasAccess('quality.machines.manage')]
 
     def perform_update(self, serializer):
         instance = serializer.save()
@@ -69,7 +73,8 @@ class PlantListCreateView(generics.ListCreateAPIView):
     POST /api/machines/plants/              → create (Admin only)
     """
     serializer_class   = PlantSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = OPERATIONAL_READ
 
     def get_queryset(self):
         qs = Plant.objects.select_related('factory').filter(is_active=True)
@@ -80,15 +85,18 @@ class PlantListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsSupervisorOrAbove()]
-        return [IsAuthenticated()]
+            return [HasAccess('quality.machines.manage')]
+        return [HasAccess(OPERATIONAL_READ)]
 
 
 class PlantDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET/PUT/DELETE /api/machines/plants/<id>/"""
     queryset           = Plant.objects.all()
     serializer_class   = PlantSerializer
-    permission_classes = [IsSupervisorOrAbove]
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [HasAccess(OPERATIONAL_READ)]
+        return [HasAccess('quality.machines.manage')]
 
 
 # ─── Machine ──────────────────────────────────────────────────────────────
@@ -99,7 +107,8 @@ class MachineListCreateView(generics.ListCreateAPIView):
     GET  /api/machines/?status=active   → filter by status
     POST /api/machines/                 → create (Admin only)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = OPERATIONAL_READ
 
     serializer_class = MachineSerializer
 
@@ -115,15 +124,21 @@ class MachineListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsSupervisorOrAbove()]
-        return [IsAuthenticated()]
+            return [HasAccess('quality.machines.manage')]
+        return [HasAccess(OPERATIONAL_READ)]
 
 
 class MachineDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET/PUT/DELETE /api/machines/<id>/"""
     queryset           = Machine.objects.select_related('plant__factory').all()
     serializer_class   = MachineSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = OPERATIONAL_READ
+
+    def get_permissions(self):
+        if self.request.method not in ('GET', 'HEAD', 'OPTIONS'):
+            return [HasAccess('quality.machines.manage')]
+        return [HasAccess(OPERATIONAL_READ)]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -137,7 +152,8 @@ class MachineByQRView(APIView):
     GET /api/machines/scan/<qr_code>/
     Flutter app scans QR → fetches machine details instantly.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = OPERATIONAL_READ
 
     def get(self, request, qr_code):
         try:

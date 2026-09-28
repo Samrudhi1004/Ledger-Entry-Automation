@@ -1,5 +1,5 @@
 """
-InspectionSession — PostgreSQL model that stores both the relational index
+InspectionSession : PostgreSQL model that stores both the relational index
 fields AND the full inspection document payload (measurements, parameter
 summaries, etc.) in a JSONB column.  MongoDB is no longer required.
 """
@@ -34,7 +34,7 @@ class InspectionSession(models.Model):
         B   = 'B',   'Shift B'
         C   = 'C',   'Shift C'
 
-    # Unique identifier — same ID used as MongoDB document _id reference (unique implies db_index)
+    # Unique identifier : same ID used as MongoDB document _id reference (unique implies db_index)
     session_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 
     # Relations
@@ -93,7 +93,7 @@ class InspectionSession(models.Model):
     # Full inspection document (replaces MongoDB inspection_records document).
     # Stores: measurements[], parameter_summary[], process_parameter_summary[],
     # process_param_entries[], and any other semi-structured per-session data.
-    # PostgreSQL persists this as JSONB — indexed, queryable, no external DB needed.
+    # PostgreSQL persists this as JSONB : indexed, queryable, no external DB needed.
     document_payload = models.JSONField(
         default=dict,
         help_text=(

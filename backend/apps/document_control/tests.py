@@ -94,7 +94,7 @@ class DocumentControlSystemTests(TestCase):
         self.assertEqual(res.status_code, 200)
         docs = res.data if isinstance(res.data, list) else res.data.get('results', [])
         self.assertEqual(len(docs), 1)
-        self.assertEqual(docs[0]['document_number'], 'QM-001')
+        self.assertEqual(docs[0]['document_number'], 'MANUAL-01')
 
         # Test L3
         res = self.client.get('/api/document-control/documents/?level=L3')
@@ -117,7 +117,7 @@ class DocumentControlSystemTests(TestCase):
             'approver_id': self.admin.id,
         })
         self.assertEqual(res.status_code, 403)
-        self.assertIn('Operators and Inspectors', res.data.get('error', ''))
+        self.assertIn('Change request creation access required', res.data.get('error', ''))
 
         # 2. Quality Engineer (Inspector) attempts DCR -> 403 Forbidden
         self.client.force_authenticate(user=self.inspector)

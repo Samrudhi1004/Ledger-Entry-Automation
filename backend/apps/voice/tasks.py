@@ -31,7 +31,7 @@ from .number_parser import parse_measurement
 
 logger = logging.getLogger(__name__)
 
-# Cache timeout for job results — 10 minutes is plenty for a single voice entry
+# Cache timeout for job results : 10 minutes is plenty for a single voice entry
 JOB_CACHE_TIMEOUT = 600
 
 
@@ -120,7 +120,7 @@ def _run_transcription(job_id: str, file_path: str, user_id: int, created_at_per
         )
 
         # Store SUCCESS result in Redis with embedded timing breakdown.
-        # S5 FIX: 'audio_path' (absolute server path) removed — it was being
+        # S5 FIX: 'audio_path' (absolute server path) removed : it was being
         # returned verbatim to clients via VoiceStatusView, leaking server internals.
         t_cache_start = time.perf_counter()
         cache.set(f"voice_job_{job_id}", {
@@ -143,15 +143,15 @@ def _run_transcription(job_id: str, file_path: str, user_id: int, created_at_per
         }, timeout=JOB_CACHE_TIMEOUT)
 
     finally:
-        # H6 FIX: Always delete the audio file after processing — success or failure.
+        # H6 FIX: Always delete the audio file after processing : success or failure.
         # Without this, every voice recording piles up in voice_uploads/ forever and
         # will eventually fill the server disk, crashing the entire application.
-        # The transcribed text is already in Redis + PostgreSQL — the audio is useless now.
+        # The transcribed text is already in Redis + PostgreSQL : the audio is useless now.
         try:
             os.unlink(file_path)
             logger.debug("[CLEANUP] Deleted audio file: %s", file_path)
         except OSError:
-            # File may have already been deleted or path was invalid — safe to ignore
+            # File may have already been deleted or path was invalid : safe to ignore
             pass
 
 
@@ -161,7 +161,7 @@ def dispatch_transcription(file_path: str, user_id: int) -> str:
     """
     Start a background thread for transcription and return a job_id immediately.
 
-    The caller stores nothing — progress is tracked via Redis cache.
+    The caller stores nothing : progress is tracked via Redis cache.
     Returns the job_id string to pass back to the client.
     """
     job_id = str(uuid.uuid4())

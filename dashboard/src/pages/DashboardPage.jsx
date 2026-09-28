@@ -15,7 +15,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useAuth } from '../context/AuthContext';
 import { formatTime, currentShift, shortId } from '../utils/formatters';
 
-const PLANT_ID = 1; // default plant — can be made dynamic
+const PLANT_ID = 1; // default plant : can be made dynamic
 const POLL_INTERVAL = 15000; // 15s live feed polling
 
 export default function DashboardPage() {
@@ -149,25 +149,25 @@ export default function DashboardPage() {
         <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
           <StatCard
             label="Total Inspections"
-            value={summary?.total ?? '—'}
+            value={summary?.total ?? '-'}
             sub={`Shift ${shift} · Today`}
             accent="var(--accent-blue)"
           />
           <StatCard
             label="Approved"
-            value={summary?.approved ?? '—'}
+            value={summary?.approved ?? '-'}
             sub={summary ? `${summary.pass_rate}% pass rate` : ''}
             accent="var(--accent-green)"
           />
           <StatCard
             label="Rejected"
-            value={summary?.rejected ?? '—'}
+            value={summary?.rejected ?? '-'}
             sub="Failed inspections"
             accent="var(--accent-red)"
           />
           <StatCard
             label="OOC Count"
-            value={summary?.ooc_count ?? '—'}
+            value={summary?.ooc_count ?? '-'}
             sub="Out-of-spec parameters"
             accent="var(--accent-yellow)"
             alert={(summary?.ooc_count ?? 0) > 0}

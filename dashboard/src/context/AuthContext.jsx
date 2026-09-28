@@ -50,9 +50,17 @@ export function AuthProvider({ children }) {
       setUser(profile.data);
       return profile.data;
     } catch {
-      /* ignore — user stays as-is if request fails */
+      /* ignore : user stays as-is if request fails */
     }
   }, []);
+
+  useEffect(() => {
+    const onFocus = () => {
+      if (localStorage.getItem('access_token')) refreshUser();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshUser]);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>

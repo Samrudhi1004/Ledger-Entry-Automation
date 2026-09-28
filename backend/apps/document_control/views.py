@@ -366,7 +366,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
                         can_delete=entry.get('can_delete', False),
                     ))
             DocumentUserPermission.objects.bulk_create(to_create)
-
         DocumentActivity.objects.create(
             document=doc,
             action='access_updated',

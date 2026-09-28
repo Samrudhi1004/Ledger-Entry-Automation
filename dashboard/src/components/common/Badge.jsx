@@ -1,5 +1,5 @@
 /**
- * Badge — status indicator pill
+ * Badge : status indicator pill
  * type: 'ok' | 'ooc' | 'approved' | 'rejected' | 'pending' | 'progress' | 'critical' | 'voice' | 'manual'
  */
 const LABELS = {

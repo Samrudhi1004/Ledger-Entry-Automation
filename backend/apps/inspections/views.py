@@ -22,8 +22,10 @@ import csv
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-# L1 FIX: Removed duplicate imports — Part and Machine already imported on lines 11-12.
-from apps.users.permissions import IsSupervisorOrAbove, IsOperatorOrSupervisor
+# L1 FIX: Removed duplicate imports : Part and Machine already imported on lines 11-12.
+from apps.users.permissions import (
+    HasAccess, IsSupervisorOrAbove, IsOperatorOrSupervisor,
+)
 from .models import (
     InspectionSession,
     DailyProductionReport,
@@ -46,7 +48,7 @@ from .serializers import (
     JHInspectionSubmitSerializer,
 )
 from .pdf_generator import generate_daily_production_pdf, generate_downtime_pdf
-# M4 FIX: Import shared singleton — do NOT instantiate InspectionService() here.
+# M4 FIX: Import shared singleton : do NOT instantiate InspectionService() here.
 # One instance is shared across views.py, tasks.py, and any future modules.
 from .services import inspection_service as _service
 
@@ -57,7 +59,8 @@ class StartInspectionView(APIView):
     POST /api/inspections/start/
     Operator starts a new inspection session.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def post(self, request):
         serializer = StartInspectionSerializer(data=request.data)
@@ -66,7 +69,7 @@ class StartInspectionView(APIView):
 
         d = serializer.validated_data
         try:
-            # Part and Machine are independent lookups — neither depends on the
+            # Part and Machine are independent lookups : neither depends on the
             # other's result, so they can safely run in parallel. ThreadPoolExecutor
             # releases the GIL during DB I/O, allowing both queries to be in-flight
             # at the same time. Total wait ≈ max(t_part, t_machine) instead of
@@ -81,7 +84,7 @@ class StartInspectionView(APIView):
                 part    = part_future.result()    # re-raises Part.DoesNotExist if not found
                 machine = machine_future.result()  # re-raises Machine.DoesNotExist if not found
         except Part.DoesNotExist:
-            # H3 FIX: Never substitute a random part — return 404 immediately.
+            # H3 FIX: Never substitute a random part : return 404 immediately.
             # Old code silently picked any available part, causing measurements
             # to be validated against completely wrong tolerances.
             return Response(
@@ -89,7 +92,7 @@ class StartInspectionView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         except Machine.DoesNotExist:
-            # H3 FIX: Same — never substitute a random machine.
+            # H3 FIX: Same : never substitute a random machine.
             return Response(
                 {'error': f"Machine ID {d['machine_id']} not found or is inactive."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -136,7 +139,8 @@ class RecordMeasurementView(APIView):
     Records a single voice/manual measurement for a parameter asynchronously.
     Returns HTTP 202 Accepted immediately (<100ms response time).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
         t_start = time.perf_counter()
@@ -221,7 +225,8 @@ class BatchMeasureView(APIView):
       ]
     }
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
         t_batch_start = time.perf_counter()
@@ -271,7 +276,7 @@ class BatchMeasureView(APIView):
                 if field_status == 'out_of_spec':
                     failed_codes.append(code)
             except Exception as exc:
-                # Unrecognised parameter — count as failure so the field re-opens
+                # Unrecognised parameter : count as failure so the field re-opens
                 results.append({
                     'parameter_code': code,
                     'status':         'error',
@@ -283,7 +288,7 @@ class BatchMeasureView(APIView):
         passed_count   = len(results) - len(failed_codes)
         piece_complete = len(failed_codes) == 0
 
-        # Auto-complete when every field passes — no separate /complete/ call needed.
+        # Auto-complete when every field passes : no separate /complete/ call needed.
         if piece_complete:
             try:
                 _service.complete_session(session_id)
@@ -318,7 +323,8 @@ class BatchMeasureView(APIView):
 # ─── Complete Session ─────────────────────────────────────────────────────
 class CompleteInspectionView(APIView):
     """POST /api/inspections/<session_id>/complete/"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
         try:
@@ -334,7 +340,8 @@ class SessionDetailView(APIView):
     GET /api/inspections/<session_id>/
     Returns full inspection document from MongoDB.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.reports.view'
 
     def get(self, request, session_id):
         doc = _service.get_session_document(session_id)
@@ -350,7 +357,8 @@ class PendingReviewView(generics.ListAPIView):
     Supervisor sees all sessions awaiting review.
     """
     serializer_class   = InspectionSessionSerializer
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.review'
 
     def get_queryset(self):
         qs = InspectionSession.objects.select_related(
@@ -376,7 +384,8 @@ class ApproveRejectView(APIView):
     POST /api/inspections/<session_id>/review/
     Supervisor approves or rejects a completed inspection.
     """
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.review'
 
     def post(self, request, session_id):
         serializer = ReviewSerializer(data=request.data)
@@ -405,7 +414,8 @@ class SessionListView(generics.ListAPIView):
     GET /api/inspections/?machine=MCH-001                    → filter by machine code
     """
     serializer_class   = InspectionSessionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.reports.view'
 
     def get_queryset(self):
         from django.db.models import Q, Subquery, OuterRef, Value
@@ -413,7 +423,7 @@ class SessionListView(generics.ListAPIView):
         from apps.parts.models import InspectionTemplate
 
         # Annotate each session with the operation name from the matching
-        # InspectionTemplate (part + inspection_type) — same ORM pattern as
+        # InspectionTemplate (part + inspection_type) : same ORM pattern as
         # part_number/part_name. NullIf converts blank names to NULL so the
         # serializer's None-check works correctly.
         template_name_subquery = Subquery(
@@ -502,7 +512,8 @@ class RejectionsListView(generics.ListAPIView):
     Returns active rejected sessions that require corrective trial #2 or #3.
     """
     serializer_class   = InspectionSessionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.reports.view'
 
     def get_queryset(self):
         qs = InspectionSession.objects.select_related(
@@ -533,12 +544,10 @@ class SupervisorOverrideView(APIView):
     POST /api/inspections/<session_id>/supervisor-override/
     Allows Supervisor to directly enter/correct a parameter reading on 1ST PC #3.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.review'
 
     def post(self, request, session_id):
-        if not (request.user.is_supervisor or request.user.is_staff):
-            return Response({'error': 'Only supervisors can perform direct overrides.'}, status=status.HTTP_403_FORBIDDEN)
-
         parameter_code = request.data.get('parameter_code')
         override_value = request.data.get('measured_value')
         remark         = request.data.get('remark', '')
@@ -566,7 +575,8 @@ class HourlyStatusView(APIView):
     GET /api/inspections/<session_id>/hourly-status/
     Returns open/locked/overdue status for hourly slots 1/HR through 8/HR.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def get(self, request, session_id):
         try:
@@ -582,7 +592,8 @@ class SetupStatusView(APIView):
     GET /api/inspections/setup-status/?machine=2
     Returns whether 1st Piece Inspection is approved for a machine.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def get(self, request):
         machine_id = request.query_params.get('machine')
@@ -673,7 +684,7 @@ class SetupStatusView(APIView):
         return Response({
             'has_today_report':          has_today,
             'is_setup_approved':         True,
-            # Generic session_id — first_piece preferred (backward compat)
+            # Generic session_id : first_piece preferred (backward compat)
             'session_id':                str(fp_session.session_id) if fp_session else str(session.session_id),
             # Explicit typed IDs for report screens
             'first_piece_session_id':    str(fp_session.session_id) if fp_session else None,
@@ -698,7 +709,8 @@ class FinalizeFirstPieceView(APIView):
     POST /api/inspections/<session_id>/finalize/
     Inspector finalizes First Piece inspection and generates PDF.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
         try:
@@ -714,7 +726,8 @@ class FirstPiecePDFView(APIView):
     GET /api/inspections/<session_id>/pdf/
     Returns the official First Piece Inspection Report PDF file.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.reports.view'
 
     def get(self, request, session_id):
         import os
@@ -722,7 +735,7 @@ class FirstPiecePDFView(APIView):
         from django.http import FileResponse
 
         try:
-            session = InspectionSession.objects.get(session_id=session_id)
+            session = InspectionSession.objects.select_related('part', 'machine', 'template').get(session_id=session_id)
             doc = _service.get_session_document(session_id) or {}
             
             from .pdf_generator import generate_first_piece_pdf
@@ -734,7 +747,14 @@ class FirstPiecePDFView(APIView):
             if not os.path.exists(abs_pdf_path):
                 return Response({'error': 'PDF report file not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-            return FileResponse(open(abs_pdf_path, 'rb'), content_type='application/pdf', filename=f"FirstPiece_Report_{session_id}.pdf")
+            date_str = session.started_at.strftime('%Y-%m-%d') if getattr(session, 'started_at', None) else 'All'
+            shift_str = f"Shift_{session.shift}" if getattr(session, 'shift', None) else "Shift_All"
+            mc_code = session.machine.machine_code.replace('/', '_') if (hasattr(session, 'machine') and session.machine and session.machine.machine_code) else "MCH"
+            part_no = session.part.part_number.replace('/', '_') if (hasattr(session, 'part') and session.part and session.part.part_number) else "PART"
+            prefix = "Setup_Approval_Report" if getattr(session, 'is_setup_approval_only', False) else "FirstPiece_Report"
+            download_filename = f"{prefix}_{date_str}_{shift_str}_{mc_code}_{part_no}.pdf"
+
+            return FileResponse(open(abs_pdf_path, 'rb'), content_type='application/pdf', filename=download_filename)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -745,7 +765,8 @@ class FirstPieceStatusView(APIView):
     GET /api/inspections/first-piece-status/?machine_id=2&part_number=PN-101
     Checks if 1st Piece Inspection is finalized and passed for a machine/part.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.record'
 
     def get(self, request):
         machine_id = request.query_params.get('machine_id') or request.query_params.get('machine')
@@ -786,7 +807,8 @@ class ClearHistoryView(APIView):
     Supervisors can clear live monitoring view for a machine.
     Finalized reports (First Piece, Setup Approval, Production) remain permanent in database.
     """
-    permission_classes = [IsSupervisorOrAbove]
+    permission_classes = [HasAccess]
+    access_key = 'quality.inspections.review'
 
     def delete(self, request):
         machine_code = request.query_params.get('machine_code')
@@ -824,7 +846,8 @@ class SetupApprovalView(APIView):
         Returns the most recent Setup Approval data for a template + machine combination.
         Used to pre-populate the SetupApprovalScreen on the mobile app.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = {'GET': 'quality.setup.view', 'POST': 'quality.inspections.record'}
 
     def get(self, request):
         template_id = request.query_params.get('template')
@@ -903,7 +926,7 @@ class SetupApprovalView(APIView):
 
         now = datetime.now(tz.utc)
 
-        # Upsert — update today's existing document or insert new
+        # Upsert : update today's existing document or insert new
         from apps.inspections.models import SetupApproval, InspectionSession
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         existing = SetupApproval.objects.filter(
@@ -974,9 +997,8 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
     serializer_class = DailyProductionReportSerializer
 
     def get_permissions(self):
-        if self.action in ['export_excel', 'export_pdf']:
-            return [IsAuthenticated()]
-        return [IsAuthenticated()]
+        key = 'production.daily.view' if self.request.method in ('GET', 'HEAD', 'OPTIONS') else 'production.daily.manage'
+        return [HasAccess(key)]
 
     def get_queryset(self):
         qs = DailyProductionReport.objects.select_related('machine', 'part', 'operator').all()
@@ -1025,14 +1047,31 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
         relative_path = generate_daily_production_pdf(report)
         full_path = os.path.join(settings.BASE_DIR, relative_path)
         if os.path.exists(full_path):
-            return FileResponse(open(full_path, 'rb'), content_type='application/pdf', filename=f"DailyProduction_Report_{report.report_id}.pdf")
+            date_str = str(report.date) if getattr(report, 'date', None) else 'All'
+            shift_str = f"Shift_{report.shift}" if getattr(report, 'shift', None) else "Shift_All"
+            mc_code = report.machine.machine_code.replace('/', '_') if (hasattr(report, 'machine') and report.machine and report.machine.machine_code) else 'MCH'
+            part_no = report.part.part_number.replace('/', '_') if (hasattr(report, 'part') and report.part and report.part.part_number) else 'PART'
+            filename = f"DailyProduction_Report_{date_str}_{shift_str}_{mc_code}_{part_no}.pdf"
+            return FileResponse(open(full_path, 'rb'), content_type='application/pdf', filename=filename)
         return Response({"error": "PDF generation failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'])
     def export_excel(self, request):
         qs = self.filter_queryset(self.get_queryset())
+        date_param = request.query_params.get('date', '')
+        shift_param = request.query_params.get('shift', '')
+        machine_param = request.query_params.get('machine__machine_code') or request.query_params.get('machine', '')
+        part_param = request.query_params.get('part__part_number') or request.query_params.get('part', '')
+
+        segments = []
+        if date_param: segments.append(date_param)
+        if shift_param: segments.append(f"Shift_{shift_param}")
+        if machine_param: segments.append(machine_param.replace('/', '_'))
+        if part_param: segments.append(part_param.replace('/', '_'))
+        suffix = f"_{'_'.join(segments)}" if segments else ""
+
         response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="Daily_Production_Reports.csv"'
+        response['Content-Disposition'] = f'attachment; filename="Daily_Production_Reports{suffix}.csv"'
 
         writer = csv.writer(response)
         writer.writerow([
@@ -1184,7 +1223,7 @@ def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
     current_row = 6
     for idx, obj in enumerate(qs, 1):
         prod = obj.production_report
-        op_name = prod.operator.get_full_name().strip() if prod.operator else '—'
+        op_name = prod.operator.get_full_name().strip() if prod.operator else '-'
         if not op_name and prod.operator:
             op_name = prod.operator.username
 
@@ -1320,9 +1359,8 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
     serializer_class = DowntimeReportSerializer
 
     def get_permissions(self):
-        if self.action in ['export_excel', 'export_pdf']:
-            return [IsAuthenticated()]
-        return [IsAuthenticated()]
+        key = 'production.downtime.view' if self.request.method in ('GET', 'HEAD', 'OPTIONS') else 'production.downtime.manage'
+        return [HasAccess(key)]
 
     def get_queryset(self):
         # Fetch only SUBMITTED Daily Production Reports
@@ -1398,13 +1436,15 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
         qs = self.filter_queryset(self.get_queryset())
         date_str = request.query_params.get('date', 'All')
         shift_str = request.query_params.get('shift', 'All')
+        machine_code = request.query_params.get('machine__machine_code') or request.query_params.get('machine_code') or request.query_params.get('machine', '')
+        mc_suffix = f"_{machine_code.replace('/', '_')}" if machine_code and machine_code.lower() != 'all' else ""
 
         excel_buffer = generate_downtime_xlsx(qs, date_str, shift_str)
         response = HttpResponse(
             excel_buffer.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        response['Content-Disposition'] = f'attachment; filename="Downtime_Report_{date_str}_{shift_str}.xlsx"'
+        response['Content-Disposition'] = f'attachment; filename="Downtime_Report_{date_str}_Shift_{shift_str}{mc_suffix}.xlsx"'
         return response
 
     @action(detail=False, methods=['get'])
@@ -1412,6 +1452,8 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
         qs = self.filter_queryset(self.get_queryset())
         date_str = request.query_params.get('date', 'All')
         shift_str = request.query_params.get('shift', 'All')
+        machine_code = request.query_params.get('machine__machine_code') or request.query_params.get('machine_code') or request.query_params.get('machine', '')
+        mc_suffix = f"_{machine_code.replace('/', '_')}" if machine_code and machine_code.lower() != 'all' else ""
 
         relative_path = generate_downtime_pdf(qs, date_str, shift_str)
         full_path = os.path.join(settings.BASE_DIR, relative_path)
@@ -1419,7 +1461,7 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
             return FileResponse(
                 open(full_path, 'rb'),
                 content_type='application/pdf',
-                filename=f"Downtime_Report_{date_str}_{shift_str}.pdf"
+                filename=f"Downtime_Report_{date_str}_Shift_{shift_str}{mc_suffix}.pdf"
             )
         return Response({"error": "PDF generation failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -1428,7 +1470,7 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
         """
         Returns date-wise and shift-wise summary of submitted downtime reports for history tracking.
 
-        M3 FIX: Added date-range cap — defaults to last 90 days.
+        M3 FIX: Added date-range cap : defaults to last 90 days.
         Use ?days=N (max 365) to customise the lookback window.
         Without a cap, this fetched ALL records ever created, causing server-side
         memory spikes and slow responses after months of factory operation.
@@ -1436,7 +1478,7 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
         from django.utils import timezone as django_tz
         import datetime as dt
 
-        # Parse ?days= query param — default 90, hard cap at 365
+        # Parse ?days= query param : default 90, hard cap at 365
         try:
             days = min(int(request.query_params.get('days', 90)), 365)
         except (ValueError, TypeError):
@@ -1498,7 +1540,8 @@ class JHChecklistItemsView(APIView):
     GET /api/inspections/jh/items/
     Returns all active JH checklist checkpoints ordered by sort_order.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         items = JHChecklistItem.objects.filter(is_active=True).order_by('sort_order', 'sub_no')
@@ -1515,7 +1558,8 @@ class JHInspectionSubmitView(APIView):
     Submits a shift's Autonomous Maintenance checklist.
     Stored in PostgreSQL under JHInspectionRecord and JHInspectionItemResult.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.submit'
 
     def post(self, request):
         serializer = JHInspectionSubmitSerializer(data=request.data)
@@ -1546,9 +1590,7 @@ class JHInspectionSubmitView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Enforce operator role restriction (JH Inspection is strictly for operators)
-        user_role = getattr(request.user, 'role', '')
-        if user_role and user_role not in ('operator', 'admin'):
+        if not request.user.has_access('production.jh.submit'):
             return Response(
                 {'error': "पहुंच अस्वीकृत (Access Denied): J-H (Autonomous Maintenance) निरीक्षण केवल मशीन ऑपरेटरों के लिए है।"},
                 status=status.HTTP_403_FORBIDDEN
@@ -1631,7 +1673,8 @@ class JHInspectionReportsView(APIView):
     GET /api/inspections/jh/reports/
     Lists shift inspection records with filters (machine, date range, shift, status).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         qs = JHInspectionRecord.objects.select_related('machine', 'operator').prefetch_related('item_results', 'item_results__item').all()
@@ -1674,7 +1717,8 @@ class JHInspectionDetailView(APIView):
     """
     GET /api/inspections/jh/reports/<pk>/
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request, pk):
         import uuid
@@ -1700,7 +1744,8 @@ class JHInspectionMatrixView(APIView):
     GET /api/inspections/jh/matrix/?machine=<machine_id_or_code>&month=<YYYY-MM>
     Returns the full 31-day compliance grid with Shift I, II, III for each checklist item.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         import calendar
@@ -1783,7 +1828,7 @@ class JHInspectionMatrixView(APIView):
                     'day': day_num,
                     'shift': rec.shift,
                     'status': rec.status,
-                    'operator_name': rec.operator.get_full_name() or rec.operator.username if rec.operator else '—',
+                    'operator_name': rec.operator.get_full_name() or rec.operator.username if rec.operator else '-',
                     'ok_items': rec.ok_items,
                     'not_ok_items': rec.not_ok_items,
                     'corrected_items': rec.corrected_items,
@@ -1795,7 +1840,7 @@ class JHInspectionMatrixView(APIView):
                             'status': res.status,
                             'remark': res.remark,
                             'action_taken': res.action_taken,
-                            'operator': rec.operator.get_full_name() or rec.operator.username if rec.operator else '—',
+                            'operator': rec.operator.get_full_name() or rec.operator.username if rec.operator else '-',
                         }
 
         return Response({
@@ -1808,8 +1853,8 @@ class JHInspectionMatrixView(APIView):
             'shifts': active_shifts,
             'machine': {
                 'id': machine.id if machine else None,
-                'machine_code': machine.machine_code if machine else '—',
-                'name': machine.name if machine else '—',
+                'machine_code': machine.machine_code if machine else '-',
+                'name': machine.name if machine else '-',
                 'shift_duration_hours': shift_hours,
             } if machine else None,
             'items': items_data,
@@ -1823,7 +1868,8 @@ class JHInspectionMatrixExportExcelView(APIView):
     GET /api/inspections/jh/matrix/export_excel/?machine=<id_or_code>&month=<YYYY-MM>
     Exports the official Form QF/MF-08 Jishu Hozen 31-day monitoring sheet in authentic Excel (.xlsx) format.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         from datetime import datetime
@@ -1890,7 +1936,8 @@ class JHChecklistUploadParseView(APIView):
     Accepts multipart/form-data with 'file' (PDF or Excel).
     Parses table checkpoints and returns structured JSON for review/preview.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.manage'
 
     def post(self, request):
         from .jh_checklist_parser import parse_jh_checklist_file
@@ -1919,7 +1966,8 @@ class JHChecklistBulkSaveView(APIView):
     POST /api/inspections/jh/checklist/bulk_save/
     Saves or replaces checklist items in the database atomically, recording version audit history.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.manage'
 
     def post(self, request):
         from django.db import transaction
@@ -2011,7 +2059,8 @@ class JHChecklistVersionListView(APIView):
     GET /api/inspections/jh/checklist/versions/
     Returns audit history of all uploaded checklist versions.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         from .models import JHChecklistVersion
@@ -2039,7 +2088,8 @@ class JHChecklistVersionDetailView(APIView):
     GET /api/inspections/jh/checklist/versions/<int:version_number>/
     Returns items for a specific historical checklist version.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request, version_number):
         from .models import JHChecklistVersion, JHChecklistItem
@@ -2076,7 +2126,8 @@ class JHChecklistVersionRestoreView(APIView):
     POST /api/inspections/jh/checklist/versions/<int:version_number>/restore/
     Rolls back / restores a previous checklist version as active.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.manage'
 
     def post(self, request, version_number):
         from django.db import transaction
@@ -2113,7 +2164,8 @@ class JHChecklistTemplateDownloadView(APIView):
     GET /api/inspections/jh/checklist/template/
     Downloads blank Form QF/MF-08 Excel template.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
 
     def get(self, request):
         from django.http import HttpResponse

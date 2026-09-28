@@ -346,7 +346,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   Color _getRoleColor(String? role) {
     final r = (role ?? '').toLowerCase();
     if (r == 'operator') return const Color(0xFF059669);
-    if (r == 'quality_engineer' || r == 'inspector') return const Color(0xFF4F46E5);
+    if (r == 'inspector' || r == 'quality_engineer') return const Color(0xFF4F46E5);
     if (r == 'supervisor' || r == 'admin') return const Color(0xFFD97706);
     return const Color(0xFF0284C7);
   }
@@ -354,7 +354,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   Color _getRoleBg(String? role) {
     final r = (role ?? '').toLowerCase();
     if (r == 'operator') return const Color(0xFFA7F3D0);
-    if (r == 'quality_engineer' || r == 'inspector') return const Color(0xFFE0E7FF);
+    if (r == 'inspector' || r == 'quality_engineer') return const Color(0xFFE0E7FF);
     if (r == 'supervisor' || r == 'admin') return const Color(0xFFFED7AA);
     return const Color(0xFFBAE6FD);
   }
@@ -362,7 +362,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   String _getRoleTitle(String? role) {
     final r = (role ?? '').toLowerCase();
     if (r == 'operator') return 'Machine Operator';
-    if (r == 'quality_engineer' || r == 'inspector') return 'Quality Inspector';
+    if (r == 'inspector') return 'Quality Inspector';
+    if (r == 'quality_engineer') return 'Quality Engineer';
     if (r == 'supervisor') return 'Quality Supervisor';
     if (r == 'admin') return 'System Administrator';
     return 'Station Operator';
@@ -540,7 +541,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
     final firstName = name.split(' ').first;
     final roleTitle = auth.isInspector
         ? 'Quality Inspector'
-        : (auth.isOperator ? 'Machine Operator' : 'Supervisor');
+        : (auth.isQualityEngineer
+            ? 'Quality Engineer'
+            : (auth.isOperator ? 'Machine Operator' : 'Supervisor'));
 
     final selectedPart = provider.selectedPart;
     final partNumber = selectedPart?['part_number'] ?? 'FBT00222';

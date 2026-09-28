@@ -317,7 +317,7 @@ def generate_jh_matrix_xlsx(
         c3.font = font_col_header
 
         # Col 4: Sub Assembly (Hindi)
-        c4 = ws.cell(row=current_row, column=4, value=item.sub_assembly or '—')
+        c4 = ws.cell(row=current_row, column=4, value=item.sub_assembly or '-')
         c4.alignment = align_left
         c4.font = font_hindi
 

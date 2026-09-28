@@ -116,7 +116,7 @@ export default function DailyProductionReportsPage() {
     <>
       <Header
         title="Daily Production Reports"
-        subtitle="Supervisor Module — End-of-day production output, target vs actual achievement %, and rejection tracking"
+        subtitle="Supervisor Module : End-of-day production output, target vs actual achievement %, and rejection tracking"
       />
 
       <div className="page-content bg-gradient-animated" style={{ padding: '24px' }}>
@@ -357,7 +357,7 @@ export default function DailyProductionReportsPage() {
                 </div>
                 <div style={{ borderLeft: '2px solid #000000', borderRight: '2px solid #000000', padding: '8px', textAlign: 'center' }}>
                   <div style={{ fontSize: '13px', fontWeight: '900', color: '#000000', letterSpacing: '0.5px' }}>{companyName.toUpperCase()}</div>
-                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#000000', marginTop: '2px' }}>DAILY PRODUCTION REPORT — END OF DAY SUMMARY</div>
+                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#000000', marginTop: '2px' }}>DAILY PRODUCTION REPORT : END OF DAY SUMMARY</div>
                 </div>
                 <div style={{ padding: '6px', fontSize: '9px', fontWeight: 'bold', color: '#000000', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                   <div>DOC REF: {companyCode}/PRD/F08</div>

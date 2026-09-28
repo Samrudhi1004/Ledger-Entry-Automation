@@ -1,4 +1,4 @@
-# gunicorn.conf.py — Render production configuration
+# gunicorn.conf.py : Render production configuration
 import multiprocessing
 
 # ── Workers ────────────────────────────────────────────────────────────────

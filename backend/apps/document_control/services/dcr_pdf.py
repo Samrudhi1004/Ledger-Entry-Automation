@@ -201,7 +201,7 @@ def generate_dcr_pdf(dcr):
     elements.append(row1_table)
 
     # Row 2: Document Description
-    doc_ref = f"{dcr.document.document_number} — {dcr.document.title} (Rev: {dcr.document.revision})"
+    doc_ref = f"{dcr.document.document_number} : {dcr.document.title} (Rev: {dcr.document.revision})"
     desc_content = f"<b>Document Description :</b><br/>{doc_ref}<br/>{dcr.document_description or 'No document description provided.'}"
     row2_data = [[Paragraph(desc_content.replace('\n', '<br/>'), val_style)]]
     row2_table = Table(row2_data, colWidths=[535])
@@ -232,7 +232,7 @@ def generate_dcr_pdf(dcr):
     # Row 4: Change Review Remark | Change Approved By | Date of review
     app_user = dcr.approved_by or dcr.assigned_approver
     app_name = f"{app_user.first_name} {app_user.last_name}".strip() if app_user else "Admin / MR"
-    review_date_str = str(dcr.date_of_review.date()) if dcr.date_of_review else "—"
+    review_date_str = str(dcr.date_of_review.date()) if dcr.date_of_review else "-"
     review_remark_text = dcr.review_remark or dcr.cft_remarks or "Pending CFT review"
 
     row4_data = [
@@ -270,7 +270,7 @@ def generate_dcr_pdf(dcr):
 
     # Row 6: Change implemented with updated documents
     if dcr.implemented_revision:
-        imp_doc_text = f"Revised Document: {dcr.implemented_revision.document_number} (Rev: {dcr.implemented_revision.revision}) — Notes: {dcr.implemented_notes or 'All master copies updated and distributed to floor.'}"
+        imp_doc_text = f"Revised Document: {dcr.implemented_revision.document_number} (Rev: {dcr.implemented_revision.revision}) : Notes: {dcr.implemented_notes or 'All master copies updated and distributed to floor.'}"
     else:
         imp_doc_text = dcr.implemented_notes or "Pending final release & obsolete document retrieval."
     
@@ -316,7 +316,7 @@ def generate_dcr_pdf(dcr):
 
     mr_user = dcr.approved_by or dcr.assigned_approver
     mr_name = f"{mr_user.first_name} {mr_user.last_name}".strip() if mr_user else "Admin (MR)"
-    mr_date_str = str(dcr.date_of_approval.date()) if dcr.date_of_approval else "—"
+    mr_date_str = str(dcr.date_of_approval.date()) if dcr.date_of_approval else "-"
 
     if dcr.approved_by or dcr.status in ['approved', 'implemented']:
         mr_stamp_box = (

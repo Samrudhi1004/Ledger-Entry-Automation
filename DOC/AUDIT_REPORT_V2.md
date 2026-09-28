@@ -1,4 +1,4 @@
-# Codebase Audit Report — Version 2
+# Codebase Audit Report : Version 2
 *Generated: 2026-09-05 | Project: Ledger Entry Automation (Django + React)*  
 *Based on: latest `main` branch (18 new commits merged since V1)*
 
@@ -9,25 +9,25 @@
 This V2 audit re-evaluates all 24 issues from the original report against the newly merged code, and adds fresh findings introduced by the merge.
 
 **Of the 24 original issues:**
-- ✅ **2 Fixed** — L2 (dead code), L3 (empty models file)
-- ❌ **22 Remain** — everything else untouched
+- ✅ **2 Fixed** : L2 (dead code), L3 (empty models file)
+- ❌ **22 Remain** : everything else untouched
 
 **New issues introduced by merge:**
-- 🔴 **NEW-S1** — `LoginView` auto-creates privileged accounts — production backdoor
-- 🟠 **NEW-H1** — `ClearHistoryView` deletes finalized reports unconditionally
-- 🟠 **NEW-H2** — Django ORM objects cached into Redis (not pickle-safe)
-- 🟠 **NEW-H3** — N+1 MongoDB reads inside `get_session_document()` loop
-- 🟡 **NEW-M1** — `CORS_ALLOWED_ORIGINS` defined twice; first definition is dead code
+- 🔴 **NEW-S1** : `LoginView` auto-creates privileged accounts : production backdoor
+- 🟠 **NEW-H1** : `ClearHistoryView` deletes finalized reports unconditionally
+- 🟠 **NEW-H2** : Django ORM objects cached into Redis (not pickle-safe)
+- 🟠 **NEW-H3** : N+1 MongoDB reads inside `get_session_document()` loop
+- 🟡 **NEW-M1** : `CORS_ALLOWED_ORIGINS` defined twice; first definition is dead code
 
 **Grand total: 29 issues**
 
 | Severity | V1 Count | V2 Count |
 |---|---|---|
-| 🔴 Critical — Runtime crash / data corruption | 4 | 4 |
-| 🔴 Critical — Security | 7 | **8** (+1) |
-| 🟠 High — Functional bugs / silent wrong data | 6 | **8** (+2) |
-| 🟡 Medium — Performance / reliability | 4 | **5** (+1) |
-| 🟢 Low — Code quality / dead code | 8 | **6** (-2 fixed) |
+| 🔴 Critical : Runtime crash / data corruption | 4 | 4 |
+| 🔴 Critical : Security | 7 | **8** (+1) |
+| 🟠 High : Functional bugs / silent wrong data | 6 | **8** (+2) |
+| 🟡 Medium : Performance / reliability | 4 | **5** (+1) |
+| 🟢 Low : Code quality / dead code | 8 | **6** (-2 fixed) |
 | **Total** | **24** | **29** |
 
 ---
@@ -38,8 +38,8 @@ This V2 audit re-evaluates all 24 issues from the original report against the ne
 |---|---|---|
 | C1 | Wrong method name crashes `SetupStatusView` | ❌ Not fixed |
 | C2 | Wrong tolerance applied to measurements | ❌ Not fixed |
-| C3 | Group name mismatch — alerts never reach dashboard | ❌ Not fixed |
-| C4 | WebSocket message type mismatch — `dashboard_event` handler missing | ❌ Not fixed |
+| C3 | Group name mismatch : alerts never reach dashboard | ❌ Not fixed |
+| C4 | WebSocket message type mismatch : `dashboard_event` handler missing | ❌ Not fixed |
 | S1 | Unauthenticated export endpoints | ❌ Not fixed |
 | S2 | JWT token in WebSocket URL | ❌ Not fixed |
 | S3 | WebSocket consumer accepts anonymous connections | ❌ Not fixed |
@@ -54,12 +54,12 @@ This V2 audit re-evaluates all 24 issues from the original report against the ne
 | H5 | Whisper model singleton not thread-safe | ❌ Not fixed |
 | H6 | Uploaded audio files never deleted | ❌ Not fixed |
 | M1 | New thread per WebSocket event | ❌ Not fixed |
-| M2 | N+1 MongoDB reads in `record_measurement()` | ❌ Not fixed (worsened — see NEW-H3) |
+| M2 | N+1 MongoDB reads in `record_measurement()` | ❌ Not fixed (worsened : see NEW-H3) |
 | M3 | `DowntimeReportViewSet.history()` has no pagination | ❌ Not fixed |
 | M4 | Two separate `InspectionService()` instances | ❌ Not fixed |
 | L1 | Duplicate imports of `Part` and `Machine` | ❌ Not fixed |
-| L2 | `dispatch_measurement_task_async()` was dead code | ✅ **Fixed** — now has real Celery→thread fallback |
-| L3 | `apps/voice/models.py` entirely empty | ✅ **Fixed** — file no longer exists as empty placeholder |
+| L2 | `dispatch_measurement_task_async()` was dead code | ✅ **Fixed** : now has real Celery→thread fallback |
+| L3 | `apps/voice/models.py` entirely empty | ✅ **Fixed** : file no longer exists as empty placeholder |
 | L4 | `word2number` imported inside function | ❌ Not fixed |
 | L5 | `DowntimeReport.save()` calls `self.full_clean()` | ❌ Not fixed |
 | L6 | `PLANT_ID` hardcoded in dashboard | ❌ Not fixed |
@@ -68,12 +68,12 @@ This V2 audit re-evaluates all 24 issues from the original report against the ne
 
 ---
 
-## 🔴 CRITICAL — Runtime Crashes / Data Corruption
+## 🔴 CRITICAL : Runtime Crashes / Data Corruption
 
 ### C1 · Wrong method name crashes `SetupStatusView`
 **File:** `backend/apps/inspections/views.py:567`  
 **Status:** ❌ Not fixed  
-**Problem:** Calls `_service.get_session_detail()` — this method does not exist. Every request to `/setup-status/` crashes with `AttributeError: 'InspectionService' object has no attribute 'get_session_detail'`.  
+**Problem:** Calls `_service.get_session_detail()` : this method does not exist. Every request to `/setup-status/` crashes with `AttributeError: 'InspectionService' object has no attribute 'get_session_detail'`.  
 ```python
 doc = _service.get_session_detail(str(session.session_id))  # method doesn't exist
 ```
@@ -82,7 +82,7 @@ doc = _service.get_session_detail(str(session.session_id))  # method doesn't exi
 ---
 
 ### C2 · Wrong tolerance applied to measurements (silent data corruption)
-**File:** `backend/apps/inspections/services.py:435–440`  
+**File:** `backend/apps/inspections/services.py:435-440`  
 **Status:** ❌ Not fixed  
 **Problem:** Fallback logic in `record_measurement()` grabs any random `InspectionParameter` if the correct one is not found, producing false pass/fail results silently:
 ```python
@@ -109,10 +109,10 @@ But `InspectionConsumer.connect()` joins group `f"plant_{plant_id}"` (e.g. `"pla
 
 ---
 
-### C4 · WebSocket message type mismatch — `dashboard_event` handler missing
+### C4 · WebSocket message type mismatch : `dashboard_event` handler missing
 **File:** `backend/apps/dashboard/consumers.py`  
 **Status:** ❌ Not fixed  
-**Problem:** Consumer only defines `async def inspection_event(self, event)`. The reminder_worker sends `'type': 'dashboard_event'`. Django Channels routes by the `type` field — unhandled types are silently dropped.  
+**Problem:** Consumer only defines `async def inspection_event(self, event)`. The reminder_worker sends `'type': 'dashboard_event'`. Django Channels routes by the `type` field : unhandled types are silently dropped.  
 **Fix:** Add a matching handler:
 ```python
 async def dashboard_event(self, event):
@@ -122,12 +122,12 @@ Or change reminder_worker to send `'type': 'inspection_event'` to match the exis
 
 ---
 
-## 🔴 CRITICAL — Security
+## 🔴 CRITICAL : Security
 
 ### S1 · Unauthenticated export endpoints (full data leak)
-**File:** `backend/apps/inspections/views.py` — `DailyProductionReportViewSet`, `DowntimeReportViewSet`  
+**File:** `backend/apps/inspections/views.py` : `DailyProductionReportViewSet`, `DowntimeReportViewSet`  
 **Status:** ❌ Not fixed  
-**Problem:** `get_permissions()` returns `[]` for `export_pdf` and `export_excel` actions — anyone on the internet can download all production/downtime data with no token:
+**Problem:** `get_permissions()` returns `[]` for `export_pdf` and `export_excel` actions : anyone on the internet can download all production/downtime data with no token:
 ```python
 def get_permissions(self):
     if self.action in ['export_excel', 'export_pdf']:
@@ -138,9 +138,9 @@ def get_permissions(self):
 
 ---
 
-### NEW-S1 · `LoginView` auto-creates privileged admin accounts — production backdoor
-**File:** `backend/apps/users/views.py:47–73`  
-**Severity:** 🔴 CRITICAL — Security  
+### NEW-S1 · `LoginView` auto-creates privileged admin accounts : production backdoor
+**File:** `backend/apps/users/views.py:47-73`  
+**Severity:** 🔴 CRITICAL : Security  
 **Problem:** `LoginView.post()` auto-creates user accounts for the hardcoded usernames `supervisor`, `admin`, `operator`, `inspector` if they don't exist, with predictable default passwords (`admin123`, `supervisor123`, etc.). It also silently resets any of these accounts' passwords to the default if the user sends the known default:
 ```python
 if username.lower() in ['supervisor', 'admin', 'operator', 'inspector']:
@@ -167,7 +167,7 @@ This is an **authentication bypass / persistent backdoor**.
 ### S2 · JWT token exposed in WebSocket URL
 **File:** `dashboard/src/context/WebSocketContext.jsx:15`  
 **Status:** ❌ Not fixed  
-**Problem:** Access token appended as URL query parameter — appears in server logs, browser history, referrer headers:
+**Problem:** Access token appended as URL query parameter : appears in server logs, browser history, referrer headers:
 ```javascript
 const url = `${WS_BASE_URL}/ws/dashboard/${plantId}/?token=${token}`;
 ```
@@ -176,7 +176,7 @@ const url = `${WS_BASE_URL}/ws/dashboard/${plantId}/?token=${token}`;
 ---
 
 ### S3 · WebSocket consumer accepts unauthenticated connections
-**File:** `backend/apps/dashboard/consumers.py:20–32`  
+**File:** `backend/apps/dashboard/consumers.py:20-32`  
 **Status:** ❌ Not fixed  
 **Problem:** `connect()` never checks `scope['user']`. Any client without a valid JWT token can connect and subscribe to live inspection events.  
 **Fix:**
@@ -224,7 +224,7 @@ This path is returned verbatim by `VoiceStatusView.get()`.
 ### S6 · Redundant `CORS_ALLOW_ALL_ORIGINS = True` at line 149
 **File:** `backend/config/settings.py:149, 317`  
 **Status:** ❌ Not fixed  
-**Problem:** `CORS_ALLOW_ALL_ORIGINS = True` is set unconditionally at line 149, then correctly overridden to `DEBUG` at line 317. The setting at line 149 is dead because it's overridden, but it's a landmine — if line 317 is ever removed or the file is reorganised, all CORS restrictions silently disappear.  
+**Problem:** `CORS_ALLOW_ALL_ORIGINS = True` is set unconditionally at line 149, then correctly overridden to `DEBUG` at line 317. The setting at line 149 is dead because it's overridden, but it's a landmine : if line 317 is ever removed or the file is reorganised, all CORS restrictions silently disappear.  
 **Fix:** Delete line 149 entirely. Keep only the correct conditional assignment at line 317.
 
 ---
@@ -246,12 +246,12 @@ logger.info("MongoDB client initialised: %s://%s%s", parsed.scheme, parsed.hostn
 
 ---
 
-## 🟠 HIGH — Functional Bugs / Silent Wrong Data
+## 🟠 HIGH : Functional Bugs / Silent Wrong Data
 
 ### H1 · Reminder worker launches on every Daphne process start (double worker)
 **File:** `backend/apps/inspections/apps.py:10`  
 **Status:** ❌ Not fixed  
-**Problem:** Guard condition `if os.environ.get('RUN_MAIN') == 'true' or not os.environ.get('SERVER_SOFTWARE')` still fires under Daphne because Daphne never sets `RUN_MAIN`. Both worker instances poll the DB every 30 seconds — duplicate reminders sent to operators.  
+**Problem:** Guard condition `if os.environ.get('RUN_MAIN') == 'true' or not os.environ.get('SERVER_SOFTWARE')` still fires under Daphne because Daphne never sets `RUN_MAIN`. Both worker instances poll the DB every 30 seconds : duplicate reminders sent to operators.  
 **Fix:** Replace the guard with a proper threading lock inside `start_reminder_worker()` and rely on the `_worker_started` flag with a lock (once H2 is fixed):
 ```python
 os.environ.setdefault('SERVER_SOFTWARE', 'daphne')  # in asgi.py entry point
@@ -263,7 +263,7 @@ if not os.environ.get('SERVER_SOFTWARE', '').startswith('daphne') or \
 ---
 
 ### H2 · Race condition in `_worker_started` flag (no lock)
-**File:** `backend/apps/inspections/reminder_worker.py:117–124`  
+**File:** `backend/apps/inspections/reminder_worker.py:117-124`  
 **Status:** ❌ Not fixed  
 **Problem:** `_worker_started` is a plain global `bool`. Under multi-threaded startup, two threads can both read `False` and both call `thread.start()`.  
 **Fix:**
@@ -283,15 +283,15 @@ def start_reminder_worker():
 ---
 
 ### H3 · Wrong part substituted on `Part.DoesNotExist` (silent)
-**File:** `backend/apps/inspections/views.py:73–80`  
+**File:** `backend/apps/inspections/views.py:73-80`  
 **Status:** ❌ Not fixed  
-**Problem:** `except Part.DoesNotExist` falls through to `Part.objects.filter(is_active=True).first()` — silently uses any available part instead of returning HTTP 404. The operator proceeds with wrong part parameters.  
+**Problem:** `except Part.DoesNotExist` falls through to `Part.objects.filter(is_active=True).first()` : silently uses any available part instead of returning HTTP 404. The operator proceeds with wrong part parameters.  
 **Fix:** Return `Response({'error': 'Part not found'}, status=404)` in the except block.
 
 ---
 
 ### H4 · Race condition in session creation (duplicate sessions possible)
-**File:** `backend/apps/inspections/services.py` — `create_session()`  
+**File:** `backend/apps/inspections/services.py` : `create_session()`  
 **Status:** ❌ Not fixed  
 **Problem:** Existence check and subsequent `create()` are separate DB calls with no transaction or lock. Two simultaneous POST requests can create duplicate sessions for the same machine+part+shift.  
 **Fix:** Use `get_or_create()` inside `transaction.atomic()` with `select_for_update()`, or add a `unique_together` constraint and handle `IntegrityError`.
@@ -299,7 +299,7 @@ def start_reminder_worker():
 ---
 
 ### H5 · Whisper model singleton not thread-safe
-**File:** `backend/apps/voice/whisper_engine.py:17–78`  
+**File:** `backend/apps/voice/whisper_engine.py:17-78`  
 **Status:** ❌ Not fixed  
 **Problem:** `_get_local_model()` checks `if _whisper_model is None` with no lock. Two concurrent voice transcription requests will both see `None` and both load the model, doubling RAM usage (Whisper tiny ≈ 150 MB × 2 = 300 MB on a free-tier container).  
 **Fix:**
@@ -317,7 +317,7 @@ def _get_local_model():
 ---
 
 ### H6 · Uploaded audio files never deleted (disk leak)
-**File:** `backend/apps/voice/tasks.py:58–141`  
+**File:** `backend/apps/voice/tasks.py:58-141`  
 **Status:** ❌ Not fixed  
 **Problem:** `_run_transcription()` never calls `os.unlink(file_path)` on the audio file after transcription succeeds or fails. `MEDIA_ROOT/voice_uploads/` fills with orphaned audio files indefinitely.  
 **Fix:** Add cleanup in `_run_transcription()`:
@@ -334,7 +334,7 @@ finally:
 ---
 
 ### NEW-H1 · `ClearHistoryView` deletes finalized/approved sessions unconditionally
-**File:** `backend/apps/inspections/views.py:710–735`  
+**File:** `backend/apps/inspections/views.py:710-735`  
 **Severity:** 🟠 HIGH  
 **Problem:** `ClearHistoryView.delete()` docstring claims "Finalized reports remain permanent" but the code unconditionally deletes ALL sessions for a machine with no status filter:
 ```python
@@ -355,7 +355,7 @@ active_sessions = InspectionSession.objects.filter(
 ---
 
 ### NEW-H2 · Django ORM model instances cached in Redis (not reliably pickle-safe)
-**File:** `backend/apps/inspections/services.py:42–61` — `_get_cached_parameter()`  
+**File:** `backend/apps/inspections/services.py:42-61` : `_get_cached_parameter()`  
 **Severity:** 🟠 HIGH  
 **Problem:** `_get_cached_parameter()` stores `InspectionParameter` Django ORM objects directly into the Redis/LocMem cache. Django model instances hold lazy-loaded related managers, database state, and deferred field descriptors that are not reliably serializable across Python processes or after schema changes:
 ```python
@@ -377,9 +377,9 @@ cache.set(cache_key, {
 ---
 
 ### NEW-H3 · N+1 MongoDB `find_one()` calls inside loops in `get_session_document()`
-**File:** `backend/apps/inspections/services.py:864–992` — `get_session_document()`  
+**File:** `backend/apps/inspections/services.py:864-992` : `get_session_document()`  
 **Severity:** 🟠 HIGH  
-**Problem:** The merge introduced a 128-line `get_session_document()` that issues individual `find_one()` calls inside `for` loops — a classic N+1 pattern:
+**Problem:** The merge introduced a 128-line `get_session_document()` that issues individual `find_one()` calls inside `for` loops : a classic N+1 pattern:
 ```python
 for fp_session in fp_sessions:
     doc = self.collection.find_one({"session_id": fp_session["session_id"]})  # N queries
@@ -395,7 +395,7 @@ docs = {d["session_id"]: d for d in self.collection.find({"session_id": {"$in": 
 
 ---
 
-## 🟡 MEDIUM — Performance / Reliability
+## 🟡 MEDIUM : Performance / Reliability
 
 ### M1 · New thread spawned per WebSocket event (thread churn)
 **File:** `backend/apps/inspections/services.py:39`  
@@ -414,9 +414,9 @@ docs = {d["session_id"]: d for d in self.collection.find({"session_id": {"$in": 
 ---
 
 ### M3 · `DowntimeReportViewSet.history()` has no pagination
-**File:** `backend/apps/inspections/views.py:1330–1371`  
+**File:** `backend/apps/inspections/views.py:1330-1371`  
 **Status:** ❌ Not fixed  
-**Problem:** `history()` action returns all downtime report records with no limit — unbounded table scan that grows over time.  
+**Problem:** `history()` action returns all downtime report records with no limit : unbounded table scan that grows over time.  
 **Fix:** Apply `self.paginate_queryset()` and return `self.get_paginated_response(serializer.data)`.
 
 ---
@@ -433,12 +433,12 @@ Import it in both modules: `from .services import _default_service as _service`.
 
 ---
 
-### NEW-M1 · `CORS_ALLOWED_ORIGINS` defined twice — first definition is dead code
-**File:** `backend/config/settings.py:150–156, 318–319`  
+### NEW-M1 · `CORS_ALLOWED_ORIGINS` defined twice : first definition is dead code
+**File:** `backend/config/settings.py:150-156, 318-319`  
 **Severity:** 🟡 MEDIUM  
-**Problem:** The static list at lines 150–156 is completely overridden by the env-var-driven assignment at lines 318–319:
+**Problem:** The static list at lines 150-156 is completely overridden by the env-var-driven assignment at lines 318-319:
 ```python
-# Lines 150-156 (dead — overridden below)
+# Lines 150-156 (dead : overridden below)
 CORS_ALLOWED_ORIGINS = [
     'https://ledger-entry-dashboard.onrender.com',
     'http://localhost:3000',
@@ -450,26 +450,26 @@ _cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,...').s
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in _cors_origins if origin.strip()]
 ```
 The static list (including the production Render URL) is never actually used. If `CORS_ALLOWED_ORIGINS` env var is not set in production, the default in `os.getenv(...)` may not include all required origins.  
-**Fix:** Delete lines 150–156. Add `https://ledger-entry-dashboard.onrender.com` to the `os.getenv` default value or configure it as the env var.
+**Fix:** Delete lines 150-156. Add `https://ledger-entry-dashboard.onrender.com` to the `os.getenv` default value or configure it as the env var.
 
 ---
 
-## 🟢 LOW — Code Quality / Dead Code / Minor Issues
+## 🟢 LOW : Code Quality / Dead Code / Minor Issues
 
 ### L1 · Duplicate imports of `Part` and `Machine`
-**File:** `backend/apps/inspections/views.py:11–12, 24–25`  
+**File:** `backend/apps/inspections/views.py:11-12, 24-25`  
 **Status:** ❌ Not fixed  
-Both models imported twice. Delete the duplicate import lines 24–25.
+Both models imported twice. Delete the duplicate import lines 24-25.
 
 ---
 
 ### L2 · `dispatch_measurement_task_async()` was dead code
-**Status:** ✅ **FIXED** — Now contains real Celery-with-thread-fallback logic and is the intended async dispatch path. No longer dead code.
+**Status:** ✅ **FIXED** : Now contains real Celery-with-thread-fallback logic and is the intended async dispatch path. No longer dead code.
 
 ---
 
 ### L3 · `apps/voice/models.py` was entirely empty
-**Status:** ✅ **FIXED** — The file with only a placeholder comment is gone; voice app uses no Django models (logs go to MongoDB directly).
+**Status:** ✅ **FIXED** : The file with only a placeholder comment is gone; voice app uses no Django models (logs go to MongoDB directly).
 
 ---
 
@@ -487,7 +487,7 @@ except ImportError:
 
 ---
 
-### L5 · `DowntimeReport.save()` calls `self.full_clean()` — breaks bulk operations
+### L5 · `DowntimeReport.save()` calls `self.full_clean()` : breaks bulk operations
 **File:** `backend/apps/inspections/models.py:219`  
 **Status:** ❌ Not fixed  
 `save()` calls `full_clean()` which runs all validators including the `clean()` method. This raises `ValidationError` from `bulk_create()`, management commands, and signals. `PositiveIntegerField` already enforces `>= 0` at the DB level.  
@@ -499,7 +499,7 @@ except ImportError:
 **File:** `dashboard/src/pages/DashboardPage.jsx:17`  
 **Status:** ❌ Not fixed  
 ```javascript
-const PLANT_ID = 1; // default plant — can be made dynamic
+const PLANT_ID = 1; // default plant : can be made dynamic
 ```
 Multi-plant support is blocked. Read from URL params or user profile.
 
@@ -513,7 +513,7 @@ Fixed 3-second reconnect causes all clients to hammer the backend simultaneously
 ---
 
 ### L8 · `SupervisorOverrideView` checks permission manually
-**File:** `backend/apps/inspections/views.py:473–474`  
+**File:** `backend/apps/inspections/views.py:473-474`  
 **Status:** ❌ Not fixed  
 Manually checks `request.user.is_supervisor or request.user.is_staff` instead of using the existing `IsSupervisorOrAbove` permission class.  
 **Fix:** `permission_classes = [IsSupervisorOrAbove]`
@@ -547,17 +547,17 @@ Manually checks `request.user.is_supervisor or request.user.is_staff` instead of
 
 Fix in this order for maximum impact with minimum risk:
 
-1. **NEW-S1** — Remove `LoginView` auto-create backdoor immediately (5-min fix, production risk)
-2. **C1** — Fix `get_session_detail` → `get_session_document` (1-line fix, current crash)
-3. **S1** — Add auth to export endpoints (1-line fix per action, active data leak)
-4. **NEW-H1** — Add status filter to `ClearHistoryView` before data is lost
-5. **C3 + C4** — Fix group name + add `dashboard_event` handler (alerts are dead until fixed)
-6. **S3** — Add anonymous check in WebSocket `connect()`
-7. **C2** — Remove wrong-parameter fallbacks in `record_measurement()`
-8. **H5** — Add lock to Whisper model singleton
-9. **H6** — Add `finally: os.unlink(file_path)` in transcription
-10. **NEW-H2** — Cache only scalar fields, not ORM instances
-11. **NEW-H3 + M2** — Batch MongoDB queries in `get_session_document()`
+1. **NEW-S1** : Remove `LoginView` auto-create backdoor immediately (5-min fix, production risk)
+2. **C1** : Fix `get_session_detail` → `get_session_document` (1-line fix, current crash)
+3. **S1** : Add auth to export endpoints (1-line fix per action, active data leak)
+4. **NEW-H1** : Add status filter to `ClearHistoryView` before data is lost
+5. **C3 + C4** : Fix group name + add `dashboard_event` handler (alerts are dead until fixed)
+6. **S3** : Add anonymous check in WebSocket `connect()`
+7. **C2** : Remove wrong-parameter fallbacks in `record_measurement()`
+8. **H5** : Add lock to Whisper model singleton
+9. **H6** : Add `finally: os.unlink(file_path)` in transcription
+10. **NEW-H2** : Cache only scalar fields, not ORM instances
+11. **NEW-H3 + M2** : Batch MongoDB queries in `get_session_document()`
 12. *(all remaining issues in severity order)*
 
 ---

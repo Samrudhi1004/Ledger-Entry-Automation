@@ -15,7 +15,7 @@ class InspectionsConfig(AppConfig):
         #
         # New guard:
         #   SERVER_SOFTWARE == 'daphne'  → set explicitly in asgi.py entry point
-        #   RUN_MAIN == 'true'           → dev reloader (runserver) — still works locally
+        #   RUN_MAIN == 'true'           → dev reloader (runserver) : still works locally
         #
         # The threading.Lock inside start_reminder_worker() (H2 fix) provides
         # the final safety net against simultaneous starts within one process.

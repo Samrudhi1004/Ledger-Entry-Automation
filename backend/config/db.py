@@ -47,7 +47,7 @@ Kept for reference during migration period.
 #
 #
 # def get_collection(collection_name: str):
-#     """Shorthand — get a named collection from the application database."""
+#     """Shorthand : get a named collection from the application database."""
 #     return get_mongo_db()[collection_name]
 #
 #

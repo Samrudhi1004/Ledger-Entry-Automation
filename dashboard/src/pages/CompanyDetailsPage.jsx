@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 import { useCompany } from '../context/CompanyContext';
 import { getCompanyDetails, updateCompanyDetails, getCompanyPlants } from '../api/company';
 import {
@@ -12,7 +13,7 @@ import {
 export default function CompanyDetailsPage() {
   const { user } = useAuth();
   const { refreshCompany } = useCompany() || {};
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = can(user, 'quality.machines.manage');
 
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);

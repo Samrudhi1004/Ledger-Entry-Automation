@@ -4,6 +4,7 @@ import {
   Download, Send, Eye, RefreshCw, UserCheck, Shield, ChevronRight, X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 import {
   getDCRs, getDCRById, submitDCRReview, rejectDCRReview,
   approveDCR, rejectDCRApproval, getDCRPDFUrl
@@ -165,21 +166,17 @@ export default function DocumentControlDCRPage() {
     }
   };
 
-  const isAssignedReviewer = selectedDcr && (
-    selectedDcr.assigned_cft_reviewer === user?.id || user?.role === 'admin'
-  );
-  const isAssignedApprover = selectedDcr && (
-    selectedDcr.assigned_approver === user?.id || user?.role === 'admin'
-  );
+  const isAssignedReviewer = selectedDcr?.assigned_cft_reviewer === user?.id;
+  const isAssignedApprover = selectedDcr?.assigned_approver === user?.id;
 
-  const canPerformReview = selectedDcr?.status === 'awaiting_review' && isAssignedReviewer;
-  const canPerformApproval = selectedDcr?.status === 'awaiting_approval' && isAssignedApprover && user?.role === 'admin';
+  const canPerformReview = selectedDcr?.status === 'awaiting_review' && isAssignedReviewer && can(user, 'document.dcr.review');
+  const canPerformApproval = selectedDcr?.status === 'awaiting_approval' && isAssignedApprover && can(user, 'document.dcr.approve');
 
   return (
     <>
       <Header
         title="Document Change Requests (DCR)"
-        subtitle="Form DKI/MR/F/05 — Multi-Stage Review, Authorize & Implement Quality Changes"
+        subtitle="Form DKI/MR/F/05 : Multi-Stage Review, Authorize & Implement Quality Changes"
       />
 
       <div className="page-content bg-gradient-animated">
@@ -233,7 +230,7 @@ export default function DocumentControlDCRPage() {
           📝 My Requests
         </button>
 
-        {user?.role === 'admin' && (
+        {can(user, 'document.dcr.approve') && (
           <button
             onClick={() => setActiveTab('all')}
             style={{
@@ -251,7 +248,7 @@ export default function DocumentControlDCRPage() {
           </button>
         )}
 
-        {['admin', 'supervisor', 'calibrator'].includes(user?.role) && (
+        {can(user, 'document.dcr.create') && (
           <button
             onClick={() => setShowRaiseModal(true)}
             style={{
@@ -351,10 +348,10 @@ export default function DocumentControlDCRPage() {
                       {dcr.raised_by_name}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '13px', color: '#334155' }}>
-                      {dcr.cft_reviewer_name || '—'}
+                      {dcr.cft_reviewer_name || '-'}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '13px', color: '#334155' }}>
-                      {dcr.approver_name || '—'}
+                      {dcr.approver_name || '-'}
                     </td>
                     <td style={{ padding: '14px 16px' }}>
                       <span style={{
@@ -670,9 +667,9 @@ export default function DocumentControlDCRPage() {
                         {selectedDcr.review_remark || <span style={{ color: '#94a3b8' }}>Awaiting review submission...</span>}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '12px', color: '#475569' }}>
-                        <div><strong>Implemented From:</strong> {selectedDcr.implementation_date || '—'}</div>
-                        <div><strong>CFT Remarks:</strong> {selectedDcr.cft_remarks || '—'}</div>
-                        <div><strong>Calibrator Remarks:</strong> {selectedDcr.calibrator_remarks || '—'}</div>
+                        <div><strong>Implemented From:</strong> {selectedDcr.implementation_date || '-'}</div>
+                        <div><strong>CFT Remarks:</strong> {selectedDcr.cft_remarks || '-'}</div>
+                        <div><strong>Calibrator Remarks:</strong> {selectedDcr.calibrator_remarks || '-'}</div>
                       </div>
                     </div>
                   )}
@@ -694,7 +691,7 @@ export default function DocumentControlDCRPage() {
                     <div style={{ fontWeight: '700', color: '#0f172a', marginBottom: '4px' }}>CALIBRATOR</div>
                     <div style={{ color: '#64748b', fontSize: '11px' }}>{selectedDcr.calibrator_name || 'Calibrator'}</div>
                     <div style={{ marginTop: '8px', fontWeight: '700', color: selectedDcr.date_of_review ? '#15803d' : '#94a3b8' }}>
-                      {selectedDcr.date_of_review ? '✅ Verified' : '—'}
+                      {selectedDcr.date_of_review ? '✅ Verified' : '-'}
                     </div>
                   </div>
 

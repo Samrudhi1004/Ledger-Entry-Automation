@@ -233,7 +233,7 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
               <td style={{ width: '73%', padding: '4px 10px', borderRight: '1.5px solid #000000', textAlign: 'center' }}>
                 <div style={{ fontSize: 14, fontWeight: 'bold', letterSpacing: '0.5px', color: '#000000' }}>{companyName.toUpperCase()}</div>
                 <div style={{ fontSize: 11, fontWeight: 'bold', marginTop: 1, color: '#000000' }}>
-                  {isSetupReport ? 'FIRST PIECE SETUP APPROVAL REPORT — PROCESS NO. 10' : '1ST PIECE CUM IN-PROCESS INSPECTION REPORT — PROCESS NO. 10'}
+                  {isSetupReport ? 'FIRST PIECE SETUP APPROVAL REPORT : PROCESS NO. 10' : '1ST PIECE CUM IN-PROCESS INSPECTION REPORT : PROCESS NO. 10'}
                 </div>
               </td>
               <td style={{ width: '15%', padding: '4px 6px', textAlign: 'right', fontSize: 8.5, color: '#000000' }}>
@@ -329,19 +329,19 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
                     <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: 'bold' }}>10.</td>
                     <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: 'bold', fontFamily: 'Consolas, monospace' }}>{p.no}</td>
                     <td style={{ border: '1px solid #000000', padding: '2px 4px', textAlign: 'left', fontWeight: 'bold' }}>{p.name}</td>
-                    <td style={{ border: '1px solid #000000', padding: '2px 1px' }}>{p.critical ? <span style={{ color: '#dc2626', fontSize: 8, fontWeight: 'bold' }}>CRITICAL</span> : '—'}</td>
+                    <td style={{ border: '1px solid #000000', padding: '2px 1px' }}>{p.critical ? <span style={{ color: '#dc2626', fontSize: 8, fontWeight: 'bold' }}>CRITICAL</span> : '-'}</td>
                     <td style={{ border: '1px solid #000000', padding: '2px 4px', fontFamily: 'Consolas, monospace', fontWeight: 'bold' }}>{p.spec}</td>
                     <td style={{ border: '1px solid #000000', padding: '2px 4px', fontSize: 7.5, textTransform: 'uppercase' }}>{p.method}</td>
                     <td style={{ border: '1px solid #000000', padding: '2px 2px', fontSize: 7.5 }}>{p.sample}</td>
                     
                     <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: tr1OOC ? 'bold' : 'normal', fontSize: 9, fontFamily: 'Consolas, monospace', color: tr1OOC ? '#dc2626' : '#000000', background: tr1OOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
-                      {tr1 !== undefined ? tr1 : '—'}
+                      {tr1 !== undefined ? tr1 : '-'}
                     </td>
                     <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: tr2OOC ? 'bold' : 'normal', fontSize: 9, fontFamily: 'Consolas, monospace', color: tr2OOC ? '#dc2626' : '#000000', background: tr2OOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
-                      {tr2 !== undefined ? tr2 : '—'}
+                      {tr2 !== undefined ? tr2 : '-'}
                     </td>
                     <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: tr3OOC ? 'bold' : 'normal', fontSize: 9, fontFamily: 'Consolas, monospace', color: tr3OOC ? '#dc2626' : '#000000', background: tr3OOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
-                      {tr3 !== undefined ? tr3 : '—'}
+                      {tr3 !== undefined ? tr3 : '-'}
                     </td>
 
                     {!isSetupReport && Array.from({ length: shiftHours }, (_, i) => i + 1).map((slot) => {
@@ -349,7 +349,7 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
                       const hOOC = p.hourlyOOC?.[slot] || isValOOC(hVal, p.lower_limit, p.upper_limit);
                       return (
                         <td key={slot} style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: hOOC ? 'bold' : 'normal', fontSize: 9, fontFamily: 'Consolas, monospace', color: hOOC ? '#dc2626' : '#000000', background: hOOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
-                          {hVal !== undefined ? hVal : '—'}
+                          {hVal !== undefined ? hVal : '-'}
                         </td>
                       );
                     })}
@@ -376,24 +376,24 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
                         <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: 'bold' }}>10.</td>
                         <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: 'bold', fontFamily: 'Consolas, monospace' }}>{pp.no}</td>
                         <td style={{ border: '1px solid #000000', padding: '2px 4px', textAlign: 'left', fontWeight: 'bold' }}>{pp.name}</td>
-                        <td style={{ border: '1px solid #000000', padding: '2px 1px' }}>—</td>
+                        <td style={{ border: '1px solid #000000', padding: '2px 1px' }}>-</td>
                         <td style={{ border: '1px solid #000000', padding: '2px 4px', fontFamily: 'Consolas, monospace', fontWeight: 'bold' }}>{pp.spec}</td>
                         <td style={{ border: '1px solid #000000', padding: '2px 4px', fontSize: 7.5, textTransform: 'uppercase' }}>{pp.method}</td>
                         <td style={{ border: '1px solid #000000', padding: '2px 2px', fontSize: 7.5 }}>{pp.sample}</td>
                         
                         <td style={{ border: '1px solid #000000', padding: '2px 1px', fontSize: 9, fontFamily: 'Consolas, monospace', fontWeight: 'bold' }}>
-                          {tr1 !== undefined ? tr1 : '—'}
+                          {tr1 !== undefined ? tr1 : '-'}
                         </td>
                         <td style={{ border: '1px solid #000000', padding: '2px 1px', fontSize: 9, fontFamily: 'Consolas, monospace', fontWeight: 'bold' }}>
-                          {tr2 !== undefined ? tr2 : '—'}
+                          {tr2 !== undefined ? tr2 : '-'}
                         </td>
                         <td style={{ border: '1px solid #000000', padding: '2px 1px', fontSize: 9, fontFamily: 'Consolas, monospace', fontWeight: 'bold' }}>
-                          {tr3 !== undefined ? tr3 : '—'}
+                          {tr3 !== undefined ? tr3 : '-'}
                         </td>
 
                         {!isSetupReport && Array.from({ length: shiftHours }, (_, i) => i + 1).map((slot) => (
                           <td key={slot} style={{ border: '1px solid #000000', padding: '2px 1px', fontSize: 9, fontFamily: 'Consolas, monospace', color: '#94a3b8' }}>
-                            —
+                            -
                           </td>
                         ))}
                       </tr>

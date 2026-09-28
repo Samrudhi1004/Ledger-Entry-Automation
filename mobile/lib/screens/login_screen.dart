@@ -213,9 +213,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     // Refresh company schedule details (shifts, factory info)
                                     Provider.of<CompanyProvider>(context, listen: false).fetchCompanyDetails();
                                     Widget targetScreen = const AppHomeScreen();
-                                    final role = (auth.userRole ?? '').toLowerCase();
-
-                                    if (role == 'supervisor' || role == 'admin') {
+                                    if (auth.isSupervisor) {
                                       targetScreen = const SupervisorInfoScreen();
                                     } else {
                                       if (auth.userId != null) {

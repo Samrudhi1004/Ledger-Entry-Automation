@@ -17,21 +17,22 @@ class Document(models.Model):
     Core document record.
     File is stored on Cloudinary (resource_type='raw' for PDFs/docs, 'image' for images).
     Metadata (cloudinary_url, cloudinary_public_id, file_name, file_size, file_type)
-    stored in PostgreSQL — mirrors the messaging.MessageAttachment pattern.
+    stored in PostgreSQL : mirrors the messaging.MessageAttachment pattern.
     """
 
     class Status(models.TextChoices):
-        DRAFT        = 'draft',        'Draft'
-        UNDER_REVIEW = 'under_review', 'Under Review'
-        APPROVED     = 'approved',     'Approved'
-        REJECTED     = 'rejected',     'Rejected'
-        OBSOLETE     = 'obsolete',     'Obsolete'
+        DRAFT             = 'draft',             'Draft'
+        UNDER_REVIEW      = 'under_review',      'Under Review'
+        AWAITING_APPROVAL = 'awaiting_approval', 'Awaiting Approval'
+        APPROVED          = 'approved',          'Approved'
+        REJECTED          = 'rejected',          'Rejected'
+        OBSOLETE          = 'obsolete',          'Obsolete'
 
     class Level(models.TextChoices):
-        L1 = 'L1', 'L1 — Quality Manual & Policies'
-        L2 = 'L2', 'L2 — Standard Operating Procedures (SOP)'
-        L3 = 'L3', 'L3 — Work Instructions & Standards'
-        L4 = 'L4', 'L4 — Forms, Formats & Checklists'
+        L1 = 'L1', 'L1 : Quality Manual & Policies'
+        L2 = 'L2', 'L2 : Standard Operating Procedures (SOP)'
+        L3 = 'L3', 'L3 : Work Instructions & Standards'
+        L4 = 'L4', 'L4 : Forms, Formats & Checklists'
 
     # Primary key
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -95,6 +96,14 @@ class Document(models.Model):
         related_name='approved_documents'
     )
 
+    # Optional role allow-list. An empty list keeps the document visible to
+    # every user who already has document-control access.
+    allowed_roles = models.ManyToManyField(
+        'users.AccessRole',
+        blank=True,
+        related_name='controlled_documents',
+    )
+
     # Optional links to other entities
     related_part = models.ForeignKey(
         'parts.Part',
@@ -110,8 +119,11 @@ class Document(models.Model):
     )
 
     # ── Dates ─────────────────────────────────────────────────────────────────
+    revision_date  = models.DateField(null=True, blank=True, help_text="Date of current revision")
     effective_date = models.DateField(null=True, blank=True)
     expiry_date    = models.DateField(null=True, blank=True)
+    reviewed_at    = models.DateTimeField(null=True, blank=True, help_text="Timestamp when review was completed")
+    approved_at    = models.DateTimeField(null=True, blank=True, help_text="Timestamp when document was approved")
     created_at     = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at     = models.DateTimeField(auto_now=True)
 
@@ -122,7 +134,7 @@ class Document(models.Model):
         verbose_name_plural = 'Documents'
 
     def __str__(self):
-        return f'{self.document_number} — {self.title} ({self.revision})'
+        return f'{self.document_number} : {self.title} ({self.revision})'
 
     @property
     def file_size_display(self):
@@ -152,6 +164,7 @@ class DocumentActivity(models.Model):
         ('downloaded',       'Downloaded'),
         ('obsoleted',        'Marked Obsolete'),
         ('comment',          'Comment Added'),
+        ('access_updated',  'Visibility Access Updated'),
     ]
 
     document     = models.ForeignKey(
@@ -176,7 +189,7 @@ class DocumentActivity(models.Model):
         verbose_name_plural = 'Document Activities'
 
     def __str__(self):
-        return f'{self.document.document_number} — {self.action} by {self.performed_by}'
+        return f'{self.document.document_number} : {self.action} by {self.performed_by}'
 
 
 class DocumentUserPermission(models.Model):
@@ -349,7 +362,7 @@ class DocumentChangeRequest(models.Model):
         verbose_name_plural = 'Document Change Requests'
 
     def __str__(self):
-        return f'{self.dcr_number} — {self.document.document_number} ({self.status})'
+        return f'{self.dcr_number} : {self.document.document_number} ({self.status})'
 
     def save(self, *args, **kwargs):
         if not self.dcr_number:
@@ -366,16 +379,29 @@ class DCRNotification(models.Model):
     """
 
     class ActionType(models.TextChoices):
-        REVIEW_REQUESTED   = 'review_requested',   'Review Requested'
-        APPROVAL_REQUESTED = 'approval_requested', 'Approval Requested'
-        DCR_APPROVED       = 'dcr_approved',       'DCR Approved'
-        DCR_REJECTED       = 'dcr_rejected',       'DCR Rejected'
-        DCR_IMPLEMENTED    = 'dcr_implemented',    'DCR Implemented'
-        GENERAL            = 'general',            'General'
+        REVIEW_REQUESTED       = 'review_requested',       'Review Requested'
+        APPROVAL_REQUESTED     = 'approval_requested',     'Approval Requested'
+        DCR_APPROVED           = 'dcr_approved',           'DCR Approved'
+        DCR_REJECTED           = 'dcr_rejected',           'DCR Rejected'
+        DCR_IMPLEMENTED        = 'dcr_implemented',        'DCR Implemented'
+        DOC_REVIEW_REQUESTED   = 'doc_review_requested',   'Document Review Requested'
+        DOC_APPROVAL_REQUESTED = 'doc_approval_requested', 'Document Approval Requested'
+        DOC_APPROVED           = 'doc_approved',           'Document Approved'
+        DOC_REJECTED           = 'doc_rejected',           'Document Rejected'
+        GENERAL                = 'general',                'General'
 
     dcr = models.ForeignKey(
         DocumentChangeRequest,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='notifications'
+    )
+    document = models.ForeignKey(
+        'Document',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         related_name='notifications'
     )
     recipient = models.ForeignKey(
@@ -401,5 +427,5 @@ class DCRNotification(models.Model):
         verbose_name_plural = 'DCR Notifications'
 
     def __str__(self):
-        return f'{self.recipient} — {self.title} ({self.created_at})'
+        return f'{self.recipient} : {self.title} ({self.created_at})'
 

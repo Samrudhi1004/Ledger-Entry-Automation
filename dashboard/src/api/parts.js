@@ -32,6 +32,28 @@ export const deleteTemplate = (templateId) =>
 export const publishTemplate = (templateId) =>
   axios.post(`/api/parts/templates/${templateId}/publish/`);
 
+export const submitTemplateReview = (templateId, data) =>
+  axios.post(`/api/parts/templates/${templateId}/submit-review/`, data);
+
+export const reviewTemplateAction = (templateId, data) =>
+  axios.post(`/api/parts/templates/${templateId}/review/`, data);
+
+export const approveTemplateAction = (templateId, data) =>
+  axios.post(`/api/parts/templates/${templateId}/approve/`, data);
+
+// Document Change Request (DCR) API for Master Parameters (Form DKI/MR/F/05)
+export const getTemplateDCRs = (templateId) =>
+  axios.get(`/api/parts/templates/${templateId}/change-requests/`);
+
+export const submitTemplateDCR = (templateId, dcrData) =>
+  axios.post(`/api/parts/templates/${templateId}/change-requests/`, dcrData);
+
+export const reviewTemplateDCR = (dcrId, data) =>
+  axios.post(`/api/parts/change-requests/${dcrId}/review/`, data);
+
+export const approveTemplateDCR = (dcrId, data) =>
+  axios.post(`/api/parts/change-requests/${dcrId}/approve/`, data);
+
 export const getActiveTemplate = (partNumber, type) =>
   axios.get(`/api/parts/${encodeURIComponent(partNumber)}/template/${type}/`);
 
@@ -68,7 +90,7 @@ export const getAllParameters = (config = {}) =>
 export const getAllProcessParameters = (config = {}) =>
   axios.get('/api/parts/process-parameters/all/', config);
 
-// Engineering Drawings API (Admin Only)
+// Engineering Drawings API (Supervisors & Admins)
 export const getDrawings = () =>
   axios.get('/api/parts/drawings/');
 
@@ -82,13 +104,22 @@ export const uploadDrawingVersion = (drawingId, formData) =>
     headers: { 'Content-Type': 'multipart/form-data' }
   });
 
+export const submitDrawingReview = (drawingId, data) =>
+  axios.post(`/api/parts/drawings/${drawingId}/submit-review/`, data);
+
+export const reviewDrawingAction = (drawingId, data) =>
+  axios.post(`/api/parts/drawings/${drawingId}/review/`, data);
+
+export const approveDrawingAction = (drawingId, data) =>
+  axios.post(`/api/parts/drawings/${drawingId}/approve/`, data);
+
 export const getDrawingHistory = (drawingId) =>
   axios.get(`/api/parts/drawings/${drawingId}/history/`);
 
 export const deleteDrawing = (drawingId) =>
   axios.delete(`/api/parts/drawings/${drawingId}/`);
 
-// Control Plans API (Admin Only)
+// Control Plans API (Supervisors & Admins)
 export const getControlPlans = () =>
   axios.get('/api/parts/control-plans/');
 
@@ -102,9 +133,19 @@ export const uploadControlPlanVersion = (controlPlanId, formData) =>
     headers: { 'Content-Type': 'multipart/form-data' }
   });
 
+export const submitControlPlanReview = (controlPlanId, data) =>
+  axios.post(`/api/parts/control-plans/${controlPlanId}/submit-review/`, data);
+
+export const reviewControlPlanAction = (controlPlanId, data) =>
+  axios.post(`/api/parts/control-plans/${controlPlanId}/review/`, data);
+
+export const approveControlPlanAction = (controlPlanId, data) =>
+  axios.post(`/api/parts/control-plans/${controlPlanId}/approve/`, data);
+
 export const getControlPlanHistory = (controlPlanId) =>
   axios.get(`/api/parts/control-plans/${controlPlanId}/history/`);
 
 export const deleteControlPlan = (controlPlanId) =>
   axios.delete(`/api/parts/control-plans/${controlPlanId}/`);
+
 

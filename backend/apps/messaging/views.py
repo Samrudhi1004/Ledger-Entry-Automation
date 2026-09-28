@@ -770,7 +770,7 @@ class UserSearchView(generics.ListAPIView):
         query = self.request.query_params.get('q', '').strip()
 
         if not query:
-            # Return suggested users — same plant first, fall back to all active users
+            # Return suggested users : same plant first, fall back to all active users
             user_plant = self.request.user.plant
             if user_plant:
                 return User.objects.filter(
@@ -778,7 +778,7 @@ class UserSearchView(generics.ListAPIView):
                     is_active=True
                 ).exclude(id=self.request.user.id)[:10]
             else:
-                # No plant assigned — return all active users as suggestions
+                # No plant assigned : return all active users as suggestions
                 return User.objects.filter(
                     is_active=True
                 ).exclude(id=self.request.user.id)[:10]

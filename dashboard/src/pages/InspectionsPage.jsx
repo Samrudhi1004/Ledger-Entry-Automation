@@ -174,7 +174,7 @@ export default function InspectionsPage() {
               <td style={{ ...tdStyle, fontWeight: 700, color: '#0F172A' }}>{s.machine?.machine_code ?? s.machine_code}</td>
               <td style={{ ...tdStyle, color: '#475569' }}>{s.part?.part_number ?? s.part_number}</td>
               <td style={{ ...tdStyle, textTransform: 'capitalize', color: '#7C3AED', fontWeight: 600 }}>{s.inspection_type?.replace('_', ' ')}</td>
-              <td style={tdStyle}>{s.operator?.username ?? '—'}</td>
+              <td style={tdStyle}>{s.operator?.username ?? '-'}</td>
               <td style={tdStyle}>
                 <span style={{
                   background: s.shift === 'I' || s.shift === 'A' ? '#EFF6FF' : s.shift === 'II' || s.shift === 'B' ? '#F5F3FF' : s.shift === 'III' || s.shift === 'C' ? '#FFFBEB' : '#F1F5F9',

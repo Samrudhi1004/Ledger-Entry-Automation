@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
+import { can } from '../utils/access';
 import { updateProfile, uploadProfilePhoto, changePassword, requestEmailVerification } from '../api/auth';
 import {
   User, Mail, Phone, Lock, Camera, CheckCircle2, AlertCircle,
@@ -17,9 +18,10 @@ export default function ProfilePage() {
     admin: 'ADMINISTRATOR',
     supervisor: 'SUPERVISOR',
     operator: 'MACHINE OPERATOR',
-    quality_engineer: 'QUALITY INSPECTOR',
+    quality_engineer: 'QUALITY ENGINEER',
+    inspector: 'QUALITY INSPECTOR',
     calibrator: 'CALIBRATION ENGINEER',
-  }[user?.role] || (user?.role ? user.role.toUpperCase() : 'USER');
+  }[user?.role] || (user?.role_name ? user.role_name.toUpperCase() : 'USER');
 
   const initials = user
     ? (`${user.first_name?.[0] ?? ''}${user.last_name?.[0] ?? ''}`).toUpperCase() || user.username?.[0]?.toUpperCase()
@@ -167,7 +169,7 @@ export default function ProfilePage() {
   };
 
   const formatDate = (str) => {
-    if (!str) return '—';
+    if (!str) return '-';
     return new Date(str).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
@@ -175,15 +177,15 @@ export default function ProfilePage() {
     <>
       <Header
         title="Profile & Account Settings"
-        subtitle={`Manage your profile, personal information, and security credentials — ${roleLabel}`}
+        subtitle={`Manage your profile, personal information, and security credentials : ${roleLabel}`}
       />
 
       <div className="page-content bg-gradient-animated">
         <div style={{ maxWidth: 1040, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
           <Breadcrumbs items={[{ label: 'My Profile' }]} />
 
-          {/* ── Admin Sub-Navigation Tabs (Only visible to admin) ────────────── */}
-          {user?.role === 'admin' && (
+          {/* ── Company settings navigation ────────────── */}
+          {can(user, 'quality.machines.manage') && (
             <div
               style={{
                 display: 'flex',
@@ -234,7 +236,7 @@ export default function ProfilePage() {
               >
                 <Building2 size={16} /> Company Details
                 <span className="badge badge-purple" style={{ fontSize: '0.68rem', padding: '2px 6px', marginLeft: 4 }}>
-                  ADMIN
+                  EDIT
                 </span>
               </NavLink>
             </div>
@@ -283,7 +285,7 @@ export default function ProfilePage() {
               <div style={{ flex: 1, minWidth: 260 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-                    {user ? `${user.first_name} ${user.last_name}`.trim() || user.username : '—'}
+                    {user ? `${user.first_name} ${user.last_name}`.trim() || user.username : '-'}
                   </h2>
                   <span className="badge badge-purple" style={{ fontSize: '0.72rem', letterSpacing: '0.04em' }}>
                     {roleLabel}
@@ -301,7 +303,7 @@ export default function ProfilePage() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Mail size={14} color="var(--text-muted)" />
-                    <span>{user?.email || '—'}</span>
+                    <span>{user?.email || '-'}</span>
                   </div>
                 </div>
 
@@ -501,7 +503,7 @@ export default function ProfilePage() {
                   System Username
                 </div>
                 <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: 6 }} className="font-mono">
-                  {user?.username || '—'}
+                  {user?.username || '-'}
                 </div>
               </div>
 

@@ -20,6 +20,7 @@ class Document {
   final String? uploadedByName;
   final String? approvedByName;
   final String? effectiveDate;
+  final String? revisionDate;
   final String createdAt;
 
   Document({
@@ -36,6 +37,7 @@ class Document {
     this.uploadedByName,
     this.approvedByName,
     this.effectiveDate,
+    this.revisionDate,
     required this.createdAt,
   });
 
@@ -45,7 +47,7 @@ class Document {
         title: json['title'] as String? ?? '',
         description: json['description'] as String? ?? '',
         status: json['status'] as String? ?? 'draft',
-        revision: json['revision'] as String? ?? 'Rev A',
+        revision: json['revision'] as String? ?? '0',
         docLevel: json['doc_level'] as String? ?? 'L2',
         cloudinaryUrl: json['cloudinary_url'] as String?,
         fileName: json['file_name'] as String?,
@@ -53,6 +55,7 @@ class Document {
         uploadedByName: json['uploaded_by_name'] as String?,
         approvedByName: json['approved_by_name'] as String?,
         effectiveDate: json['effective_date'] as String?,
+        revisionDate: json['revision_date'] as String?,
         createdAt: json['created_at'] as String? ?? '',
       );
 

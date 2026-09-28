@@ -11,7 +11,7 @@ import logging
 import threading
 import time
 
-# Celery is optional — not installed on Render free tier.
+# Celery is optional : not installed on Render free tier.
 # Provide a no-op @shared_task decorator so the module loads cleanly.
 try:
     from celery import shared_task
@@ -19,13 +19,13 @@ try:
 except ImportError:
     _CELERY_AVAILABLE = False
     def shared_task(*args, **kwargs):           # noqa: E302
-        """No-op decorator — Celery not installed."""
+        """No-op decorator : Celery not installed."""
         def decorator(func):
             return func
         return decorator if args and callable(args[0]) else decorator
 
 from django.core.cache import cache
-# M4 FIX: Import shared singleton — do NOT instantiate InspectionService() here.
+# M4 FIX: Import shared singleton : do NOT instantiate InspectionService() here.
 # One instance is shared across views.py, tasks.py, and any future modules.
 from .services import inspection_service as _service
 

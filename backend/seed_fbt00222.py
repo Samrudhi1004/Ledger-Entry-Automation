@@ -87,7 +87,7 @@ def seed_data():
             "part_name": "POLY V PULLEY",
             "machine": cnc_machine,
             "drawing_number": "DRG-FBT00222-10",
-            "description": "Process No. 10 — 1st Side Finish Turning",
+            "description": "Process No. 10 : 1st Side Finish Turning",
             "created_by": admin_user
         }
     )

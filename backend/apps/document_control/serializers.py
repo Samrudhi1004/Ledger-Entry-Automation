@@ -114,7 +114,6 @@ class DocumentListSerializer(serializers.ModelSerializer):
                 'can_manage_access': False,
             }
 
-
 class DocumentDetailSerializer(DocumentListSerializer):
     """Full detail serializer including activities, revision tree, and links."""
     activities           = DocumentActivitySerializer(many=True, read_only=True)
@@ -214,7 +213,6 @@ class DocumentAccessSerializer(serializers.Serializer):
         if unknown:
             raise serializers.ValidationError(f'Unknown roles: {", ".join(unknown)}')
         return roles
-
 
 # ── New per-user document permission serializers ───────────────────────────────
 

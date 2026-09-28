@@ -158,7 +158,7 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
 
   if (loading) {
     return (
-      <Modal title="Process No. 10 — Inspection Sheet (Form F02)" onClose={onClose}>
+      <Modal title="Process No. 10 : Inspection Sheet (Form F02)" onClose={onClose}>
         <div style={{ padding: 40 }}>
           <LoadingSpinner message="Loading Process No. 10 live sheet..." />
         </div>
@@ -284,7 +284,7 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
   return (
     <Modal
       size="xl"
-      title={`PROCESS NO. 10 LIVE INSPECTION SHEET — Machine ${session.machine_code}`}
+      title={`PROCESS NO. 10 LIVE INSPECTION SHEET : Machine ${session.machine_code}`}
       onClose={onClose}
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
@@ -312,7 +312,7 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div>
             <strong style={{ fontSize: 13, color: 'var(--text-primary)' }}>
-              Process No. 10 — 1st Side Finish Turning (Operator: {session.operator_name || `Operator #${session.operator_id}`})
+              Process No. 10 : 1st Side Finish Turning (Operator: {session.operator_name || `Operator #${session.operator_id}`})
             </strong>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
               Part: <strong>{session.part_number}</strong> (POLY V PULLEY) · Shift {session.shift}
@@ -339,7 +339,7 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--accent-blue)' }}>
           <div>
-            <strong style={{ fontSize: 14 }}>Process No. 10 — Real-Time Live Inspection Sheet</strong>
+            <strong style={{ fontSize: 14 }}>Process No. 10 : Real-Time Live Inspection Sheet</strong>
             <div style={{ fontSize: 12, opacity: 0.9 }}>
               Quality Inspectors finalize First Piece inspections independently. Supervisors monitor live readings and download official PDF reports.
             </div>
@@ -370,7 +370,7 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
               </td>
               <td style={{ width: '73%', padding: '4px 10px', borderRight: '1.5px solid #000000', textAlign: 'center' }}>
                 <div style={{ fontSize: 14, fontWeight: 'bold', letterSpacing: '0.5px', color: '#000000' }}>{companyName.toUpperCase()}</div>
-                <div style={{ fontSize: 11, fontWeight: 'bold', marginTop: 1, color: '#000000' }}>1ST PIECE CUM IN-PROCESS INSPECTION REPORT — PROCESS NO. 10</div>
+                <div style={{ fontSize: 11, fontWeight: 'bold', marginTop: 1, color: '#000000' }}>1ST PIECE CUM IN-PROCESS INSPECTION REPORT : PROCESS NO. 10</div>
               </td>
               <td style={{ width: '15%', padding: '4px 6px', textAlign: 'right', fontSize: 8.5, color: '#000000' }}>
                 <div><strong>DOC REF:</strong> {companyCode}/PRD/F02</div>
@@ -478,7 +478,7 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
 
                   {/* Special CharClass */}
                   <td style={{ border: '1px solid #000000', padding: '2px 1px' }}>
-                    {specMeta.critical ? <span style={{ color: '#dc2626', fontSize: 8, fontWeight: 'bold' }}>CRITICAL</span> : <span style={{ color: '#94a3b8' }}>—</span>}
+                    {specMeta.critical ? <span style={{ color: '#dc2626', fontSize: 8, fontWeight: 'bold' }}>CRITICAL</span> : <span style={{ color: '#94a3b8' }}>-</span>}
                   </td>
 
                   {/* Specification */}
@@ -496,28 +496,28 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
                     {specMeta.sample}
                   </td>
 
-                  {/* 1st #1 Trial Column — OOC values in RED */}
+                  {/* 1st #1 Trial Column : OOC values in RED */}
                   <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: tr1OOC ? 'bold' : 'normal', fontSize: 9.5, fontFamily: 'Consolas, monospace', color: tr1OOC ? '#dc2626' : '#000000', background: tr1OOC ? 'rgba(254, 226, 226, 0.45)' : (isAltRow ? '#f8fafc' : '#ffffff') }}>
-                    {tr1 !== undefined ? fmt(tr1) : '—'}
+                    {tr1 !== undefined ? fmt(tr1) : '-'}
                   </td>
 
-                  {/* 1st #2 Trial Column — OOC values in RED */}
+                  {/* 1st #2 Trial Column : OOC values in RED */}
                   <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: tr2OOC ? 'bold' : 'normal', fontSize: 9.5, fontFamily: 'Consolas, monospace', color: tr2OOC ? '#dc2626' : '#000000', background: tr2OOC ? 'rgba(254, 226, 226, 0.45)' : (isAltRow ? '#f8fafc' : '#ffffff') }}>
-                    {tr2 !== undefined ? fmt(tr2) : '—'}
+                    {tr2 !== undefined ? fmt(tr2) : '-'}
                   </td>
 
-                  {/* 1st #3 Trial Column — OOC values in RED */}
+                  {/* 1st #3 Trial Column : OOC values in RED */}
                   <td style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: tr3OOC ? 'bold' : 'normal', fontSize: 9.5, fontFamily: 'Consolas, monospace', color: tr3OOC ? '#dc2626' : '#000000', background: tr3OOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
-                    {tr3 !== undefined ? fmt(tr3) : '—'}
+                    {tr3 !== undefined ? fmt(tr3) : '-'}
                   </td>
 
-                  {/* Hourly Readings (1/Hr .. 8/Hr or 12/Hr) — OOC values in RED */}
+                  {/* Hourly Readings (1/Hr .. 8/Hr or 12/Hr) : OOC values in RED */}
                   {Array.from({ length: session.shift_hours || session.total_hourly_slots || 8 }, (_, i) => i + 1).map((slot) => {
                     const hVal = hr[slot];
                     const hOOC = p.hourlyOOC?.[slot] || isValOOC(hVal, p.lower_limit, p.upper_limit);
                     return (
                       <td key={slot} style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: hOOC ? 'bold' : 'normal', fontSize: 9.5, fontFamily: 'Consolas, monospace', color: hOOC ? '#dc2626' : '#000000', background: hOOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
-                        {hVal !== undefined ? fmt(hVal) : '—'}
+                        {hVal !== undefined ? fmt(hVal) : '-'}
                       </td>
                     );
                   })}

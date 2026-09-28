@@ -25,8 +25,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
 
   bool get isInspector {
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    final role = (auth.userRole ?? '').toLowerCase();
-    return role == 'inspector' || role == 'quality_engineer';
+    return auth.isInspector;
   }
 
   List<dynamic> get _displayedParameters {
@@ -48,8 +47,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
   Future<void> _loadParameters() async {
     try {
       final auth = Provider.of<AuthProvider>(context, listen: false);
-      final role = (auth.userRole ?? '').toLowerCase();
-      final isInspector = role == 'inspector' || role == 'quality_engineer';
+      final isInspector = auth.isInspector;
       final templateId = widget.template['id'];
 
       if (templateId != null) {
@@ -85,8 +83,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
   Future<void> _startDataEntry({int startIndex = 0}) async {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    final role = (auth.userRole ?? '').toLowerCase();
-    final isInspector = role == 'inspector' || role == 'quality_engineer';
+    final isInspector = auth.isInspector;
 
     final categoryFilter = _activeCategoryTab == 'process'
         ? 'process'

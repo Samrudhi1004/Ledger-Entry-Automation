@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
-export default function Modal({ title, onClose, children, footer, size, closeOnBackdrop = true }) {
+export default function Modal({ title, onClose, children, footer, size, closeOnBackdrop = true, zIndex = 9999 }) {
   const titleId = useId();
   const modalRef = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -53,13 +53,16 @@ export default function Modal({ title, onClose, children, footer, size, closeOnB
 
   const modalClass = `modal${
     size === '2xl' || size === 'full' ? ' modal-2xl' : 
+    size === 'wide' ? ' modal-wide' :
     size === 'xl' ? ' modal-xl' : 
+    size === 'role-editor' ? ' modal-role-editor' :
     size === 'lg' ? ' modal-lg' : ''
   }`;
 
   return (
     <div
       className="modal-backdrop"
+      style={{ zIndex }}
       onClick={(e) => { if (closeOnBackdrop && e.target === e.currentTarget) onClose(); }}
     >
       <div ref={modalRef} className={modalClass} role="dialog" aria-modal="true" aria-labelledby={titleId}>

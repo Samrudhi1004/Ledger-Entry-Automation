@@ -6,7 +6,7 @@ from django.db import models
 
 
 class Factory(models.Model):
-    """Top-level organisational unit — e.g. 'Liha Tech Plant 1'."""
+    """Top-level organisational unit : e.g. 'Liha Tech Plant 1'."""
 
     name          = models.CharField(max_length=100)
     code          = models.CharField(max_length=20, unique=True)   # e.g. FAC-01
@@ -50,7 +50,7 @@ class Plant(models.Model):
         ordering = ['name']
 
     def __str__(self):
-        return f"{self.name} — {self.factory.name}"
+        return f"{self.name} : {self.factory.name}"
 
 
 class Machine(models.Model):
@@ -69,7 +69,7 @@ class Machine(models.Model):
     model_number   = models.CharField(max_length=100, blank=True)
     status         = models.CharField(max_length=15, choices=Status.choices, default=Status.ACTIVE)
 
-    # QR code value — scanned by Flutter app to quickly select machine
+    # QR code value : scanned by Flutter app to quickly select machine
     qr_code        = models.CharField(max_length=100, unique=True, blank=True)
 
     is_active  = models.BooleanField(default=True)
@@ -81,7 +81,7 @@ class Machine(models.Model):
         ordering = ['machine_code']
 
     def __str__(self):
-        return f"{self.machine_code} — {self.name} ({self.plant.name})"
+        return f"{self.machine_code} : {self.name} ({self.plant.name})"
 
     def save(self, *args, **kwargs):
         # Auto-generate QR code value if not set

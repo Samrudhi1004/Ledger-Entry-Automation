@@ -161,7 +161,7 @@ class PresenceConsumer(AsyncWebsocketConsumer):
 
         Uses a single cache key (PRESENCE_INDEX_KEY) that stores a set of user
         IDs rather than scanning all cache keys.  This is portable across every
-        Django cache backend — no cache.keys() needed.
+        Django cache backend : no cache.keys() needed.
         """
         online_ids = cache.get(PRESENCE_INDEX_KEY)
         if not online_ids:

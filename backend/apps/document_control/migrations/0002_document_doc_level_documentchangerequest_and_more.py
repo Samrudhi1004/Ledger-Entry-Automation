@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='document',
             name='doc_level',
-            field=models.CharField(choices=[('L1', 'L1 — Quality Manual & Policies'), ('L2', 'L2 — Standard Operating Procedures (SOP)'), ('L3', 'L3 — Work Instructions & Standards'), ('L4', 'L4 — Forms, Formats & Checklists')], db_index=True, default='L2', help_text='IATF/ISO Document Hierarchy Tier', max_length=2),
+            field=models.CharField(choices=[('L1', 'L1 : Quality Manual & Policies'), ('L2', 'L2 : Standard Operating Procedures (SOP)'), ('L3', 'L3 : Work Instructions & Standards'), ('L4', 'L4 : Forms, Formats & Checklists')], db_index=True, default='L2', help_text='IATF/ISO Document Hierarchy Tier', max_length=2),
         ),
         migrations.CreateModel(
             name='DocumentChangeRequest',

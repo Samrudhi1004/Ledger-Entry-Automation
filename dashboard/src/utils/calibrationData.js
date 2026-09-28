@@ -46,10 +46,10 @@ export const DASHBOARD_FILTER_OPTIONS = [
   ['due15', 'Due within 15 days'],
   ['due3', 'Due within 3 days'],
   ['due7', 'Due within 7 days'],
-  ['dueSoon', 'Due soon (1–30 days)'],
+  ['dueSoon', 'Due soon (1-30 days)'],
   ['dueToday', 'Due today'],
-  ['due1to7', 'Due in 1–7 days'],
-  ['due8to30', 'Due in 8–30 days'],
+  ['due1to7', 'Due in 1-7 days'],
+  ['due8to30', 'Due in 8-30 days'],
   ['overdue', 'Overdue equipment'],
   ['needsAction', 'Needs action'],
   ['failed', 'Rejected equipment'],
@@ -107,14 +107,14 @@ export function apiErrorMessage(error, fallback) {
 }
 
 export function formatDate(value) {
-  if (!value) return '—';
+  if (!value) return '-';
   return new Date(`${value}T00:00:00`).toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
   });
 }
 
 export function daysLabel(equipment) {
-  if (equipment.state !== 'active') return '—';
+  if (equipment.state !== 'active') return '-';
   if (equipment.days_remaining === 0) return 'Due today';
   if (equipment.days_remaining < 0) {
     const overdueDays = Math.abs(equipment.days_remaining);
