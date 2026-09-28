@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   FileText, CheckCircle, XCircle, Clock, AlertTriangle,
   Download, Send, Eye, RefreshCw, UserCheck, Shield, ChevronRight, X
@@ -25,7 +26,10 @@ const STATUS_BADGES = {
 
 export default function DocumentControlDCRPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('action_required');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlDcrId = searchParams.get('dcr') || searchParams.get('id');
+  const urlTab = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(urlTab || 'action_required');
   const [dcrs, setDcrs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDcr, setSelectedDcr] = useState(null);
@@ -63,6 +67,28 @@ export default function DocumentControlDCRPage() {
   useEffect(() => {
     fetchDCRs();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (urlTab && ['action_required', 'my_requests', 'all'].includes(urlTab)) {
+      setActiveTab(urlTab);
+    }
+  }, [urlTab]);
+
+  useEffect(() => {
+    if (urlDcrId) {
+      openDCRModal({ id: urlDcrId });
+    }
+  }, [urlDcrId]);
+
+  const handleCloseDetailModal = () => {
+    setSelectedDcr(null);
+    if (searchParams.get('dcr') || searchParams.get('id')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('dcr');
+      next.delete('id');
+      setSearchParams(next, { replace: true });
+    }
+  };
 
   const openDCRModal = async (dcrSummary) => {
     setLoadingDetail(true);
@@ -467,7 +493,7 @@ export default function DocumentControlDCRPage() {
                 </a>
 
                 <button
-                  onClick={() => setSelectedDcr(null)}
+                  onClick={handleCloseDetailModal}
                   style={{ background: '#fee2e2', border: 'none', borderRadius: '8px', padding: '8px', cursor: 'pointer', color: '#dc2626' }}
                 >
                   <X size={16} />

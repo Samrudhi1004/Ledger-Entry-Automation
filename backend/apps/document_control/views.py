@@ -255,14 +255,31 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if not serializer.validated_data.get('revision'):
             save_kwargs['revision'] = '0'
 
+        if initial_status == Document.Status.APPROVED:
+            if serializer.validated_data.get('reviewed_by'):
+                save_kwargs['reviewed_at'] = timezone.now()
+            if serializer.validated_data.get('approved_by'):
+                save_kwargs['approved_at'] = timezone.now()
+
         with transaction.atomic():
             doc = serializer.save(**save_kwargs)
             action_name = 'approved' if initial_status == Document.Status.APPROVED else ('submitted_review' if initial_status == Document.Status.UNDER_REVIEW else 'uploaded')
+            if initial_status == Document.Status.APPROVED:
+                rev = doc.reviewed_by
+                app = doc.approved_by
+                rev_text = (rev.get_full_name() or rev.username) if rev else "None"
+                app_text = (app.get_full_name() or app.username) if app else "None"
+                activity_comment = f'Uploaded active master: {file.name} (Reviewer: {rev_text}, Approver: {app_text})'
+            elif initial_status == Document.Status.UNDER_REVIEW:
+                activity_comment = f'Submitted for review: {file.name}'
+            else:
+                activity_comment = f'Uploaded initial file: {file.name} (Status: {initial_status})'
+
             DocumentActivity.objects.create(
                 document=doc,
                 action=action_name,
                 performed_by=request.user,
-                comment=f'Uploaded initial file: {file.name} (Status: {initial_status})',
+                comment=activity_comment,
             )
 
         # Trigger notification based on initial status
@@ -542,24 +559,67 @@ class DocumentViewSet(viewsets.ModelViewSet):
         return Response(DocumentListSerializer(new_doc).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'])
+    def preview(self, request, pk=None):
+        doc = self.get_object()
+        if not doc.cloudinary_url:
+            return Response({'error': 'No file attached.'}, status=404)
+
+        # Enforce preview permission
+        is_manager = request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'
+        is_owner = doc.uploaded_by_id == request.user.id
+        is_reviewer_or_approver = (doc.reviewed_by_id == request.user.id) or (doc.approved_by_id == request.user.id)
+        if not (is_manager or is_owner or is_reviewer_or_approver):
+            try:
+                perm = DocumentUserPermission.objects.get(document=doc, user=request.user)
+                if not perm.can_preview:
+                    return Response({'error': 'You do not have permission to preview this document.'}, status=403)
+            except DocumentUserPermission.DoesNotExist:
+                return Response({'error': 'Permission denied.'}, status=403)
+
+        DocumentActivity.objects.create(document=doc, action='viewed', performed_by=request.user)
+        return redirect(document_delivery_url(doc))
+
+    @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
         doc = self.get_object()
         if not doc.cloudinary_url:
             return Response({'error': 'No file attached.'}, status=404)
-        
+
         # Enforce download permission
         is_manager = request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'
         is_owner = doc.uploaded_by_id == request.user.id
         if not is_manager and not is_owner:
             try:
                 perm = DocumentUserPermission.objects.get(document=doc, user=request.user)
-                if not perm.can_download and not perm.can_preview:
-                    return Response({'error': 'You do not have permission to download or preview this document.'}, status=403)
+                if not perm.can_download:
+                    return Response({'error': 'You do not have permission to download this document.'}, status=403)
             except DocumentUserPermission.DoesNotExist:
                 return Response({'error': 'Permission denied.'}, status=403)
 
         DocumentActivity.objects.create(document=doc, action='downloaded', performed_by=request.user)
         return redirect(document_delivery_url(doc))
+
+    def destroy(self, request, *args, **kwargs):
+        doc = self.get_object()
+        is_manager = request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'
+        is_owner = doc.uploaded_by_id == request.user.id
+        has_delete_perm = DocumentUserPermission.objects.filter(
+            document=doc, user=request.user, can_delete=True
+        ).exists()
+
+        if not (is_manager or is_owner or has_delete_perm):
+            return Response({'error': 'You do not have permission to delete this document.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # In controlled document management, approved documents must be marked obsolete instead of deleted
+        if doc.status == Document.Status.APPROVED:
+            return Response(
+                {'error': 'Approved master documents cannot be deleted. Please mark as Obsolete instead.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        doc_num = doc.document_number
+        doc.delete()
+        return Response({'detail': f'Document {doc_num} deleted successfully.'}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'])
     def history(self, request, pk=None):
@@ -570,8 +630,16 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def obsolete(self, request, pk=None):
         doc = self.get_object()
-        if not request.user.has_access('document.approve'):
-            return Response({'error': 'Only admins can mark documents as obsolete.'}, status=403)
+        is_manager = request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'
+        is_owner = doc.uploaded_by_id == request.user.id
+        has_approve_perm = request.user.has_access('document.approve')
+        has_user_perm = DocumentUserPermission.objects.filter(
+            document=doc, user=request.user, can_delete=True
+        ).exists()
+
+        if not (is_manager or is_owner or has_approve_perm or has_user_perm):
+            return Response({'error': 'You do not have permission to mark this document as obsolete.'}, status=403)
+
         doc.status = Document.Status.OBSOLETE
         doc.save(update_fields=['status', 'updated_at'])
         DocumentActivity.objects.create(
@@ -583,7 +651,10 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='assignable-users')
     def assignable_users(self, request):
         """Returns all active users so anyone can be selected as reviewer or approver."""
-        eligible_users = User.objects.filter(is_active=True).values('id', 'first_name', 'last_name', 'username', 'role', 'email').order_by('first_name', 'username')
+        qs = User.objects.filter(is_active=True)
+        if request.user and request.user.is_authenticated:
+            qs = qs.exclude(id=request.user.id)
+        eligible_users = qs.values('id', 'first_name', 'last_name', 'username', 'role', 'email').order_by('first_name', 'username')
         result = []
         for u in eligible_users:
             full_name = f"{u['first_name']} {u['last_name']}".strip() or u['username']
@@ -660,6 +731,19 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
 
         serializer = DCRCreateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
+
+        target_doc = serializer.validated_data.get('document')
+        is_manager = request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'
+        is_owner = target_doc and target_doc.uploaded_by_id == request.user.id
+        has_edit_perm = target_doc and DocumentUserPermission.objects.filter(
+            document=target_doc, user=request.user, can_edit=True
+        ).exists()
+
+        if not (is_manager or is_owner or has_edit_perm):
+            return Response(
+                {'error': 'You do not have permission to propose changes (DCR) for this document.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         with transaction.atomic():
             dcr = serializer.save(
@@ -852,7 +936,10 @@ class DocumentChangeRequestViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='assignable-users')
     def assignable_users(self, request):
         """Returns all active users so anyone can be selected as reviewer or approver."""
-        eligible_users = User.objects.filter(is_active=True).order_by('first_name', 'username')
+        qs = User.objects.filter(is_active=True)
+        if request.user and request.user.is_authenticated:
+            qs = qs.exclude(id=request.user.id)
+        eligible_users = qs.order_by('first_name', 'username')
 
         result = []
         for u in eligible_users:

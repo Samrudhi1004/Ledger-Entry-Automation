@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { can } from '../utils/access';
@@ -74,12 +74,45 @@ const extractErrorMessage = (err, fallback) => {
   return fallback;
 };
 
+const formatSpecification = (spec) => {
+  if (!spec) return '-';
+  if (typeof spec === 'string') return spec;
+  if (typeof spec === 'number') return String(spec);
+  if (typeof spec === 'object') {
+    if (spec.nominal_value !== undefined && spec.nominal_value !== null) {
+      let text = `Nominal: ${spec.nominal_value}`;
+      if (spec.unit) text += ` ${spec.unit}`;
+      if (spec.upper_tolerance !== undefined || spec.lower_tolerance !== undefined) {
+        const ut = spec.upper_tolerance ?? 0;
+        const lt = spec.lower_tolerance ?? 0;
+        const uStr = String(ut).startsWith('+') ? ut : `+${ut}`;
+        const lStr = String(lt);
+        text += `, Tol: ${uStr} / ${lStr}`;
+      }
+      return text;
+    }
+    if (spec.specification) return String(spec.specification);
+    try {
+      const entries = Object.entries(spec);
+      if (entries.length === 0) return '-';
+      return entries
+        .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+        .join(', ');
+    } catch {
+      return JSON.stringify(spec);
+    }
+  }
+  return String(spec);
+};
+
 export default function ParametersPage() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const targetOpId = searchParams.get('operation') || searchParams.get('template');
   const targetPartId = searchParams.get('part');
   const targetMachineId = searchParams.get('machine');
+  const targetTab = searchParams.get('tab');
+  const targetDcrId = searchParams.get('dcr');
   const isAdmin = can(user, 'development.parameters.manage');
   const requireManageAccess = (action = 'edit master database records') => {
     if (isAdmin) return true;
@@ -134,6 +167,10 @@ export default function ParametersPage() {
 
   // Sign-Off Workflow States (Reviewer & Approver Governance)
   const [assignableUsers, setAssignableUsers] = useState([]);
+  const eligibleSignoffUsers = useMemo(
+    () => assignableUsers.filter((u) => String(u.id) !== String(user?.id)),
+    [assignableUsers, user]
+  );
 
   const [showSubmitReviewModal, setShowSubmitReviewModal] = useState(false);
   const [submitReviewForm, setSubmitReviewForm] = useState({
@@ -249,6 +286,28 @@ export default function ParametersPage() {
       setTemplateDCRs([]);
     }
   }, [selectedTemplate, loadTemplateDCRs]);
+
+  // Auto-scroll / open target DCR if requested in URL params
+  useEffect(() => {
+    if ((targetTab === 'dcr' || targetDcrId) && templateDCRs.length > 0) {
+      const el = document.getElementById('dcr-section');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+      if (targetDcrId) {
+        const found = templateDCRs.find(d => String(d.id) === String(targetDcrId));
+        if (found) {
+          if (found.status === 'awaiting_review' && can(user, 'development.parameters.review')) {
+            setSelectedDCR(found);
+            setShowDCRReviewModal(true);
+          } else if (found.status === 'reviewed' && can(user, 'development.parameters.approve')) {
+            setSelectedDCR(found);
+            setShowDCRApproveModal(true);
+          }
+        }
+      }
+    }
+  }, [templateDCRs, targetTab, targetDcrId, user]);
 
   // 1. Fetch Machines
   const loadMachines = useCallback(async () => {
@@ -2358,7 +2417,7 @@ export default function ParametersPage() {
 
         {/* ── 2.5 DOCUMENT CHANGE REQUESTS (DCR LOG - FORM DKI/MR/F/05) ── */}
         {selectedTemplate && (
-          <div style={{
+          <div id="dcr-section" style={{
             background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14,
             padding: '20px 24px', marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
           }}>
@@ -2446,11 +2505,11 @@ export default function ParametersPage() {
                             <span style={{ marginLeft: 6, fontSize: 10, color: '#4F46E5', fontWeight: 700 }}>PROCESS</span>
                           )}
                         </td>
-                        <td style={{ padding: '11px 14px', color: '#64748B', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={dcr.current_specification}>
-                          {dcr.current_specification || '-'}
+                        <td style={{ padding: '11px 14px', color: '#64748B', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={typeof dcr.current_specification === 'object' ? JSON.stringify(dcr.current_specification) : dcr.current_specification}>
+                          {formatSpecification(dcr.current_specification)}
                         </td>
-                        <td style={{ padding: '11px 14px', fontWeight: 600, color: '#0F172A', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={dcr.proposed_specification}>
-                          {dcr.proposed_specification || '-'}
+                        <td style={{ padding: '11px 14px', fontWeight: 600, color: '#0F172A', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={typeof dcr.proposed_specification === 'object' ? JSON.stringify(dcr.proposed_specification) : dcr.proposed_specification}>
+                          {formatSpecification(dcr.proposed_specification)}
                         </td>
                         <td style={{ padding: '11px 14px', color: '#475569', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={dcr.basis_for_change}>
                           {dcr.basis_for_change || '-'}
@@ -3478,7 +3537,7 @@ export default function ParametersPage() {
                       style={{ fontSize: 13 }}
                     >
                       <option value="">Select Quality Reviewer</option>
-                      {assignableUsers.map((u) => (
+                      {eligibleSignoffUsers.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                         </option>
@@ -3501,7 +3560,7 @@ export default function ParametersPage() {
                       style={{ fontSize: 13 }}
                     >
                       <option value="">Select Final Approver</option>
-                      {assignableUsers.map((u) => (
+                      {eligibleSignoffUsers.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                         </option>
@@ -3980,7 +4039,7 @@ export default function ParametersPage() {
                       <input
                         type="text"
                         className="form-input"
-                        value={dcrForm.current_specification || '-'}
+                        value={formatSpecification(dcrForm.current_specification)}
                         readOnly
                         style={{ background: '#F1F5F9', color: '#475569', fontSize: 12 }}
                       />
@@ -4029,7 +4088,7 @@ export default function ParametersPage() {
                         style={{ fontSize: 12.5 }}
                       >
                         <option value="">Select Reviewer</option>
-                        {assignableUsers.map((u) => (
+                        {eligibleSignoffUsers.map((u) => (
                           <option key={u.id} value={u.id}>
                             {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                           </option>
@@ -4046,7 +4105,7 @@ export default function ParametersPage() {
                         style={{ fontSize: 12.5 }}
                       >
                         <option value="">Select Approver</option>
-                        {assignableUsers.map((u) => (
+                        {eligibleSignoffUsers.map((u) => (
                           <option key={u.id} value={u.id}>
                             {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                           </option>
@@ -4096,8 +4155,8 @@ export default function ParametersPage() {
                 <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '12px 14px', fontSize: 12 }}>
                   <div style={{ marginBottom: 4 }}><strong>Parameter:</strong> {selectedDCR.parameter_code ? `[${selectedDCR.parameter_code}] ` : ''}{selectedDCR.parameter_name}</div>
                   <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Change Type:</span> <strong style={{ textTransform: 'uppercase' }}>{selectedDCR.change_type}</strong></div>
-                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Current Spec:</span> {selectedDCR.current_specification || 'N/A'}</div>
-                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Proposed Spec:</span> <strong style={{ color: '#0F172A' }}>{selectedDCR.proposed_specification || 'N/A'}</strong></div>
+                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Current Spec:</span> {formatSpecification(selectedDCR.current_specification)}</div>
+                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Proposed Spec:</span> <strong style={{ color: '#0F172A' }}>{formatSpecification(selectedDCR.proposed_specification)}</strong></div>
                   <div><span style={{ color: '#64748B' }}>Basis for Change:</span> {selectedDCR.basis_for_change}</div>
                 </div>
 
@@ -4188,7 +4247,7 @@ export default function ParametersPage() {
                 <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '12px 14px', fontSize: 12 }}>
                   <div style={{ marginBottom: 4 }}><strong>Parameter:</strong> {selectedDCR.parameter_code ? `[${selectedDCR.parameter_code}] ` : ''}{selectedDCR.parameter_name}</div>
                   <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Change Type:</span> <strong style={{ textTransform: 'uppercase' }}>{selectedDCR.change_type}</strong></div>
-                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Proposed Specification:</span> <strong style={{ color: '#047857' }}>{selectedDCR.proposed_specification || 'N/A'}</strong></div>
+                  <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Proposed Specification:</span> <strong style={{ color: '#047857' }}>{formatSpecification(selectedDCR.proposed_specification)}</strong></div>
                   <div style={{ marginBottom: 4 }}><span style={{ color: '#64748B' }}>Reviewer Remarks:</span> {selectedDCR.review_remarks || 'None'}</div>
                 </div>
 

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { NavLink, useSearchParams } from 'react-router-dom';
 import { 
   FileSpreadsheet, 
   Upload, 
@@ -53,10 +53,17 @@ export default function ControlPlansPage() {
   const [controlPlans, setControlPlans] = useState([]);
   const [parts, setParts] = useState([]);
   const [assignableUsers, setAssignableUsers] = useState([]);
+  const eligibleSignoffUsers = useMemo(
+    () => assignableUsers.filter(u => String(u.id) !== String(user?.id)),
+    [assignableUsers, user]
+  );
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [searchParams] = useSearchParams();
+  const urlPlanId = searchParams.get('plan') || searchParams.get('id');
+  const urlAction = searchParams.get('action');
 
   // Upload New Control Plan Modal State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -368,6 +375,23 @@ export default function ControlPlansPage() {
       alert('Failed to delete control plan.');
     }
   };
+
+  useEffect(() => {
+    if (urlPlanId && controlPlans.length > 0) {
+      const cp = controlPlans.find((p) => String(p.id) === String(urlPlanId));
+      if (cp) {
+        if (urlAction === 'approve' || cp.status === 'reviewed') {
+          handleOpenApproveModal(cp);
+        } else if (urlAction === 'revision') {
+          handleOpenRevisionModal(cp);
+        } else if (urlAction === 'review' || cp.status === 'under_review') {
+          handleOpenReviewModal(cp);
+        } else {
+          handleOpenHistory(cp);
+        }
+      }
+    }
+  }, [urlPlanId, urlAction, controlPlans]);
 
   const safeControlPlans = Array.isArray(controlPlans) ? controlPlans : [];
   const filteredControlPlans = safeControlPlans.filter((cp) => {
@@ -1119,7 +1143,7 @@ export default function ControlPlansPage() {
                   style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '13px' }}
                 >
                   <option value="">Select Quality Reviewer</option>
-                  {assignableUsers.map((u) => (
+                  {eligibleSignoffUsers.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                     </option>
@@ -1141,7 +1165,7 @@ export default function ControlPlansPage() {
                   style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '13px' }}
                 >
                   <option value="">Select Final Approver</option>
-                  {assignableUsers.map((u) => (
+                  {eligibleSignoffUsers.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                     </option>
@@ -1588,7 +1612,7 @@ export default function ControlPlansPage() {
                     style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '13px' }}
                   >
                     <option value="">Retain Existing Reviewer</option>
-                    {assignableUsers.map((u) => (
+                    {eligibleSignoffUsers.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                       </option>
@@ -1606,7 +1630,7 @@ export default function ControlPlansPage() {
                     style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '13px' }}
                   >
                     <option value="">Retain Existing Approver</option>
-                    {assignableUsers.map((u) => (
+                    {eligibleSignoffUsers.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.first_name || u.last_name ? `${u.first_name} ${u.last_name}` : u.username} ({u.role_display || u.role})
                       </option>
