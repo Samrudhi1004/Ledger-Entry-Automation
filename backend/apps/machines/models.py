@@ -16,6 +16,7 @@ class Factory(models.Model):
     address       = models.TextField(blank=True, default='')
     gstin         = models.CharField(max_length=30, blank=True, default='')
     logo_url      = models.CharField(max_length=500, blank=True, default='')
+    logo          = models.ImageField(upload_to='company_logos/', blank=True, null=True)
     industry_type = models.CharField(max_length=100, blank=True, default='Precision Component Manufacturing')
     shift_hours   = models.IntegerField(default=8)
     total_shifts_per_day = models.IntegerField(default=3)
@@ -32,6 +33,12 @@ class Factory(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.code})"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.logo and self.logo.url != self.logo_url:
+            self.logo_url = self.logo.url
+            Factory.objects.filter(pk=self.pk).update(logo_url=self.logo.url)
 
 
 class Plant(models.Model):
