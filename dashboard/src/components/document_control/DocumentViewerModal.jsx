@@ -4,7 +4,7 @@ import {
   Maximize2, Minimize2, Edit3, Calendar, Tag, CheckCircle, Shield, RefreshCw, AlertTriangle, Printer
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { submitForReview, approveDocument, rejectDocument } from '../../api/documentControl';
+import { submitForReview, approveDocument, rejectDocument, getDownloadUrl } from '../../api/documentControl';
 
 const LEVEL_COLORS = {
   L1: { bg: '#f5f3ff', color: '#7c3aed', border: '#ddd6fe', label: 'L1 : Quality Manual' },
@@ -56,12 +56,13 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
   const isOwner = user && String(currentDoc.uploaded_by) === String(user.id);
   const myPerms = currentDoc.my_permissions || {};
 
+  const canPreviewDoc = isManager || isOwner || Boolean(myPerms.can_preview);
   const canDownloadDoc = isManager || isOwner || Boolean(myPerms.can_download);
-  const canPrintDoc = isManager || isOwner || Boolean(myPerms.can_print);
+  const canPrintDoc = (isManager || isOwner || Boolean(myPerms.can_print)) && canPreviewDoc;
 
   // Resolve embed URL based on file type (automatic single universal viewer)
   const getEmbedUrl = () => {
-    if (!documentUrl) return null;
+    if (!documentUrl || !canPreviewDoc) return null;
     if (isPdf) {
       const showToolbar = (canPrintDoc || canDownloadDoc) ? 1 : 0;
       return `${documentUrl}#toolbar=${showToolbar}&navpanes=0`;
@@ -384,7 +385,10 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
                   if (isPdf && documentUrl) {
                     const printWin = window.open(documentUrl, '_blank');
                     if (printWin) {
-                      printWin.focus();
+                      printWin.onload = () => {
+                        printWin.focus();
+                        printWin.print();
+                      };
                     } else {
                       window.print();
                     }
@@ -411,9 +415,9 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
               </button>
             )}
 
-            {canDownloadDoc && documentUrl && (
+            {canDownloadDoc && (
               <a
-                href={documentUrl}
+                href={getDownloadUrl(currentDoc.id)}
                 target="_blank"
                 rel="noreferrer"
                 title="Download original document file"
@@ -580,7 +584,46 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
           justifyContent: 'center',
           overflow: 'hidden',
         }}>
-          {documentUrl ? (
+          {!canPreviewDoc ? (
+            <div style={{
+              textAlign: 'center',
+              backgroundColor: '#ffffff',
+              padding: '40px',
+              borderRadius: '16px',
+              maxWidth: '440px',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+              margin: '20px'
+            }}>
+              <Shield size={48} color="#ef4444" style={{ marginBottom: '16px' }} />
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', color: '#0f172a' }}>
+                Preview Access Restricted
+              </h3>
+              <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#64748b' }}>
+                You do not have permission to preview the contents of this document.
+              </p>
+              {canDownloadDoc && (
+                <a
+                  href={getDownloadUrl(currentDoc.id)}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor: '#059669',
+                    color: '#ffffff',
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    textDecoration: 'none',
+                    fontWeight: '600',
+                    fontSize: '13px',
+                  }}
+                >
+                  <Download size={15} /> Download Document
+                </a>
+              )}
+            </div>
+          ) : documentUrl ? (
             isImage ? (
               <div style={{
                 width: '100%',
@@ -651,7 +694,7 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
                   Click below to open or download the original file.
                 </p>
                 <a
-                  href={documentUrl}
+                  href={canDownloadDoc ? getDownloadUrl(currentDoc.id) : documentUrl}
                   target="_blank"
                   rel="noreferrer"
                   style={{

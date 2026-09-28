@@ -44,6 +44,7 @@ class DocumentListSerializer(serializers.ModelSerializer):
     approved_by_name  = serializers.SerializerMethodField()
     allowed_roles     = serializers.SerializerMethodField()
     delivery_url      = serializers.SerializerMethodField()
+    cloudinary_url    = serializers.SerializerMethodField()
     file_size_display = serializers.ReadOnlyField()
     my_permissions    = serializers.SerializerMethodField()
 
@@ -73,8 +74,42 @@ class DocumentListSerializer(serializers.ModelSerializer):
     def get_approved_by_name(self, obj):
         return get_user_display(obj.approved_by)
 
+    def _get_user_perm(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return None
+        cache_attr = f'_doc_perm_{obj.id}'
+        if hasattr(request, cache_attr):
+            return getattr(request, cache_attr)
+        try:
+            perm = DocumentUserPermission.objects.get(document=obj, user=request.user)
+        except DocumentUserPermission.DoesNotExist:
+            perm = None
+        setattr(request, cache_attr, perm)
+        return perm
+
+    def _user_can_preview(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        user = request.user
+        is_admin = user.is_superuser or getattr(user, 'role', '') == 'admin'
+        is_uploader = obj.uploaded_by_id == user.id
+        is_reviewer_or_approver = (obj.reviewed_by_id == user.id) or (obj.approved_by_id == user.id)
+        if is_admin or is_uploader or is_reviewer_or_approver:
+            return True
+        perm = self._get_user_perm(obj)
+        return bool(perm and perm.can_preview)
+
     def get_delivery_url(self, obj):
-        return document_delivery_url(obj)
+        if self._user_can_preview(obj):
+            return document_delivery_url(obj)
+        return None
+
+    def get_cloudinary_url(self, obj):
+        if self._user_can_preview(obj):
+            return obj.cloudinary_url
+        return None
 
     def get_allowed_roles(self, obj):
         return [
@@ -97,22 +132,22 @@ class DocumentListSerializer(serializers.ModelSerializer):
                 'can_print': True, 'can_edit': True, 'can_delete': True,
                 'can_manage_access': True,
             }
-        try:
-            perm = DocumentUserPermission.objects.get(document=obj, user=user)
+        is_reviewer_or_approver = (obj.reviewed_by_id == user.id) or (obj.approved_by_id == user.id)
+        perm = self._get_user_perm(obj)
+        if perm:
             return {
-                'can_preview':  perm.can_preview,
+                'can_preview':  perm.can_preview or is_reviewer_or_approver,
                 'can_download': perm.can_download,
                 'can_print':    perm.can_print,
                 'can_edit':     perm.can_edit,
                 'can_delete':   perm.can_delete,
                 'can_manage_access': False,
             }
-        except DocumentUserPermission.DoesNotExist:
-            return {
-                'can_preview': False, 'can_download': False,
-                'can_print': False, 'can_edit': False, 'can_delete': False,
-                'can_manage_access': False,
-            }
+        return {
+            'can_preview': is_reviewer_or_approver, 'can_download': False,
+            'can_print': False, 'can_edit': False, 'can_delete': False,
+            'can_manage_access': False,
+        }
 
 class DocumentDetailSerializer(DocumentListSerializer):
     """Full detail serializer including activities, revision tree, and links."""

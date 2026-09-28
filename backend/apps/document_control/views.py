@@ -559,6 +559,27 @@ class DocumentViewSet(viewsets.ModelViewSet):
         return Response(DocumentListSerializer(new_doc).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'])
+    def preview(self, request, pk=None):
+        doc = self.get_object()
+        if not doc.cloudinary_url:
+            return Response({'error': 'No file attached.'}, status=404)
+
+        # Enforce preview permission
+        is_manager = request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'
+        is_owner = doc.uploaded_by_id == request.user.id
+        is_reviewer_or_approver = (doc.reviewed_by_id == request.user.id) or (doc.approved_by_id == request.user.id)
+        if not (is_manager or is_owner or is_reviewer_or_approver):
+            try:
+                perm = DocumentUserPermission.objects.get(document=doc, user=request.user)
+                if not perm.can_preview:
+                    return Response({'error': 'You do not have permission to preview this document.'}, status=403)
+            except DocumentUserPermission.DoesNotExist:
+                return Response({'error': 'Permission denied.'}, status=403)
+
+        DocumentActivity.objects.create(document=doc, action='viewed', performed_by=request.user)
+        return redirect(document_delivery_url(doc))
+
+    @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
         doc = self.get_object()
         if not doc.cloudinary_url:

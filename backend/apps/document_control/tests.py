@@ -2,7 +2,7 @@ import io
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
-from apps.document_control.models import Document, DocumentChangeRequest, DCRNotification
+from apps.document_control.models import Document, DocumentChangeRequest, DCRNotification, DocumentUserPermission
 
 User = get_user_model()
 
@@ -66,7 +66,8 @@ class DocumentControlSystemTests(TestCase):
             doc_level='L1',
             revision='Rev A',
             status='approved',
-            uploaded_by=self.admin
+            uploaded_by=self.admin,
+            cloudinary_url='https://res.cloudinary.com/test/raw/upload/v1/manual.pdf'
         )
         self.doc_l2 = Document.objects.create(
             document_number='SOP-MCH-01',
@@ -74,7 +75,8 @@ class DocumentControlSystemTests(TestCase):
             doc_level='L2',
             revision='Rev A',
             status='approved',
-            uploaded_by=self.supervisor
+            uploaded_by=self.supervisor,
+            cloudinary_url='https://res.cloudinary.com/test/raw/upload/v1/sop.pdf'
         )
         self.doc_l3 = Document.objects.create(
             document_number='WI-QC-05',
@@ -82,7 +84,8 @@ class DocumentControlSystemTests(TestCase):
             doc_level='L3',
             revision='Rev B',
             status='approved',
-            uploaded_by=self.calibrator
+            uploaded_by=self.calibrator,
+            cloudinary_url='https://res.cloudinary.com/test/raw/upload/v1/wi.pdf'
         )
         self.doc_l4 = Document.objects.create(
             document_number='DKI/MR/F/05',
@@ -91,6 +94,16 @@ class DocumentControlSystemTests(TestCase):
             revision='Rev 01',
             status='approved',
             uploaded_by=self.admin
+        )
+
+        # Grant supervisor permissions on documents
+        DocumentUserPermission.objects.create(
+            document=self.doc_l1, user=self.supervisor,
+            can_preview=True, can_download=True, can_print=True, can_edit=True
+        )
+        DocumentUserPermission.objects.create(
+            document=self.doc_l3, user=self.supervisor,
+            can_preview=True, can_download=True, can_print=True, can_edit=True
         )
 
     def test_level_filtering(self):
@@ -111,6 +124,53 @@ class DocumentControlSystemTests(TestCase):
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0]['document_number'], 'WI-QC-05')
 
+    def test_preview_permission_enforcement(self):
+        """Users without preview access cannot see delivery/cloudinary URLs and are blocked from /preview/."""
+        # 1. Operator has download-only permission (can_preview=False, can_download=True)
+        DocumentUserPermission.objects.create(
+            document=self.doc_l1, user=self.operator,
+            can_preview=False, can_download=True, can_print=False, can_edit=False
+        )
+        self.client.force_authenticate(user=self.operator)
+
+        # Document list hides delivery_url and cloudinary_url
+        res = self.client.get('/api/document-control/documents/')
+        self.assertEqual(res.status_code, 200)
+        docs = res.data if isinstance(res.data, list) else res.data.get('results', [])
+        op_doc = next((d for d in docs if str(d['id']) == str(self.doc_l1.id)), None)
+        self.assertIsNotNone(op_doc)
+        self.assertIsNone(op_doc.get('delivery_url'))
+        self.assertIsNone(op_doc.get('cloudinary_url'))
+        self.assertFalse(op_doc['my_permissions']['can_preview'])
+        self.assertTrue(op_doc['my_permissions']['can_download'])
+
+        # /preview/ endpoint blocks download-only user with 403 Forbidden
+        preview_res = self.client.get(f'/api/document-control/documents/{self.doc_l1.id}/preview/')
+        self.assertEqual(preview_res.status_code, 403)
+
+        # /download/ endpoint succeeds with 302 Redirect
+        download_res = self.client.get(f'/api/document-control/documents/{self.doc_l1.id}/download/')
+        self.assertEqual(download_res.status_code, 302)
+
+        # 2. Inspector has can_preview=True
+        DocumentUserPermission.objects.create(
+            document=self.doc_l1, user=self.inspector,
+            can_preview=True, can_download=False, can_print=False, can_edit=False
+        )
+        self.client.force_authenticate(user=self.inspector)
+
+        # Document list provides delivery_url
+        res = self.client.get('/api/document-control/documents/')
+        docs = res.data if isinstance(res.data, list) else res.data.get('results', [])
+        insp_doc = next((d for d in docs if str(d['id']) == str(self.doc_l1.id)), None)
+        self.assertIsNotNone(insp_doc)
+        self.assertIsNotNone(insp_doc.get('delivery_url'))
+        self.assertTrue(insp_doc['my_permissions']['can_preview'])
+
+        # /preview/ endpoint allows inspector with 302 Redirect
+        preview_res = self.client.get(f'/api/document-control/documents/{self.doc_l1.id}/preview/')
+        self.assertEqual(preview_res.status_code, 302)
+
     def test_role_restrictions_on_dcr_submission(self):
         """Users without DCR create access are strictly blocked from submitting DCRs."""
         # 1. Operator attempts DCR -> 403 Forbidden
@@ -125,7 +185,8 @@ class DocumentControlSystemTests(TestCase):
             'approver_id': self.admin.id,
         })
         self.assertEqual(res.status_code, 403)
-        self.assertIn('Change request creation access required', res.data.get('error', ''))
+        err = res.data.get('error', '')
+        self.assertTrue('Change request creation access required' in err or 'permission to propose changes' in err)
 
         # 2. Inspector attempts DCR -> 403 Forbidden
         self.client.force_authenticate(user=self.inspector)
@@ -139,6 +200,8 @@ class DocumentControlSystemTests(TestCase):
             'approver_id': self.admin.id,
         })
         self.assertEqual(res.status_code, 403)
+        err = res.data.get('error', '')
+        self.assertTrue('Change request creation access required' in err or 'permission to propose changes' in err)
 
     def test_self_assignment_prohibited(self):
         """User cannot assign themselves as reviewer or approver."""

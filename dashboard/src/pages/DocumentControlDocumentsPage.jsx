@@ -921,13 +921,17 @@ export default function DocumentControlDocumentsPage() {
       if (docs.length > 0) {
         const found = docs.find(d => String(d.id) === String(previewId));
         if (found) {
-          setSelectedViewerDoc(found);
+          if (canPreviewDocument(found)) {
+            setSelectedViewerDoc(found);
+          }
           return;
         }
       }
       getDocumentById(previewId)
         .then(res => {
-          if (res.data) setSelectedViewerDoc(res.data);
+          if (res.data && canPreviewDocument(res.data)) {
+            setSelectedViewerDoc(res.data);
+          }
         })
         .catch(err => console.error("Failed to load document preview from URL", err));
     }
@@ -948,6 +952,12 @@ export default function DocumentControlDocumentsPage() {
     String(doc.uploaded_by) === String(user?.id) || isAdmin
   );
   const globalCanRaiseDCR = can(user, 'document.dcr.create');
+
+  const canPreviewDocument = (doc) => (
+    isAdmin ||
+    String(doc.uploaded_by) === String(user?.id) ||
+    Boolean(doc.my_permissions?.can_preview)
+  );
 
   const canEditDocument = (doc) => (
     globalCanRaiseDCR && (
@@ -1299,14 +1309,22 @@ export default function DocumentControlDocumentsPage() {
               {docs.map((doc, i) => (
                 <tr
                   key={doc.id}
-                  onClick={() => setSelectedViewerDoc(doc)}
+                  onClick={() => {
+                    if (canPreviewDocument(doc)) {
+                      setSelectedViewerDoc(doc);
+                    }
+                  }}
                   style={{
                     borderBottom: '1px solid #f1f5f9',
-                    cursor: 'pointer',
+                    cursor: canPreviewDocument(doc) ? 'pointer' : 'default',
                     transition: 'background 0.15s'
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                  onMouseEnter={e => {
+                    if (canPreviewDocument(doc)) e.currentTarget.style.background = '#f8fafc';
+                  }}
+                  onMouseLeave={e => {
+                    if (canPreviewDocument(doc)) e.currentTarget.style.background = '#fff';
+                  }}
                 >
                   {/* 1. Sr. */}
                   <td style={{ padding: '13px 14px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#64748b' }}>
@@ -1389,7 +1407,7 @@ export default function DocumentControlDocumentsPage() {
 
                   {/* 10. Preview */}
                   <td style={{ padding: '13px 14px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                    {doc.my_permissions?.can_preview && (
+                    {canPreviewDocument(doc) ? (
                       <button
                         title="Open Document in Viewer"
                         onClick={() => setSelectedViewerDoc(doc)}
@@ -1403,8 +1421,7 @@ export default function DocumentControlDocumentsPage() {
                       >
                         <Eye size={13} /> Preview
                       </button>
-                    )}
-                    {!doc.my_permissions?.can_preview && (
+                    ) : (
                       <span style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic' }}>
                         No Access
                       </span>
