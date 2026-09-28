@@ -27,6 +27,19 @@ export const uploadDocument = (formData) =>
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 
+export const getDocumentRoles = () => api.get('/documents/roles/');
+
+// ── Per-user document access (new permission matrix) ───────────────────────
+// Fetch all org users + their current permissions for a specific document.
+// Only callable by the document uploader or an admin.
+export const getDocumentAccess = (id) =>
+  api.get(`/documents/${id}/access/`);
+
+// Save the full permission matrix for a document in one call.
+// permissions: [{ user_id, can_preview, can_download, can_print, can_edit, can_delete }]
+export const saveDocumentAccess = (id, permissions) =>
+  api.patch(`/documents/${id}/access/`, { permissions });
+
 export const submitForReview = (id, comment = '') =>
   api.post(`/documents/${id}/submit_review/`, { comment });
 
@@ -75,14 +88,17 @@ export const getAssignableUsers = () =>
   api.get('/change-requests/assignable-users/');
 
 // ── Realtime DCR Notifications ─────────────────────────────────────────────
-export const getNotifications = () =>
-  api.get('/notifications/');
+export const getNotifications = (params = {}) =>
+  api.get('/notifications/', { params });
 
 export const getUnreadNotificationCount = () =>
   api.get('/notifications/unread-count/');
 
 export const markNotificationRead = (id) =>
   api.post(`/notifications/${id}/mark-read/`);
+
+export const markNotificationUnread = (id) =>
+  api.post(`/notifications/${id}/mark-unread/`);
 
 export const markAllNotificationsRead = () =>
   api.post('/notifications/mark-all-read/');

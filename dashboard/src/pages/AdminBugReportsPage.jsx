@@ -60,7 +60,7 @@ export default function AdminBugReportsPage() {
                     <td style={{ maxWidth: 300, whiteSpace: 'pre-wrap' }}>{report.message}</td>
                     <td>
                       {report.screenshot ? (
-                        <a href={`http://localhost:8000${report.screenshot}`} target="_blank" rel="noreferrer" className="btn btn-outline" style={{ padding: '4px 8px' }}>
+                        <a href={report.screenshot} target="_blank" rel="noreferrer" className="btn btn-outline" style={{ padding: '4px 8px' }}>
                           View Image
                         </a>
                       ) : (

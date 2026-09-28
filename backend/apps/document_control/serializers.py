@@ -2,6 +2,8 @@
 Serializers for the Document Control module.
 """
 
+import json
+
 from django.db import models
 from rest_framework import serializers
 from .models import (
@@ -9,7 +11,10 @@ from .models import (
     DocumentActivity,
     DocumentChangeRequest,
     DCRNotification,
+    DocumentUserPermission,
 )
+from apps.users.models import AccessRole
+from .storage import document_delivery_url
 
 
 def get_user_display(user):
@@ -35,8 +40,12 @@ class DocumentListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for document list views."""
     doc_level_display = serializers.CharField(source='get_doc_level_display', read_only=True)
     uploaded_by_name  = serializers.SerializerMethodField()
+    reviewed_by_name  = serializers.SerializerMethodField()
     approved_by_name  = serializers.SerializerMethodField()
+    allowed_roles     = serializers.SerializerMethodField()
+    delivery_url      = serializers.SerializerMethodField()
     file_size_display = serializers.ReadOnlyField()
+    my_permissions    = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -44,10 +53,13 @@ class DocumentListSerializer(serializers.ModelSerializer):
             'id', 'document_number', 'title', 'description',
             'doc_level', 'doc_level_display',
             'status', 'revision', 'revision_number', 'is_latest_revision',
-            'cloudinary_url', 'file_name', 'file_size', 'file_size_display', 'file_type',
+            'cloudinary_url', 'delivery_url', 'file_name', 'file_size', 'file_size_display', 'file_type',
             'uploaded_by', 'uploaded_by_name',
-            'approved_by', 'approved_by_name',
-            'effective_date', 'expiry_date',
+            'reviewed_by', 'reviewed_by_name', 'reviewed_at',
+            'approved_by', 'approved_by_name', 'approved_at',
+            'allowed_roles',
+            'my_permissions',
+            'revision_date', 'effective_date', 'expiry_date',
             'created_at', 'updated_at',
         ]
         read_only_fields = fields
@@ -55,8 +67,52 @@ class DocumentListSerializer(serializers.ModelSerializer):
     def get_uploaded_by_name(self, obj):
         return get_user_display(obj.uploaded_by)
 
+    def get_reviewed_by_name(self, obj):
+        return get_user_display(obj.reviewed_by)
+
     def get_approved_by_name(self, obj):
         return get_user_display(obj.approved_by)
+
+    def get_delivery_url(self, obj):
+        return document_delivery_url(obj)
+
+    def get_allowed_roles(self, obj):
+        return [
+            {'slug': role.slug, 'name': role.name}
+            for role in obj.allowed_roles.all()
+        ]
+
+    def get_my_permissions(self, obj):
+        """Return the logged-in user's permission flags for this document."""
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return None
+        user = request.user
+        # Admins and the uploader always have full access
+        is_admin = user.is_superuser or getattr(user, 'role', '') == 'admin'
+        is_uploader = obj.uploaded_by_id == user.id
+        if is_admin or is_uploader:
+            return {
+                'can_preview': True, 'can_download': True,
+                'can_print': True, 'can_edit': True, 'can_delete': True,
+                'can_manage_access': True,
+            }
+        try:
+            perm = DocumentUserPermission.objects.get(document=obj, user=user)
+            return {
+                'can_preview':  perm.can_preview,
+                'can_download': perm.can_download,
+                'can_print':    perm.can_print,
+                'can_edit':     perm.can_edit,
+                'can_delete':   perm.can_delete,
+                'can_manage_access': False,
+            }
+        except DocumentUserPermission.DoesNotExist:
+            return {
+                'can_preview': False, 'can_download': False,
+                'can_print': False, 'can_edit': False, 'can_delete': False,
+                'can_manage_access': False,
+            }
 
 
 class DocumentDetailSerializer(DocumentListSerializer):
@@ -65,20 +121,15 @@ class DocumentDetailSerializer(DocumentListSerializer):
     revisions            = serializers.SerializerMethodField()
     related_part_name    = serializers.CharField(source='related_part.name', read_only=True, default=None)
     related_machine_name = serializers.CharField(source='related_machine.name', read_only=True, default=None)
-    reviewed_by_name     = serializers.SerializerMethodField()
 
     class Meta(DocumentListSerializer.Meta):
         fields = DocumentListSerializer.Meta.fields + [
             'activities', 'revisions',
             'related_part', 'related_part_name',
             'related_machine', 'related_machine_name',
-            'reviewed_by', 'reviewed_by_name',
             'parent_document',
         ]
         read_only_fields = fields
-
-    def get_reviewed_by_name(self, obj):
-        return get_user_display(obj.reviewed_by)
 
     def get_revisions(self, obj):
         """Return all revisions in this document chain (oldest first)."""
@@ -94,17 +145,109 @@ class DocumentDetailSerializer(DocumentListSerializer):
 
 class DocumentCreateSerializer(serializers.ModelSerializer):
     """
-    Used for POST (upload) — accepts multipart/form-data.
+    Used for POST (upload) : accepts multipart/form-data.
     The file payload is handled directly in the view.
     """
+    document_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    revision        = serializers.CharField(required=False, allow_blank=True, default='0')
+    revision_date   = serializers.DateField(required=False, allow_null=True)
+    status          = serializers.CharField(required=False, allow_blank=True, default='draft')
+    allowed_role_slugs = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True, write_only=True
+    )
+
     class Meta:
         model = Document
         fields = [
-            'title', 'description', 'doc_level',
+            'document_number', 'title', 'description', 'doc_level',
+            'revision', 'revision_date',
             'effective_date', 'expiry_date',
+            'reviewed_by', 'approved_by', 'status',
             'related_part', 'related_machine',
+            'allowed_role_slugs',
         ]
 
+    def to_internal_value(self, data):
+        # Multipart requests arrive as a QueryDict. Convert it to a regular
+        # mapping before replacing the JSON role list; assigning a Python list
+        # back into QueryDict turns it into a string and ListField rejects it.
+        if hasattr(data, 'items'):
+            data = {key: value for key, value in data.items()}
+        else:
+            data = dict(data)
+        raw_roles = data.get('allowed_role_slugs')
+        if isinstance(raw_roles, str):
+            try:
+                data['allowed_role_slugs'] = json.loads(raw_roles)
+            except (TypeError, ValueError):
+                data['allowed_role_slugs'] = [slug.strip() for slug in raw_roles.split(',') if slug.strip()]
+        return super().to_internal_value(data)
+
+    def validate_allowed_role_slugs(self, value):
+        slugs = sorted(set(value))
+        roles = list(AccessRole.objects.filter(slug__in=slugs))
+        found = {role.slug for role in roles}
+        unknown = sorted(set(slugs) - found)
+        if unknown:
+            raise serializers.ValidationError(f'Unknown roles: {", ".join(unknown)}')
+        return roles
+
+    def create(self, validated_data):
+        roles = validated_data.pop('allowed_role_slugs', [])
+        document = super().create(validated_data)
+        document.allowed_roles.set(roles)
+        return document
+
+
+class DocumentAccessSerializer(serializers.Serializer):
+    """Validates the role allow-list edited after a document is uploaded."""
+
+    allowed_role_slugs = serializers.ListField(
+        child=serializers.CharField(), required=True, allow_empty=True
+    )
+
+    def validate_allowed_role_slugs(self, value):
+        slugs = sorted(set(value))
+        roles = list(AccessRole.objects.filter(slug__in=slugs))
+        found = {role.slug for role in roles}
+        unknown = sorted(set(slugs) - found)
+        if unknown:
+            raise serializers.ValidationError(f'Unknown roles: {", ".join(unknown)}')
+        return roles
+
+
+# ── New per-user document permission serializers ───────────────────────────────
+
+class DocumentUserPermissionReadSerializer(serializers.ModelSerializer):
+    """Read serializer — populates the Access modal user table."""
+    user_id   = serializers.UUIDField(source='user.id', read_only=True)
+    full_name = serializers.SerializerMethodField()
+    username  = serializers.CharField(source='user.username', read_only=True)
+    role      = serializers.CharField(source='user.role', read_only=True)
+
+    class Meta:
+        model = DocumentUserPermission
+        fields = [
+            'user_id', 'full_name', 'username', 'role',
+            'can_preview', 'can_download', 'can_print', 'can_edit', 'can_delete',
+        ]
+
+    def get_full_name(self, obj):
+        return get_user_display(obj.user)
+
+
+class BulkDocumentAccessSerializer(serializers.Serializer):
+    """Accepts the full permission matrix for one document in a single PATCH."""
+
+    class PermissionEntrySerializer(serializers.Serializer):
+        user_id      = serializers.IntegerField()
+        can_preview  = serializers.BooleanField(default=False)
+        can_download = serializers.BooleanField(default=False)
+        can_print    = serializers.BooleanField(default=False)
+        can_edit     = serializers.BooleanField(default=False)
+        can_delete   = serializers.BooleanField(default=False)
+
+    permissions = PermissionEntrySerializer(many=True)
 
 
 # ── DCR Serializers (DKI/MR/F/05) ─────────────────────────────────────────────
@@ -142,10 +285,9 @@ class DCRCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         user = self.context['request'].user
-        # Exclude operator and inspector (quality_engineer) from raising DCRs
-        if getattr(user, 'role', '') in ['operator', 'quality_engineer']:
+        if not user.has_access('document.dcr.create'):
             raise serializers.ValidationError(
-                "Operators and Inspectors are not authorized to submit Document Change Requests."
+                "Change request creation access required."
             )
 
         cft = attrs.get('assigned_cft_reviewer')
@@ -154,16 +296,16 @@ class DCRCreateSerializer(serializers.ModelSerializer):
 
         if not cft:
             raise serializers.ValidationError({"assigned_cft_reviewer": "A CFT Reviewer must be assigned."})
-        if getattr(cft, 'role', '') == 'operator':
-            raise serializers.ValidationError({"assigned_cft_reviewer": "Reviewer cannot be an Operator."})
+        if not cft.has_access('document.dcr.review'):
+            raise serializers.ValidationError({"assigned_cft_reviewer": "Reviewer needs change request review access."})
 
-        if cal and getattr(cal, 'role', '') == 'operator':
-            raise serializers.ValidationError({"assigned_calibrator": "Calibrator cannot be an Operator."})
+        if cal and not cal.has_access('document.dcr.review'):
+            raise serializers.ValidationError({"assigned_calibrator": "Calibrator needs change request review access."})
 
         if not app:
             raise serializers.ValidationError({"assigned_approver": "An Approver must be assigned."})
-        if getattr(app, 'role', '') == 'operator':
-            raise serializers.ValidationError({"assigned_approver": "Approver cannot be an Operator."})
+        if not app.has_access('document.dcr.approve'):
+            raise serializers.ValidationError({"assigned_approver": "Approver needs change request approval access."})
 
         return attrs
 
@@ -294,15 +436,23 @@ class DCRDetailSerializer(DCRListSerializer):
 
 
 class DCRNotificationSerializer(serializers.ModelSerializer):
-    """Serializer for in-app DCR notification bell."""
-    dcr_number = serializers.CharField(source='dcr.dcr_number', read_only=True)
-    document_title = serializers.CharField(source='dcr.document.title', read_only=True)
+    """Serializer for in-app notification bell (both DCRs and Direct Documents)."""
+    dcr_number = serializers.CharField(source='dcr.dcr_number', read_only=True, default='')
+    document_title = serializers.SerializerMethodField()
 
     class Meta:
         model = DCRNotification
         fields = [
-            'id', 'dcr', 'dcr_number', 'document_title',
+            'id', 'dcr', 'dcr_number', 'document', 'document_title',
             'recipient', 'title', 'message', 'action_type',
             'action_url', 'is_read', 'created_at',
         ]
         read_only_fields = fields
+
+    def get_document_title(self, obj):
+        if obj.document:
+            return obj.document.title
+        if obj.dcr and obj.dcr.document:
+            return obj.dcr.document.title
+        return ''
+

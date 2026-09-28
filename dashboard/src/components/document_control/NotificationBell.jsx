@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, Clock, ExternalLink, X, FileText } from 'lucide-react';
+import { Bell, Check, Clock, ExternalLink, X, FileText, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   getNotifications,
@@ -7,14 +7,32 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
 } from '../../api/documentControl';
+import AllNotificationsModal from './AllNotificationsModal';
+import { useMessageNotifications } from '../../context/MessageNotificationContext';
+
+// Clean legacy em dashes or en dashes from titles/messages
+const sanitizeText = (text) => {
+  if (!text) return '';
+  return text
+    .replace(/[\u2014\u2013]/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
 
 export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isAllModalOpen, setIsAllModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
+
+  // Message notifications from MessagingContext via global bridge
+  const { msgNotifications, unreadMessageCount, markMessageNotificationRead, markAllMessageNotificationsRead } = useMessageNotifications();
+
+  // Total badge = DCR unread + message unread
+  const totalUnread = unreadCount + unreadMessageCount;
 
   // Poll unread count every 30 seconds
   const fetchCount = async () => {
@@ -23,6 +41,15 @@ export default function NotificationBell() {
       setUnreadCount(res.data?.unread_count || 0);
     } catch (e) {
       // Ignore polling network failures
+    }
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await getNotifications();
+      setNotifications(res.data?.results || res.data || []);
+    } catch (e) {
+      console.error("Failed to fetch notifications", e);
     }
   };
 
@@ -50,10 +77,7 @@ export default function NotificationBell() {
       setLoading(true);
       setIsOpen(true);
       try {
-        const res = await getNotifications();
-        setNotifications(res.data?.results || res.data || []);
-      } catch (e) {
-        console.error("Failed to fetch notifications", e);
+        await fetchNotifications();
       } finally {
         setLoading(false);
       }
@@ -63,6 +87,14 @@ export default function NotificationBell() {
   };
 
   const handleItemClick = async (notif) => {
+    // ── Message notification → go to conversation ──
+    if (notif._type === 'message') {
+      markMessageNotificationRead(notif.id);
+      setIsOpen(false);
+      navigate(`/messages?conversation=${notif.conversation_id}`);
+      return;
+    }
+    // ── DCR / Document notification ──
     try {
       if (!notif.is_read) {
         await markNotificationRead(notif.id);
@@ -73,7 +105,13 @@ export default function NotificationBell() {
       console.error("Failed to mark notification read", e);
     }
     setIsOpen(false);
-    navigate('/document-control/dcr?tab=action_required');
+    if (notif.action_url) {
+      navigate(notif.action_url);
+    } else if (notif.action_type && notif.action_type.startsWith('DOC_')) {
+      navigate('/document-control/documents');
+    } else {
+      navigate('/document-control/dcr?tab=action_required');
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -84,6 +122,8 @@ export default function NotificationBell() {
     } catch (e) {
       console.error("Failed to mark all read", e);
     }
+    // Also mark all message notifications read
+    markAllMessageNotificationsRead();
   };
 
   const formatRelativeTime = (isoString) => {
@@ -135,7 +175,7 @@ export default function NotificationBell() {
         }}
       >
         <Bell size={18} />
-        {unreadCount > 0 && (
+        {totalUnread > 0 && (
           <span style={{
             position: 'absolute',
             top: '-3px',
@@ -154,7 +194,7 @@ export default function NotificationBell() {
             border: '2px solid #ffffff',
             boxShadow: '0 2px 4px rgba(239, 68, 68, 0.4)',
           }}>
-            {unreadCount > 99 ? '99+' : unreadCount}
+            {totalUnread > 99 ? '99+' : totalUnread}
           </span>
         )}
       </button>
@@ -189,7 +229,7 @@ export default function NotificationBell() {
               <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
                 Global Notifications
               </span>
-              {unreadCount > 0 && (
+              {totalUnread > 0 && (
                 <span style={{
                   fontSize: '11px',
                   fontWeight: '700',
@@ -198,7 +238,7 @@ export default function NotificationBell() {
                   padding: '1px 6px',
                   borderRadius: '10px',
                 }}>
-                  {unreadCount} new
+                  {totalUnread} new
                 </span>
               )}
             </div>
@@ -228,70 +268,128 @@ export default function NotificationBell() {
               <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
                 Loading updates...
               </div>
-            ) : notifications.length === 0 ? (
+            ) : (notifications.length === 0 && msgNotifications.length === 0) ? (
               <div style={{ padding: '36px 20px', textAlign: 'center', color: '#94a3b8' }}>
                 <Bell size={28} style={{ marginBottom: '8px', opacity: 0.5 }} />
                 <p style={{ margin: 0, fontSize: '13px', fontWeight: '600' }}>No notifications yet</p>
-                <p style={{ margin: '4px 0 0 0', fontSize: '12px' }}>You will be alerted when a DCR is assigned to you.</p>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px' }}>You will be alerted when a DCR is assigned to you or a message arrives.</p>
               </div>
             ) : (
-              notifications.map((n) => (
-                <div
-                  key={n.id}
-                  onClick={() => handleItemClick(n)}
-                  style={{
-                    padding: '12px 16px',
-                    borderBottom: '1px solid #f1f5f9',
-                    backgroundColor: n.is_read ? '#ffffff' : '#f5f3ff',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    gap: '12px',
-                    alignItems: 'flex-start',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.backgroundColor = n.is_read ? '#f8fafc' : '#ede9fe'}
-                  onMouseLeave={e => e.currentTarget.style.backgroundColor = n.is_read ? '#ffffff' : '#f5f3ff'}
-                >
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '8px',
-                    backgroundColor: n.is_read ? '#e2e8f0' : '#6366f1',
-                    color: n.is_read ? '#64748b' : '#ffffff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    marginTop: '2px',
-                  }}>
-                    <FileText size={16} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
-                        {n.title}
-                      </span>
-                      <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap', marginLeft: '6px' }}>
-                        {formatRelativeTime(n.created_at)}
-                      </span>
+              <>
+                {/* ── Message notifications (newest first) ── */}
+                {msgNotifications.map((n) => (
+                  <div
+                    key={n.id}
+                    onClick={() => handleItemClick({ ...n, _type: 'message' })}
+                    style={{
+                      padding: '12px 16px',
+                      borderBottom: '1px solid #f1f5f9',
+                      backgroundColor: n.is_read ? '#ffffff' : '#eff6ff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      gap: '12px',
+                      alignItems: 'flex-start',
+                      transition: 'background-color 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = n.is_read ? '#f8fafc' : '#dbeafe'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = n.is_read ? '#ffffff' : '#eff6ff'}
+                  >
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      backgroundColor: n.is_read ? '#e2e8f0' : '#3b82f6',
+                      color: n.is_read ? '#64748b' : '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      marginTop: '2px',
+                    }}>
+                      <MessageCircle size={16} />
                     </div>
-                    <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: '#475569', lineHeight: '1.4' }}>
-                      {n.message}
-                    </p>
-                    {n.document_title && (
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
+                          💬 {n.sender_name}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap', marginLeft: '6px' }}>
+                          {formatRelativeTime(n.created_at)}
+                        </span>
+                      </div>
+                      <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: '#475569', lineHeight: '1.4' }}>
+                        {n.preview}
+                      </p>
                       <span style={{
                         display: 'inline-block',
-                        marginTop: '6px',
+                        marginTop: '4px',
                         fontSize: '11px',
                         fontWeight: '600',
-                        color: '#6366f1',
-                      }}>
-                        Doc: {n.document_title}
-                      </span>
-                    )}
+                        color: '#3b82f6',
+                      }}>Tap to open conversation →</span>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+
+                {/* ── DCR / Document notifications ── */}
+                {notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    onClick={() => handleItemClick(n)}
+                    style={{
+                      padding: '12px 16px',
+                      borderBottom: '1px solid #f1f5f9',
+                      backgroundColor: n.is_read ? '#ffffff' : '#f5f3ff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      gap: '12px',
+                      alignItems: 'flex-start',
+                      transition: 'background-color 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = n.is_read ? '#f8fafc' : '#ede9fe'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = n.is_read ? '#ffffff' : '#f5f3ff'}
+                  >
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      backgroundColor: n.is_read ? '#e2e8f0' : '#6366f1',
+                      color: n.is_read ? '#64748b' : '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      marginTop: '2px',
+                    }}>
+                      <FileText size={16} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
+                          {sanitizeText(n.title)}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap', marginLeft: '6px' }}>
+                          {formatRelativeTime(n.created_at)}
+                        </span>
+                      </div>
+                      <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: '#475569', lineHeight: '1.4' }}>
+                        {sanitizeText(n.message)}
+                      </p>
+                      {n.document_title && (
+                        <span style={{
+                          display: 'inline-block',
+                          marginTop: '6px',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          color: '#6366f1',
+                        }}>
+                          Doc: {sanitizeText(n.document_title)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </>
             )}
           </div>
 
@@ -305,7 +403,7 @@ export default function NotificationBell() {
             <button
               onClick={() => {
                 setIsOpen(false);
-                navigate('/document-control/dcr');
+                setIsAllModalOpen(true);
               }}
               style={{
                 background: 'none',
@@ -316,11 +414,21 @@ export default function NotificationBell() {
                 cursor: 'pointer',
               }}
             >
-              View All Change Requests &rarr;
+              View All Notifications &rarr;
             </button>
           </div>
         </div>
       )}
+
+      {/* All Notifications Modal */}
+      <AllNotificationsModal
+        isOpen={isAllModalOpen}
+        onClose={() => setIsAllModalOpen(false)}
+        onNotificationUpdated={() => {
+          fetchCount();
+          fetchNotifications();
+        }}
+      />
     </div>
   );
 }

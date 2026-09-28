@@ -10,7 +10,9 @@ class BugReport(models.Model):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='bug_reports')
     message = models.TextField()
-    screenshot = models.ImageField(upload_to='bug_reports/screenshots/', null=True, blank=True)
+    # Cloudinary storage — survives Railway/Render redeploys (no local disk dependency)
+    screenshot_url = models.URLField(blank=True, null=True)
+    screenshot_public_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

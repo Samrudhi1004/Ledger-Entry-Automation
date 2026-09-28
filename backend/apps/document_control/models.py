@@ -179,6 +179,44 @@ class DocumentActivity(models.Model):
         return f'{self.document.document_number} — {self.action} by {self.performed_by}'
 
 
+class DocumentUserPermission(models.Model):
+    """
+    Per-user, per-document permission matrix.
+    One row per (document, user) pair.
+    Absence of a row = no access for that user
+    (unless they are the uploader or an admin).
+    """
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name='user_permissions'
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='document_permissions'
+    )
+    can_preview  = models.BooleanField(default=False)
+    can_download = models.BooleanField(default=False)
+    can_print    = models.BooleanField(default=False)
+    can_edit     = models.BooleanField(default=False)  # raise a DCR
+    can_delete   = models.BooleanField(default=False)  # mark obsolete / delete
+
+    class Meta:
+        db_table = 'document_user_permissions'
+        unique_together = [('document', 'user')]
+        ordering = ['user__first_name', 'user__last_name']
+        verbose_name = 'Document User Permission'
+        verbose_name_plural = 'Document User Permissions'
+
+    def __str__(self):
+        return (
+            f'{self.document.document_number} → {self.user.username} '
+            f'[P:{self.can_preview} D:{self.can_download} '
+            f'Pr:{self.can_print} E:{self.can_edit} Del:{self.can_delete}]'
+        )
+
+
 class DocumentChangeRequest(models.Model):
     """
     Formal Document Change Request (DCR) Note.

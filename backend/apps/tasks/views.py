@@ -1,29 +1,48 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q
 from django.core.mail import send_mail
 from django.conf import settings
 import threading
-from .models import Task
-from .serializers import TaskSerializer, TaskCreateSerializer
+from .models import Task, TaskAttachment
+from .serializers import TaskSerializer, TaskCreateSerializer, TaskCompleteSerializer
+from apps.users.permissions import HasAccess
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [HasAccess]
+    access_key = 'tasks.view'
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        key = 'tasks.allocate' if self.action in ('create', 'update', 'partial_update', 'destroy', 'resolve_issue') else 'tasks.view'
+        return [HasAccess(key)]
+
+    def perform_update(self, serializer):
+        if serializer.instance.allocated_by != self.request.user and not self.request.user.has_access('tasks.manage_all'):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only the allocator can change this task.')
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.allocated_by != self.request.user and not self.request.user.has_access('tasks.manage_all'):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only the allocator can delete this task.')
+        instance.delete()
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_admin_user:
+        if user.has_access('tasks.view_all'):
             return Task.objects.all()
         # For non-admins, return tasks they allocated or tasks allocated to them
         return Task.objects.filter(Q(allocated_by=user) | Q(allocated_to=user)).distinct()
 
     def create(self, request, *args, **kwargs):
         user = request.user
-        # Operators cannot allocate tasks
-        if user.is_operator:
-            return Response({"detail": "Operators are not allowed to allocate tasks."}, status=status.HTTP_403_FORBIDDEN)
+        if not user.has_access('tasks.allocate'):
+            return Response({"detail": "Task allocation access required."}, status=status.HTTP_403_FORBIDDEN)
         
         serializer = TaskCreateSerializer(data=request.data)
         if serializer.is_valid():
@@ -92,9 +111,28 @@ class TaskViewSet(viewsets.ModelViewSet):
         if task.status not in (Task.Status.ACCEPTED, Task.Status.PENDING):
             return Response({"detail": "Only accepted or pending tasks can be marked as complete."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Validate uploaded files (optional)
+        files = request.FILES.getlist('files')
+        if files:
+            file_serializer = TaskCompleteSerializer(data={'files': files})
+            if not file_serializer.is_valid():
+                return Response(file_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
         task.status = Task.Status.COMPLETED
         task.save()
-        return Response(TaskSerializer(task).data)
+
+        # Save attachments
+        for f in files:
+            TaskAttachment.objects.create(
+                task=task,
+                file=f,
+                file_name=f.name,
+                content_type=f.content_type,
+                file_size=f.size,
+                uploaded_by=request.user,
+            )
+
+        return Response(TaskSerializer(task, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])
     def flag_issue(self, request, pk=None):
@@ -118,7 +156,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def resolve_issue(self, request, pk=None):
         task = self.get_object()
-        if task.allocated_by != request.user and not request.user.is_admin_user:
+        if task.allocated_by != request.user and not request.user.has_access('tasks.manage_all'):
             return Response({"detail": "Only the allocator or admin can resolve this issue."}, status=status.HTTP_403_FORBIDDEN)
         
         if task.status != Task.Status.FLAGGED_ISSUE:
