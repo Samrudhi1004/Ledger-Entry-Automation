@@ -81,7 +81,7 @@ export default function MessageInput({ replyingTo, onCancelReply }) {
         };
 
         // Send message with appropriate type
-        const textContent = message.trim() || `📎 ${selectedFile.name}`;
+        const textContent = message.trim() || selectedFile.name;
         const messageType = selectedFile.type.startsWith('image/') ? 'image' : 'file';
         sendMessage(textContent, messageType, replyingTo?.id);
 

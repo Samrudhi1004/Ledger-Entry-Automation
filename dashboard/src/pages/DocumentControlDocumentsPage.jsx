@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import Select from 'react-select';
 import {
   Search, Upload, Download, Eye, CheckCircle, XCircle,
   FileText, Filter, RefreshCw, Send, ChevronDown,
-  Calendar, Clock, User, Tag, AlertTriangle, X, Paperclip, Edit3
+  Calendar, Clock, User, Tag, AlertTriangle, X, Paperclip, Edit3, Trash2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCompany } from '../context/CompanyContext';
 import { can } from '../utils/access';
 import {
-  getDocuments, uploadDocument,
+  getDocuments, getDocumentById, uploadDocument,
   approveDocument, rejectDocument, submitForReview,
   getDocumentHistory, getDownloadUrl, getAssignableUsers,
   getDocumentRoles, getDocumentAccess, saveDocumentAccess,
+  markObsolete, deleteDocument,
 } from '../api/documentControl';
 import DocumentViewerModal from '../components/document_control/DocumentViewerModal';
 import DCRSubmissionModal from '../components/document_control/DCRSubmissionModal';
@@ -69,9 +71,9 @@ function StatusBadge({ status }) {
 }
 
 // ── Upload Modal ──────────────────────────────────────────────────────────────
-function UploadModal({ onClose, onSuccess }) {
+function UploadModal({ onClose, onSuccess, userRole }) {
   const today = new Date().toISOString().split('T')[0];
-
+  const { user: currentUser } = useAuth();
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -90,14 +92,100 @@ function UploadModal({ onClose, onSuccess }) {
   const [error, setError] = useState('');
   const dropRef = useRef();
 
-  // Only fetch users when the review workflow is selected
+  // Filter out current user from reviewer/approver assignment
+  const eligibleUsers = users.filter(u => String(u.id) !== String(currentUser?.id));
+
+  const userSelectOptions = eligibleUsers.map(u => {
+    const displayName = u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
+    const roleText = u.role ? ` (${u.role})` : '';
+    return {
+      value: String(u.id),
+      label: `${displayName}${roleText}`,
+      name: displayName,
+      username: u.username || '',
+      role: u.role || '',
+      email: u.email || '',
+    };
+  });
+
+  const customFilterOption = (candidate, input) => {
+    if (!input) return true;
+    const q = input.toLowerCase().trim().replace(/^@/, '');
+    const data = candidate.data;
+    const label = (candidate.label || '').toLowerCase();
+    const name = (data.name || '').toLowerCase();
+    const username = (data.username || '').toLowerCase();
+    const role = (data.role || '').toLowerCase();
+    const email = (data.email || '').toLowerCase();
+    return (
+      label.includes(q) ||
+      name.includes(q) ||
+      username.includes(q) ||
+      role.includes(q) ||
+      email.includes(q)
+    );
+  };
+
+  const makeSelectStyles = (hasError = false) => ({
+    control: (base, state) => ({
+      ...base,
+      minHeight: '36px',
+      borderRadius: '7px',
+      borderColor: hasError ? '#fca5a5' : state.isFocused ? '#6366f1' : '#e2e8f0',
+      boxShadow: state.isFocused ? (hasError ? '0 0 0 1px #ef4444' : '0 0 0 1px #6366f1') : 'none',
+      fontSize: '12px',
+      '&:hover': { borderColor: hasError ? '#ef4444' : '#cbd5e1' },
+      backgroundColor: '#fff',
+      cursor: 'pointer',
+    }),
+    valueContainer: (base) => ({
+      ...base,
+      padding: '2px 8px',
+    }),
+    input: (base) => ({
+      ...base,
+      margin: 0,
+      padding: 0,
+      fontSize: '12px',
+    }),
+    placeholder: (base) => ({
+      ...base,
+      fontSize: '12px',
+      color: '#94a3b8',
+    }),
+    singleValue: (base) => ({
+      ...base,
+      fontSize: '12px',
+      color: '#1e293b',
+      fontWeight: '500',
+    }),
+    option: (base, state) => ({
+      ...base,
+      fontSize: '12px',
+      backgroundColor: state.isSelected ? '#eef2ff' : state.isFocused ? '#f8fafc' : '#fff',
+      color: state.isSelected ? '#4338ca' : '#1e293b',
+      fontWeight: state.isSelected ? '600' : '400',
+      cursor: 'pointer',
+      padding: '8px 12px',
+    }),
+    menu: (base) => ({
+      ...base,
+      borderRadius: '8px',
+      boxShadow: '0 10px 25px rgba(0,0,0,0.12)',
+      overflow: 'hidden',
+      zIndex: 9999,
+    }),
+    menuPortal: (base) => ({
+      ...base,
+      zIndex: 9999,
+    }),
+  });
+
   useEffect(() => {
-    if (form.status === 'under_review') {
-      getAssignableUsers()
-        .then(res => setUsers(res.data || []))
-        .catch(err => console.error('Failed to fetch users', err));
-    }
-  }, [form.status]);
+    getAssignableUsers()
+      .then(res => setUsers(res.data || []))
+      .catch(err => console.error('Failed to fetch users', err));
+  }, []);
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -124,11 +212,8 @@ function UploadModal({ onClose, onSuccess }) {
       if (form.revision_date) fd.append('revision_date', form.revision_date);
       if (form.effective_date) fd.append('effective_date', form.effective_date);
       fd.append('status', form.status);
-      // Only send reviewer/approver when going through review workflow
-      if (form.status === 'under_review') {
-        if (form.reviewed_by) fd.append('reviewed_by', form.reviewed_by);
-        if (form.approved_by) fd.append('approved_by', form.approved_by);
-      }
+      if (form.reviewed_by) fd.append('reviewed_by', form.reviewed_by);
+      if (form.approved_by) fd.append('approved_by', form.approved_by);
       fd.append('allowed_role_slugs', JSON.stringify([])); // no role restriction — access managed per-user
       await uploadDocument(fd);
       onSuccess();
@@ -308,108 +393,175 @@ function UploadModal({ onClose, onSuccess }) {
               Release Workflow Status
             </label>
 
-            {/* Active Master radio */}
-            <label style={{
-              display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer',
-              padding: '10px 12px', borderRadius: '8px', marginBottom: '8px',
-              background: !isReview ? '#eef2ff' : '#fff',
-              border: `1px solid ${!isReview ? '#a5b4fc' : '#e2e8f0'}`,
-              transition: 'all 0.15s ease'
-            }}>
-              <input
-                type="radio"
-                name="doc_status"
-                value="approved"
-                checked={!isReview}
-                onChange={() => setForm(p => ({ ...p, status: 'approved', reviewed_by: '', approved_by: '' }))}
-                style={{ accentColor: '#4f46e5', marginTop: '2px' }}
-              />
-              <div>
-                <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>Active Master</span>
-                <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '8px' }}>(Already approved procedure)</span>
-                {!isReview && (
-                  <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#6366f1', fontWeight: 500 }}>
-                    Document will be immediately registered and active in the Document Library.
-                  </p>
-                )}
-              </div>
-            </label>
-
-            {/* Send for Review radio */}
-            <label style={{
-              display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer',
-              padding: '10px 12px', borderRadius: '8px',
-              background: isReview ? '#fefce8' : '#fff',
-              border: `1px solid ${isReview ? '#fde68a' : '#e2e8f0'}`,
-              transition: 'all 0.15s ease'
-            }}>
-              <input
-                type="radio"
-                name="doc_status"
-                value="under_review"
-                checked={isReview}
-                onChange={() => setForm(p => ({ ...p, status: 'under_review' }))}
-                style={{ accentColor: '#4f46e5', marginTop: '2px' }}
-              />
-              <div style={{ flex: 1 }}>
-                <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>Send for Review & Approval</span>
-                <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '8px' }}>(Triggers notifications)</span>
-                {isReview && (
-                  <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#92400e', fontWeight: 500 }}>
-                    Assigned Reviewer will be notified via email and in-app bell to review and recommend.
-                  </p>
-                )}
-              </div>
-            </label>
-
-            {/* ── Conditional Reviewer / Approver panel ── */}
-            {isReview && (
-              <div style={{
-                marginTop: '12px', padding: '12px 14px',
-                background: '#fff', border: '1px solid #fde68a', borderRadius: '10px',
-                animation: 'fadeIn 0.2s ease'
-              }}>
-                <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#92400e', fontWeight: 600 }}>
-                  Select who will review and approve this document:
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
-                      Reviewer * <span style={{ color: '#dc2626' }}>Required</span>
-                    </label>
-                    <select
-                      value={form.reviewed_by}
-                      onChange={(e) => setForm(p => ({ ...p, reviewed_by: e.target.value }))}
-                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: `1px solid ${!form.reviewed_by ? '#fca5a5' : '#e2e8f0'}`, fontSize: '13px', outline: 'none', background: '#fff' }}
-                    >
-                      <option value="">Select Reviewer</option>
-                      {users.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {(u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username} {u.role ? `(${u.role})` : ''}
-                        </option>
-                      ))}
-                    </select>
+            {/* 1. Active Master Card */}
+            <div
+              onClick={() => setForm(p => ({ ...p, status: 'approved' }))}
+              style={{
+                padding: '12px 14px', borderRadius: '10px', marginBottom: '10px',
+                background: !isReview ? '#f0f4ff' : '#fff',
+                border: `1.5px solid ${!isReview ? '#6366f1' : '#e2e8f0'}`,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                boxShadow: !isReview ? '0 2px 8px rgba(99,102,241,0.08)' : 'none'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                <input
+                  type="radio"
+                  name="doc_status"
+                  value="approved"
+                  checked={!isReview}
+                  onChange={() => setForm(p => ({ ...p, status: 'approved' }))}
+                  style={{ accentColor: '#4f46e5', marginTop: '3px', cursor: 'pointer' }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>Active Master</span>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>(Already approved procedure)</span>
                   </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
-                      Approver <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
-                    </label>
-                    <select
-                      value={form.approved_by}
-                      onChange={(e) => setForm(p => ({ ...p, approved_by: e.target.value }))}
-                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: '#fff' }}
-                    >
-                      <option value="">Select Approver (Optional)</option>
-                      {users.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {(u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username} {u.role ? `(${u.role})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {!isReview && (
+                    <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#4f46e5', fontWeight: 500 }}>
+                      Document will be immediately registered and active in the Document Library.
+                    </p>
+                  )}
                 </div>
               </div>
-            )}
+
+              {/* Nested Reviewer & Approver for Active Master */}
+              {!isReview && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    marginTop: '12px', padding: '12px 14px',
+                    background: '#fff', border: '1px solid #c7d2fe', borderRadius: '8px',
+                    animation: 'fadeIn 0.2s ease'
+                  }}
+                >
+                  <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#4338ca', fontWeight: 600 }}>
+                    Select Reviewer and Approver for this active master (both will be notified via email & bell):
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                        Reviewer <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
+                      </label>
+                      <Select
+                        value={userSelectOptions.find(opt => String(opt.value) === String(form.reviewed_by)) || null}
+                        onChange={(selected) => setForm(p => ({ ...p, reviewed_by: selected ? selected.value : '' }))}
+                        options={userSelectOptions}
+                        filterOption={customFilterOption}
+                        placeholder="Search reviewer by name, username..."
+                        isClearable
+                        isSearchable
+                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                        styles={makeSelectStyles(false)}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                        Approver <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
+                      </label>
+                      <Select
+                        value={userSelectOptions.find(opt => String(opt.value) === String(form.approved_by)) || null}
+                        onChange={(selected) => setForm(p => ({ ...p, approved_by: selected ? selected.value : '' }))}
+                        options={userSelectOptions}
+                        filterOption={customFilterOption}
+                        placeholder="Search approver by name, username..."
+                        isClearable
+                        isSearchable
+                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                        styles={makeSelectStyles(false)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 2. Send for Review & Approval Card */}
+            <div
+              onClick={() => setForm(p => ({ ...p, status: 'under_review' }))}
+              style={{
+                padding: '12px 14px', borderRadius: '10px',
+                background: isReview ? '#fefce8' : '#fff',
+                border: `1.5px solid ${isReview ? '#f59e0b' : '#e2e8f0'}`,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                boxShadow: isReview ? '0 2px 8px rgba(245,158,11,0.08)' : 'none'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                <input
+                  type="radio"
+                  name="doc_status"
+                  value="under_review"
+                  checked={isReview}
+                  onChange={() => setForm(p => ({ ...p, status: 'under_review' }))}
+                  style={{ accentColor: '#4f46e5', marginTop: '3px', cursor: 'pointer' }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>Send for Review & Approval</span>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>(Triggers notifications)</span>
+                  </div>
+                  {isReview && (
+                    <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#92400e', fontWeight: 500 }}>
+                      Assigned Reviewer will be notified via email and in-app bell to review and recommend.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Nested Reviewer & Approver for Review & Approval */}
+              {isReview && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    marginTop: '12px', padding: '12px 14px',
+                    background: '#fff', border: '1px solid #fde68a', borderRadius: '8px',
+                    animation: 'fadeIn 0.2s ease'
+                  }}
+                >
+                  <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#92400e', fontWeight: 600 }}>
+                    Select who will review and approve this document (routes sequentially):
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                        Reviewer * <span style={{ color: '#dc2626' }}>Required</span>
+                      </label>
+                      <Select
+                        value={userSelectOptions.find(opt => String(opt.value) === String(form.reviewed_by)) || null}
+                        onChange={(selected) => setForm(p => ({ ...p, reviewed_by: selected ? selected.value : '' }))}
+                        options={userSelectOptions}
+                        filterOption={customFilterOption}
+                        placeholder="Search reviewer by name, username..."
+                        isClearable
+                        isSearchable
+                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                        styles={makeSelectStyles(!form.reviewed_by && isReview)}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
+                        Approver <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
+                      </label>
+                      <Select
+                        value={userSelectOptions.find(opt => String(opt.value) === String(form.approved_by)) || null}
+                        onChange={(selected) => setForm(p => ({ ...p, approved_by: selected ? selected.value : '' }))}
+                        options={userSelectOptions}
+                        filterOption={customFilterOption}
+                        placeholder="Search approver by name, username..."
+                        isClearable
+                        isSearchable
+                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                        styles={makeSelectStyles(false)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* ── Scope / Notes (Optional) ── */}
@@ -765,11 +917,19 @@ export default function DocumentControlDocumentsPage() {
   const previewId = searchParams.get('preview');
 
   useEffect(() => {
-    if (previewId && docs.length > 0) {
-      const found = docs.find(d => String(d.id) === String(previewId));
-      if (found) {
-        setSelectedViewerDoc(found);
+    if (previewId) {
+      if (docs.length > 0) {
+        const found = docs.find(d => String(d.id) === String(previewId));
+        if (found) {
+          setSelectedViewerDoc(found);
+          return;
+        }
       }
+      getDocumentById(previewId)
+        .then(res => {
+          if (res.data) setSelectedViewerDoc(res.data);
+        })
+        .catch(err => console.error("Failed to load document preview from URL", err));
     }
   }, [previewId, docs]);
 
@@ -783,12 +943,59 @@ export default function DocumentControlDocumentsPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const canUpload = can(user, 'document.upload');
+  const isAdmin = user?.role === 'admin' || user?.is_superuser;
   const canManageDocumentAccess = (doc) => (
-    String(doc.uploaded_by) === String(user?.id) ||
-    user?.role === 'admin' ||
-    user?.is_superuser
+    String(doc.uploaded_by) === String(user?.id) || isAdmin
   );
-  const canRaiseDCR = can(user, 'document.dcr.create');
+  const globalCanRaiseDCR = can(user, 'document.dcr.create');
+
+  const canEditDocument = (doc) => (
+    globalCanRaiseDCR && (
+      isAdmin ||
+      String(doc.uploaded_by) === String(user?.id) ||
+      Boolean(doc.my_permissions?.can_edit)
+    )
+  );
+
+  const canDownloadDocument = (doc) => (
+    isAdmin ||
+    String(doc.uploaded_by) === String(user?.id) ||
+    Boolean(doc.my_permissions?.can_download)
+  );
+
+  const canDeleteDocument = (doc) => (
+    isAdmin ||
+    String(doc.uploaded_by) === String(user?.id) ||
+    Boolean(doc.my_permissions?.can_delete)
+  );
+
+  const handleDeleteOrObsolete = async (doc) => {
+    if (doc.status === 'approved') {
+      const reason = window.prompt(
+        `Document ${doc.document_number} is APPROVED. To retire this document, please enter an obsolescence comment:`,
+        'Obsoleted via Document Control'
+      );
+      if (reason === null) return;
+      try {
+        await markObsolete(doc.id, reason);
+        alert(`Document ${doc.document_number} marked as obsolete.`);
+        fetchDocs();
+      } catch (err) {
+        alert(err.response?.data?.error || 'Failed to mark document as obsolete.');
+      }
+    } else {
+      if (!window.confirm(`Are you sure you want to delete draft document ${doc.document_number} (${doc.title})? This action cannot be undone.`)) {
+        return;
+      }
+      try {
+        await deleteDocument(doc.id);
+        alert(`Document ${doc.document_number} deleted successfully.`);
+        fetchDocs();
+      } catch (err) {
+        alert(err.response?.data?.error || 'Failed to delete document.');
+      }
+    }
+  };
 
   const fetchDocs = async () => {
     setLoading(true);
@@ -1138,15 +1345,13 @@ export default function DocumentControlDocumentsPage() {
                       </div>
                     )}
                     {doc.file_name && (
-                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
-                        📎 {doc.file_name} <span style={{ color: '#cbd5e1' }}>•</span> {formatSize(doc.file_size)}
+                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Paperclip size={12} color="#94a3b8" />
+                        <span>{doc.file_name}</span>
+                        <span style={{ color: '#cbd5e1' }}>•</span>
+                        <span>{formatSize(doc.file_size)}</span>
                       </div>
                     )}
-                    <div style={{ fontSize: '10px', color: '#6366f1', marginTop: '4px', fontWeight: 600 }}>
-                      {doc.allowed_roles?.length
-                        ? `Visible to: ${doc.allowed_roles.map((role) => role.name).join(', ')}`
-                        : 'Visible to all document users'}
-                    </div>
                   </td>
 
                   {/* 5. Rev. No. */}
@@ -1211,7 +1416,7 @@ export default function DocumentControlDocumentsPage() {
                     <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
                       <StatusBadge status={doc.status} />
 
-                      {canRaiseDCR && (
+                      {canEditDocument(doc) && (
                         <button
                           title="Raise Document Change Request (DCR)"
                           onClick={() => setSelectedDCRDoc(doc)}
@@ -1225,6 +1430,22 @@ export default function DocumentControlDocumentsPage() {
                         </button>
                       )}
 
+                      {canDownloadDocument(doc) && (
+                        <a
+                          href={getDownloadUrl(doc.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Download document file"
+                          style={{
+                            background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '7px',
+                            padding: '5px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                            color: '#15803d', fontSize: '11px', fontWeight: '600', textDecoration: 'none'
+                          }}
+                        >
+                          <Download size={12} />
+                        </a>
+                      )}
+
                       {canManageDocumentAccess(doc) && (
                         <button
                           title="Edit document visibility"
@@ -1236,6 +1457,20 @@ export default function DocumentControlDocumentsPage() {
                           }}
                         >
                           <User size={12} /> Access
+                        </button>
+                      )}
+
+                      {canDeleteDocument(doc) && (
+                        <button
+                          title={doc.status === 'approved' ? "Mark document as obsolete" : "Delete document"}
+                          onClick={() => handleDeleteOrObsolete(doc)}
+                          style={{
+                            background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '7px',
+                            padding: '5px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                            color: '#b91c1c', fontSize: '11px', fontWeight: '600'
+                          }}
+                        >
+                          <Trash2 size={12} />
                         </button>
                       )}
 
@@ -1291,7 +1526,7 @@ export default function DocumentControlDocumentsPage() {
             }
           }}
           onUpdate={fetchDocs}
-          canRequestDCR={canRaiseDCR}
+          canRequestDCR={Boolean(selectedViewerDoc && canEditDocument(selectedViewerDoc))}
           onRequestDCR={(docToChange) => setSelectedDCRDoc(docToChange)}
         />
       )}

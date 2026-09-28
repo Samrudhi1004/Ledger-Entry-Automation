@@ -365,7 +365,7 @@ class MessagingService {
         Uri.parse('$baseUrl/messaging/conversations/$conversationId/messages/'),
         headers: headers,
         body: json.encode({
-          'content': '📎 $filename',
+          'content': filename,
           'message_type': messageType,
         }),
       );

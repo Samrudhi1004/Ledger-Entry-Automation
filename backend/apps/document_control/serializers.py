@@ -191,6 +191,18 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f'Unknown roles: {", ".join(unknown)}')
         return roles
 
+    def validate(self, attrs):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user and user.is_authenticated:
+            reviewed_by = attrs.get('reviewed_by')
+            approved_by = attrs.get('approved_by')
+            if reviewed_by and reviewed_by.id == user.id:
+                raise serializers.ValidationError({"reviewed_by": "You cannot assign yourself as the reviewer."})
+            if approved_by and approved_by.id == user.id:
+                raise serializers.ValidationError({"approved_by": "You cannot assign yourself as the approver."})
+        return attrs
+
     def create(self, validated_data):
         roles = validated_data.pop('allowed_role_slugs', [])
         document = super().create(validated_data)
@@ -294,6 +306,8 @@ class DCRCreateSerializer(serializers.ModelSerializer):
 
         if not cft:
             raise serializers.ValidationError({"assigned_cft_reviewer": "A CFT Reviewer must be assigned."})
+        if cft.id == user.id:
+            raise serializers.ValidationError({"assigned_cft_reviewer": "You cannot assign yourself as the CFT Reviewer for your own change request."})
         if not cft.has_access('document.dcr.review'):
             raise serializers.ValidationError({"assigned_cft_reviewer": "Reviewer needs change request review access."})
 
@@ -302,6 +316,8 @@ class DCRCreateSerializer(serializers.ModelSerializer):
 
         if not app:
             raise serializers.ValidationError({"assigned_approver": "An Approver must be assigned."})
+        if app.id == user.id:
+            raise serializers.ValidationError({"assigned_approver": "You cannot assign yourself as the Approver for your own change request."})
         if not app.has_access('document.dcr.approve'):
             raise serializers.ValidationError({"assigned_approver": "Approver needs change request approval access."})
 

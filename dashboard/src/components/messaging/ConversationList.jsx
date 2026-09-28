@@ -1,14 +1,35 @@
 import { useMessaging } from '../../context/MessagingContext';
 import { useAuth } from '../../context/AuthContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { format, isToday, isYesterday, differenceInDays } from 'date-fns';
-import { Search } from 'lucide-react';
+import { Search, Paperclip } from 'lucide-react';
+import api from '../../api/axios';
 import './ConversationList.css';
 
 export default function ConversationList() {
   const { conversations, activeConversation, selectConversation, onlineUsers } = useMessaging();
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchParams] = useSearchParams();
+  const urlConvId = searchParams.get('conversation') || searchParams.get('chat');
+
+  useEffect(() => {
+    if (urlConvId) {
+      if (!activeConversation || String(activeConversation.id) !== String(urlConvId)) {
+        const found = conversations.find(c => String(c.id) === String(urlConvId));
+        if (found) {
+          selectConversation(found);
+        } else if (conversations.length > 0) {
+          api.get(`/api/messaging/conversations/${urlConvId}/`)
+            .then(res => {
+              if (res.data) selectConversation(res.data);
+            })
+            .catch(err => console.error("Failed to load conversation from URL", err));
+        }
+      }
+    }
+  }, [urlConvId, conversations, activeConversation, selectConversation]);
 
   const getConversationName = (conversation) => {
     if (conversation.type === 'group') {
@@ -38,7 +59,13 @@ export default function ConversationList() {
     const senderName = sender.id === user.id ? 'You' : sender.first_name || sender.email.split('@')[0];
 
     if (message_type === 'image') return `${senderName}: 📷 Image`;
-    if (message_type === 'file') return `${senderName}: 📎 File`;
+    if (message_type === 'file') {
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+          {senderName}: <Paperclip size={12} style={{ flexShrink: 0 }} /> File
+        </span>
+      );
+    }
     if (message_type === 'meeting') return `${senderName}: 📅 Meeting`;
 
     return `${senderName}: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`;

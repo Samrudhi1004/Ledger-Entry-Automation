@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, Download, ExternalLink, FileText, AlertCircle,
-  Maximize2, Minimize2, Edit3, Calendar, Tag, CheckCircle, Shield, RefreshCw, AlertTriangle
+  Maximize2, Minimize2, Edit3, Calendar, Tag, CheckCircle, Shield, RefreshCw, AlertTriangle, Printer
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { submitForReview, approveDocument, rejectDocument } from '../../api/documentControl';
@@ -17,7 +17,6 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
   const { user } = useAuth();
   const [currentDoc, setCurrentDoc] = useState(doc);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [engine, setEngine] = useState('google'); // 'google' (default & stable) | 'office'
   const [iframeLoading, setIframeLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -44,30 +43,40 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
     fileType.includes('powerpoint') ||
     fileType.includes('spreadsheet') ||
     fileType.includes('excel');
-  const documentUrl = currentDoc.delivery_url || currentDoc.cloudinary_url;
+
+  const rawDocumentUrl = currentDoc.delivery_url || currentDoc.cloudinary_url;
+  // Ensure documentUrl is always HTTPS to prevent mixed content blocking in iframes
+  const documentUrl = rawDocumentUrl ? rawDocumentUrl.replace(/^http:\/\//i, 'https://') : null;
 
   const levelInfo = LEVEL_COLORS[currentDoc.doc_level] || LEVEL_COLORS.L2;
 
-  // Resolve embed URL based on file type and selected engine
+  // Workflow Sign-off and Action Permissions
+  const userRole = user?.role || '';
+  const isManager = user?.is_superuser || userRole === 'admin';
+  const isOwner = user && String(currentDoc.uploaded_by) === String(user.id);
+  const myPerms = currentDoc.my_permissions || {};
+
+  const canDownloadDoc = isManager || isOwner || Boolean(myPerms.can_download);
+  const canPrintDoc = isManager || isOwner || Boolean(myPerms.can_print);
+
+  // Resolve embed URL based on file type (automatic single universal viewer)
   const getEmbedUrl = () => {
     if (!documentUrl) return null;
     if (isPdf) {
-      return `${documentUrl}#toolbar=1&navpanes=0`;
+      const showToolbar = (canPrintDoc || canDownloadDoc) ? 1 : 0;
+      return `${documentUrl}#toolbar=${showToolbar}&navpanes=0`;
     }
     if (isOfficeDoc) {
-      if (engine === 'office') {
-        return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(documentUrl)}`;
-      }
-      return `https://docs.google.com/viewer?url=${encodeURIComponent(documentUrl)}&embedded=true`;
+      return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(documentUrl)}`;
     }
-    // Default fallback for any other document: try Google Docs Viewer
-    return `https://docs.google.com/viewer?url=${encodeURIComponent(documentUrl)}&embedded=true`;
+    // Fallback for other document types
+    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(documentUrl)}`;
   };
 
   const embedUrl = getEmbedUrl();
 
+
   // Workflow Sign-off Permissions
-  const userRole = user?.role || '';
   const isReviewAlreadyDone = Boolean(currentDoc.reviewed_at || currentDoc.status === 'awaiting_approval' || currentDoc.status === 'approved');
   const isReviewer = user && (user.id === currentDoc.reviewed_by || ['admin', 'supervisor'].includes(userRole));
   const isApprover = user && (user.id === currentDoc.approved_by || userRole === 'admin');
@@ -160,6 +169,26 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
       padding: isFullscreen ? '0' : '20px',
       transition: 'all 0.2s ease',
     }}>
+      {!canPrintDoc && (
+        <style>{`
+          @media print {
+            body * { visibility: hidden !important; }
+            body::after {
+              content: "Printing is restricted for this document by Document Control Policy.";
+              visibility: visible !important;
+              display: block !important;
+              position: fixed !important;
+              top: 40% !important;
+              left: 10% !important;
+              right: 10% !important;
+              text-align: center !important;
+              font-size: 20px !important;
+              font-weight: bold !important;
+              color: #dc2626 !important;
+            }
+          }
+        `}</style>
+      )}
       <div style={{
         backgroundColor: '#ffffff',
         borderRadius: isFullscreen ? '0' : '16px',
@@ -249,55 +278,6 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
 
           {/* Right: Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            {/* Engine switcher for office documents */}
-            {isOfficeDoc && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                background: '#e2e8f0',
-                borderRadius: '8px',
-                padding: '2px',
-                marginRight: '4px'
-              }}>
-                <button
-                  type="button"
-                  onClick={() => { setEngine('google'); setIframeLoading(true); }}
-                  style={{
-                    border: 'none',
-                    background: engine === 'google' ? '#ffffff' : 'transparent',
-                    color: engine === 'google' ? '#4f46e5' : '#64748b',
-                    fontWeight: engine === 'google' ? '700' : '500',
-                    padding: '5px 10px',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    cursor: 'pointer',
-                    boxShadow: engine === 'google' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  Google Viewer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setEngine('office'); setIframeLoading(true); }}
-                  style={{
-                    border: 'none',
-                    background: engine === 'office' ? '#ffffff' : 'transparent',
-                    color: engine === 'office' ? '#4f46e5' : '#64748b',
-                    fontWeight: engine === 'office' ? '700' : '500',
-                    padding: '5px 10px',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    cursor: 'pointer',
-                    boxShadow: engine === 'office' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  Office Viewer
-                </button>
-              </div>
-            )}
-
             {/* Workflow Action: Review & Recommend */}
             {canReview && (
               <button
@@ -397,12 +377,46 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
               </button>
             )}
 
-            {documentUrl && (
+            {canPrintDoc && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (isPdf && documentUrl) {
+                    const printWin = window.open(documentUrl, '_blank');
+                    if (printWin) {
+                      printWin.focus();
+                    } else {
+                      window.print();
+                    }
+                  } else {
+                    window.print();
+                  }
+                }}
+                title="Print Document"
+                style={{
+                  padding: '7px 11px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  color: '#334155',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  cursor: 'pointer',
+                }}
+              >
+                <Printer size={14} /> Print
+              </button>
+            )}
+
+            {canDownloadDoc && documentUrl && (
               <a
                 href={documentUrl}
                 target="_blank"
                 rel="noreferrer"
-                title="Open directly in new browser tab"
+                title="Download original document file"
                 style={{
                   padding: '7px 11px',
                   borderRadius: '8px',
@@ -417,7 +431,7 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
                   textDecoration: 'none',
                 }}
               >
-                <ExternalLink size={14} /> Open Original
+                <Download size={14} /> Download
               </a>
             )}
 
@@ -609,7 +623,7 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
                   </div>
                 )}
                 <iframe
-                  key={`${embedUrl}-${engine}`}
+                  key={embedUrl}
                   src={embedUrl}
                   title={currentDoc.title}
                   onLoad={() => setIframeLoading(false)}

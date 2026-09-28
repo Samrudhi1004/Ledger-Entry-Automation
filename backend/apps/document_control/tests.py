@@ -46,10 +46,18 @@ class DocumentControlSystemTests(TestCase):
         self.inspector = User.objects.create_user(
             username='inspector_user',
             password='password123',
-            role='quality_engineer',
+            role='inspector',
             first_name='Inspector',
             last_name='User',
             email='inspector@example.com'
+        )
+        self.reviewer = User.objects.create_user(
+            username='reviewer_user',
+            password='password123',
+            role='supervisor',
+            first_name='Reviewer',
+            last_name='User',
+            email='reviewer@example.com'
         )
 
         self.doc_l1 = Document.objects.create(
@@ -104,7 +112,7 @@ class DocumentControlSystemTests(TestCase):
         self.assertEqual(docs[0]['document_number'], 'WI-QC-05')
 
     def test_role_restrictions_on_dcr_submission(self):
-        """Operators and inspectors are strictly blocked from submitting DCRs."""
+        """Users without DCR create access are strictly blocked from submitting DCRs."""
         # 1. Operator attempts DCR -> 403 Forbidden
         self.client.force_authenticate(user=self.operator)
         res = self.client.post('/api/document-control/change-requests/submit/', {
@@ -113,13 +121,13 @@ class DocumentControlSystemTests(TestCase):
             'reason_for_change': 'Operator wants change',
             'existing_revision': 'Rev A',
             'proposed_revision': 'Rev B',
-            'reviewer_id': self.supervisor.id,
+            'reviewer_id': self.reviewer.id,
             'approver_id': self.admin.id,
         })
         self.assertEqual(res.status_code, 403)
         self.assertIn('Change request creation access required', res.data.get('error', ''))
 
-        # 2. Quality Engineer (Inspector) attempts DCR -> 403 Forbidden
+        # 2. Inspector attempts DCR -> 403 Forbidden
         self.client.force_authenticate(user=self.inspector)
         res = self.client.post('/api/document-control/change-requests/submit/', {
             'document_id': str(self.doc_l2.id),
@@ -127,13 +135,43 @@ class DocumentControlSystemTests(TestCase):
             'reason_for_change': 'Inspector wants change',
             'existing_revision': 'Rev A',
             'proposed_revision': 'Rev B',
-            'reviewer_id': self.supervisor.id,
+            'reviewer_id': self.reviewer.id,
             'approver_id': self.admin.id,
         })
         self.assertEqual(res.status_code, 403)
 
+    def test_self_assignment_prohibited(self):
+        """User cannot assign themselves as reviewer or approver."""
+        self.client.force_authenticate(user=self.supervisor)
+        # Attempt self-assignment as reviewer
+        res = self.client.post('/api/document-control/change-requests/submit/', {
+            'document_id': str(self.doc_l2.id),
+            'change_type': 'modification',
+            'reason_for_change': 'Self review test',
+            'existing_revision': 'Rev A',
+            'proposed_revision': 'Rev B',
+            'reviewer_id': self.supervisor.id,
+            'approver_id': self.admin.id,
+        })
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('cannot assign yourself as the CFT Reviewer', str(res.data))
+
+        # Attempt self-assignment as approver
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.post('/api/document-control/change-requests/submit/', {
+            'document_id': str(self.doc_l2.id),
+            'change_type': 'modification',
+            'reason_for_change': 'Self approval test',
+            'existing_revision': 'Rev A',
+            'proposed_revision': 'Rev B',
+            'reviewer_id': self.reviewer.id,
+            'approver_id': self.admin.id,
+        })
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('cannot assign yourself as the Approver', str(res.data))
+
     def test_complete_dcr_workflow(self):
-        """Supervisor submits DCR -> Supervisor reviews & approves -> Admin approves -> Doc revision updated."""
+        """Supervisor submits DCR -> Reviewer reviews & approves -> Admin approves -> Doc revision updated."""
         # Step 1: Supervisor submits DCR
         self.client.force_authenticate(user=self.supervisor)
         res = self.client.post('/api/document-control/change-requests/submit/', {
@@ -143,7 +181,7 @@ class DocumentControlSystemTests(TestCase):
             'nature_of_change': 'Modified table in section 3.1',
             'existing_revision': 'Rev A',
             'proposed_revision': 'Rev B',
-            'reviewer_id': self.supervisor.id,
+            'reviewer_id': self.reviewer.id,
             'calibrator_id': self.calibrator.id,
             'approver_id': self.admin.id,
         })
@@ -154,11 +192,12 @@ class DocumentControlSystemTests(TestCase):
         self.assertEqual(res.data['status'], 'awaiting_review')
 
         # Check Reviewer received in-app notification
-        review_notif = DCRNotification.objects.filter(recipient=self.supervisor, dcr_id=dcr_id).first()
+        review_notif = DCRNotification.objects.filter(recipient=self.reviewer, dcr_id=dcr_id).first()
         self.assertIsNotNone(review_notif)
         self.assertIn('review', review_notif.title.lower())
 
         # Step 2: Reviewer reviews and approves
+        self.client.force_authenticate(user=self.reviewer)
         res = self.client.post(f'/api/document-control/change-requests/{dcr_id}/submit_review/', {
             'comments': 'Tooling changes verified and feasible.'
         })
@@ -202,12 +241,14 @@ class DocumentControlSystemTests(TestCase):
             'reason_for_change': 'Obsolete step',
             'existing_revision': 'Rev B',
             'proposed_revision': 'Rev C',
-            'reviewer_id': self.supervisor.id,
+            'reviewer_id': self.reviewer.id,
             'approver_id': self.admin.id,
         })
+        self.assertEqual(res.status_code, 201)
         dcr_id = res.data['id']
 
         # Reviewer rejects
+        self.client.force_authenticate(user=self.reviewer)
         res = self.client.post(f'/api/document-control/change-requests/{dcr_id}/reject_review/', {
             'rejected_reason': 'Step cannot be deleted as it is required by customer audit.'
         })

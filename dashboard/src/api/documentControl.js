@@ -62,6 +62,10 @@ export const getDownloadUrl = (id) =>
 export const markObsolete = (id, comment = '') =>
   api.post(`/documents/${id}/obsolete/`, { comment });
 
+export const deleteDocument = (id) =>
+  api.delete(`/documents/${id}/`);
+
+
 // ── Document Change Requests (Form DKI/MR/F/05) ────────────────────────────
 export const getDCRs = (params = {}) => api.get('/change-requests/', { params });
 

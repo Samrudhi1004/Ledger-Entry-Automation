@@ -91,7 +91,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
     final content = lastMessage['content'] ?? '';
 
     if (messageType == 'image') return '$senderName: 📷 Image';
-    if (messageType == 'file') return '$senderName: 📎 File';
+    if (messageType == 'file') return '$senderName: [File]';
     if (messageType == 'meeting') return '$senderName: 📅 Meeting';
 
     final preview = content.length > 50 ? '${content.substring(0, 50)}...' : content;

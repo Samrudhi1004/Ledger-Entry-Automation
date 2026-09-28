@@ -36,11 +36,15 @@ export default function LoginPage() {
       await login(u, p);
       navigate('/');
     } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-        err.response?.data?.non_field_errors?.[0] ||
-        'Invalid credentials. Please try again.'
-      );
+      if (!err.response) {
+        setError('Cannot connect to server. Please ensure the backend is running.');
+      } else {
+        setError(
+          err.response?.data?.detail ||
+          err.response?.data?.non_field_errors?.[0] ||
+          'Invalid credentials. Please try again.'
+        );
+      }
     } finally {
       setLoading(false);
     }

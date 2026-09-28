@@ -17,6 +17,7 @@ import {
   markNotificationUnread,
   markAllNotificationsRead,
 } from '../../api/documentControl';
+import { resolveNotificationUrl } from '../../utils/notificationRouter';
 
 // Clean legacy em dashes or en dashes from titles/messages
 const sanitizeText = (text) => {
@@ -120,14 +121,8 @@ export default function AllNotificationsModal({ isOpen, onClose, onNotificationU
       console.error('Failed to mark read', e);
     }
     onClose();
-
-    if (notif.action_url) {
-      navigate(notif.action_url);
-    } else if (notif.action_type && notif.action_type.startsWith('DOC_')) {
-      navigate('/document-control/documents');
-    } else {
-      navigate('/document-control/dcr?tab=action_required');
-    }
+    const targetUrl = resolveNotificationUrl(notif);
+    navigate(targetUrl);
   };
 
   const handleToggleRead = async (e, notif) => {

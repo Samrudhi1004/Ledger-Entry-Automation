@@ -2,7 +2,7 @@ import { useMessaging } from '../../context/MessagingContext';
 import { useAuth } from '../../context/AuthContext';
 import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { MoreVertical, Download, X, Reply, Forward, Pin, Smile, Trash2 } from 'lucide-react';
+import { MoreVertical, Download, X, Reply, Forward, Pin, Smile, Trash2, Paperclip } from 'lucide-react';
 import MessageInput from './MessageInput';
 import { BASE_URL } from '../../api/axios';
 import './ChatWindow.css';
@@ -714,7 +714,11 @@ export default function ChatWindow() {
           >
             <span className="pinned-banner-label">Pinned Message</span>
             <span className="pinned-banner-text">
-              {pinnedMessages[activePinIndex]?.content || '📎 Attachment'}
+              {pinnedMessages[activePinIndex]?.content || (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <Paperclip size={13} /> Attachment
+                </span>
+              )}
             </span>
           </div>
           {pinnedMessages.length > 1 && (
@@ -794,7 +798,7 @@ export default function ChatWindow() {
                                   onClick={() => handleFileClick(attachment)}
                                   style={{ cursor: 'pointer' }}
                                 >
-                                  <span>📎</span>
+                                  <Paperclip size={15} />
                                   <span>{attachment.file_name}</span>
                                 </div>
                               )}
