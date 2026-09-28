@@ -28,7 +28,7 @@ export default function BugReportModal({ onClose }) {
         formData.append('screenshot', screenshot);
       }
 
-      const res = await api.post('/support/bug-reports/', formData, {
+      const res = await api.post('/api/support/bug-reports/', formData, {
         headers: {
           'Content-Type': 'multipart/form-data' // Axios handles the boundary automatically usually, but explicitly setting it to multipart/form-data tells the interceptor
         }

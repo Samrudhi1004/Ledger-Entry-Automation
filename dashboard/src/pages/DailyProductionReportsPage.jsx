@@ -86,19 +86,43 @@ export default function DailyProductionReportsPage() {
   }, [fetchReports]);
 
   // Export Excel CSV
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const params = new URLSearchParams();
     if (dateFilter) params.append('date', dateFilter);
     if (machineFilter) params.append('machine', machineFilter);
     if (partFilter) params.append('part', partFilter);
     if (shiftFilter) params.append('shift', shiftFilter);
 
-    window.open(`${BASE_URL}/api/inspections/daily-production-reports/export_excel/?${params.toString()}`, '_blank');
+    try {
+      const res = await api.get(`/api/inspections/daily-production-reports/export_excel/?${params.toString()}`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'Daily_Production_Reports.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Failed to export Excel', err);
+      alert('Failed to download Excel file.');
+    }
   };
 
   // Export PDF
-  const handleExportPDF = (reportId) => {
-    window.open(`${BASE_URL}/api/inspections/daily-production-reports/${reportId}/export_pdf/`, '_blank');
+  const handleExportPDF = async (reportId) => {
+    try {
+      const res = await api.get(`/api/inspections/daily-production-reports/${reportId}/export_pdf/`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+      setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      console.error('Failed to export PDF', err);
+      alert('Failed to download PDF.');
+    }
   };
 
   // Summary Metrics
