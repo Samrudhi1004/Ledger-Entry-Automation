@@ -234,17 +234,21 @@ function TaskRow({ task, currentUser, onResolve, onAccept, onComplete, onFlagIss
             </button>
           )}
           {task.status === 'completed' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-              <span style={{ color: 'var(--accent-green)', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <CheckCircle2 size={14} /> Done
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
               {isAllocator && task.attachments?.length > 0 && (
-                <button className="btn btn-ghost btn-sm" onClick={() => setAttachmentsExpanded(v => !v)} style={{ gap: 4, fontSize: '0.75rem' }}>
-                  {attachmentsExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                <button 
+                  className="btn btn-ghost btn-sm" 
+                  onClick={() => setAttachmentsExpanded(v => !v)} 
+                  style={{ gap: 4, fontSize: '0.75rem', padding: '4px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
+                >
                   <Paperclip size={12} />
                   {attachmentsExpanded ? 'Hide Files' : `View Files (${task.attachments.length})`}
+                  {attachmentsExpanded ? <ChevronUp size={14} style={{ marginLeft: 2 }} /> : <ChevronDown size={14} style={{ marginLeft: 2 }} />}
                 </button>
               )}
+              <span style={{ color: 'var(--accent-green)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                <CheckCircle2 size={15} /> Done
+              </span>
             </div>
           )}
         </td>
