@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Header from '../components/layout/Header';
+import api from '../api/axios';
 
 export default function AdminBugReportsPage() {
   const [reports, setReports] = useState([]);
@@ -11,16 +12,8 @@ export default function AdminBugReportsPage() {
 
   const fetchReports = async () => {
     try {
-      const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
-      const res = await fetch('http://localhost:8000/api/support/bug-reports/', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setReports(data.results || data);
-      }
+      const res = await api.get('/api/support/bug-reports/');
+      setReports(res.data.results || res.data);
     } catch (err) {
       console.error('Error fetching reports:', err);
     } finally {
