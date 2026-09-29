@@ -21,7 +21,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 try:
@@ -139,6 +139,32 @@ class DocumentViewSet(viewsets.ModelViewSet):
     """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        if self.action in ['preview', 'download']:
+            return [AllowAny()]
+        return super().get_permissions()
+
+    def _authenticate_request_user(self, request):
+        if request.user and request.user.is_authenticated:
+            if not request.user.is_active:
+                return None
+            return request.user
+        token = request.query_params.get('token')
+        if token:
+            from rest_framework_simplejwt.tokens import AccessToken
+            try:
+                valid_token = AccessToken(token)
+                user_id = valid_token.get('user_id')
+                User = get_user_model()
+                user = User.objects.get(id=user_id)
+                if not user.is_active:
+                    return None
+                request.user = user
+                return user
+            except Exception:
+                return None
+        return None
 
     def get_queryset(self):
         qs = Document.objects.select_related(
@@ -560,43 +586,51 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def preview(self, request, pk=None):
+        user = self._authenticate_request_user(request)
+        if not user or not user.is_authenticated:
+            return Response({'detail': 'Authentication credentials were not provided.'}, status=status.HTTP_401_UNAUTHORIZED)
+
         doc = self.get_object()
         if not doc.cloudinary_url:
             return Response({'error': 'No file attached.'}, status=404)
 
         # Enforce preview permission
-        is_manager = request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'
-        is_owner = doc.uploaded_by_id == request.user.id
-        is_reviewer_or_approver = (doc.reviewed_by_id == request.user.id) or (doc.approved_by_id == request.user.id)
+        is_manager = user.is_superuser or getattr(user, 'role', '') == 'admin'
+        is_owner = doc.uploaded_by_id == user.id
+        is_reviewer_or_approver = (doc.reviewed_by_id == user.id) or (doc.approved_by_id == user.id)
         if not (is_manager or is_owner or is_reviewer_or_approver):
             try:
-                perm = DocumentUserPermission.objects.get(document=doc, user=request.user)
+                perm = DocumentUserPermission.objects.get(document=doc, user=user)
                 if not perm.can_preview:
                     return Response({'error': 'You do not have permission to preview this document.'}, status=403)
             except DocumentUserPermission.DoesNotExist:
                 return Response({'error': 'Permission denied.'}, status=403)
 
-        DocumentActivity.objects.create(document=doc, action='viewed', performed_by=request.user)
+        DocumentActivity.objects.create(document=doc, action='viewed', performed_by=user)
         return redirect(document_delivery_url(doc))
 
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
+        user = self._authenticate_request_user(request)
+        if not user or not user.is_authenticated:
+            return Response({'detail': 'Authentication credentials were not provided.'}, status=status.HTTP_401_UNAUTHORIZED)
+
         doc = self.get_object()
         if not doc.cloudinary_url:
             return Response({'error': 'No file attached.'}, status=404)
 
         # Enforce download permission
-        is_manager = request.user.is_superuser or getattr(request.user, 'role', '') == 'admin'
-        is_owner = doc.uploaded_by_id == request.user.id
+        is_manager = user.is_superuser or getattr(user, 'role', '') == 'admin'
+        is_owner = doc.uploaded_by_id == user.id
         if not is_manager and not is_owner:
             try:
-                perm = DocumentUserPermission.objects.get(document=doc, user=request.user)
+                perm = DocumentUserPermission.objects.get(document=doc, user=user)
                 if not perm.can_download:
                     return Response({'error': 'You do not have permission to download this document.'}, status=403)
             except DocumentUserPermission.DoesNotExist:
                 return Response({'error': 'Permission denied.'}, status=403)
 
-        DocumentActivity.objects.create(document=doc, action='downloaded', performed_by=request.user)
+        DocumentActivity.objects.create(document=doc, action='downloaded', performed_by=user)
         return redirect(document_delivery_url(doc))
 
     def destroy(self, request, *args, **kwargs):
