@@ -1071,7 +1071,7 @@ export default function DocumentControlDocumentsPage() {
     <>
       <Header
         title="Document Register"
-        subtitle="Browse, inspect & manage controlled quality documents (L1 : L4) • Click any row to view"
+        subtitle="Browse, inspect & manage controlled quality documents (L1 : L4)"
       />
 
       <div className="page-content bg-gradient-animated">
@@ -1301,7 +1301,7 @@ export default function DocumentControlDocumentsPage() {
                 <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '120px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Effective from</th>
                 <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '130px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Reviewed by</th>
                 <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '130px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Approved by</th>
-                <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '100px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Preview</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '130px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Status</th>
                 <th style={{ padding: '12px 14px', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#475569', width: '140px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Actions</th>
               </tr>
             </thead>
@@ -1309,21 +1309,8 @@ export default function DocumentControlDocumentsPage() {
               {docs.map((doc, i) => (
                 <tr
                   key={doc.id}
-                  onClick={() => {
-                    if (canPreviewDocument(doc)) {
-                      setSelectedViewerDoc(doc);
-                    }
-                  }}
                   style={{
                     borderBottom: '1px solid #f1f5f9',
-                    cursor: canPreviewDocument(doc) ? 'pointer' : 'default',
-                    transition: 'background 0.15s'
-                  }}
-                  onMouseEnter={e => {
-                    if (canPreviewDocument(doc)) e.currentTarget.style.background = '#f8fafc';
-                  }}
-                  onMouseLeave={e => {
-                    if (canPreviewDocument(doc)) e.currentTarget.style.background = '#fff';
                   }}
                 >
                   {/* 1. Sr. */}
@@ -1405,33 +1392,14 @@ export default function DocumentControlDocumentsPage() {
                     )}
                   </td>
 
-                  {/* 10. Preview */}
-                  <td style={{ padding: '13px 14px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                    {canPreviewDocument(doc) ? (
-                      <button
-                        title="Open Document in Viewer"
-                        onClick={() => setSelectedViewerDoc(doc)}
-                        style={{
-                          background: '#e0e7ff', border: 'none', borderRadius: '7px',
-                          padding: '6px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px',
-                          color: '#4338ca', fontSize: '12px', fontWeight: '600', transition: 'all 0.15s ease'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#c7d2fe'}
-                        onMouseLeave={e => e.currentTarget.style.background = '#e0e7ff'}
-                      >
-                        <Eye size={13} /> Preview
-                      </button>
-                    ) : (
-                      <span style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic' }}>
-                        No Access
-                      </span>
-                    )}
+                  {/* 10. Status */}
+                  <td style={{ padding: '13px 14px', textAlign: 'center' }}>
+                    <StatusBadge status={doc.status} />
                   </td>
 
                   {/* 11. Actions */}
-                  <td style={{ padding: '13px 14px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                  <td style={{ padding: '13px 14px', textAlign: 'center' }}>
                     <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
-                      <StatusBadge status={doc.status} />
 
                       {canEditDocument(doc) && (
                         <button
