@@ -1195,59 +1195,6 @@ export default function JHInspectionReportsPage() {
                     }}
                   />
                 </div>
-
-                {/* Machine Checklist Status & Quick Upload Slot */}
-                {(() => {
-                  const currentMachineObj = machines.find((m) => String(m.id) === String(matrixMachine));
-                  const isCustom = machineChecklistStatus?.has_custom_checklist;
-                  return (
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        background: isCustom ? '#F0FDF4' : '#FFFBEB',
-                        border: `1px solid ${isCustom ? '#BBF7D0' : '#FDE68A'}`,
-                        borderRadius: '8px',
-                        padding: '6px 12px',
-                        alignSelf: 'flex-end',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', color: isCustom ? '#15803D' : '#B45309' }}>
-                          {isCustom ? 'Custom Checklist Active' : 'Factory Default Template'}
-                        </div>
-                        <div style={{ fontSize: '12px', fontWeight: '700', color: '#0F172A' }}>
-                          {isCustom
-                            ? `v${machineChecklistStatus.version_number} (${machineChecklistStatus.total_items} Checkpoints)`
-                            : `(${machineChecklistStatus?.total_items || 27} Checkpoints)`
-                          }
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => openChecklistManager(matrixMachine)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '6px 12px',
-                          borderRadius: '6px',
-                          background: isCustom ? '#15803D' : '#D97706',
-                          color: '#FFFFFF',
-                          border: 'none',
-                          fontSize: '11.5px',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                        }}
-                        title={isCustom ? `Upload updated checklist for ${currentMachineObj?.machine_code || ''}` : `Upload custom checklist for ${currentMachineObj?.machine_code || ''}`}
-                      >
-                        <UploadCloud size={13} />
-                        <span>{isCustom ? 'Update' : `Upload for ${currentMachineObj?.machine_code || 'Machine'}`}</span>
-                      </button>
-                    </div>
-                  );
-                })()}
               </div>
 
               {/* Legend */}
