@@ -286,7 +286,7 @@ class InspectionService:
         # finds the newly-created session and returns it instead of creating again.
         from django.utils import timezone as django_tz
         from django.db import transaction
-        today = django_tz.now().date()
+        today = django_tz.localdate()
         filter_kwargs = {
             'machine': machine,
             'part': part,
@@ -1074,7 +1074,8 @@ class InspectionService:
 
         # Merge measurements from same-day first piece and hourly sessions
         if session_obj:
-            session_date = session_obj.started_at.date() if session_obj.started_at else None
+            from django.utils import timezone as django_tz
+            session_date = django_tz.localtime(session_obj.started_at).date() if session_obj.started_at else None
             session_shift = session_obj.shift
 
             # Get all first piece sessions for same machine/part/date/shift
