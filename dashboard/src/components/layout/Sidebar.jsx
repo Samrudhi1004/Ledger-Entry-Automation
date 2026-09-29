@@ -123,14 +123,7 @@ const MODULES = [
       { label: 'Change Requests (DCR)', to: '/document-control/dcr' },
       { label: 'Approvals Queue', to: '/document-control/approvals' },
     ],
-  },
-  {
-    key: 'support',
-    label: 'Support & Issues',
-    icon: ShieldCheck,
-    to: '/support/bug-reports',
-    items: [],
-  },
+  }
 ];
 
 export default function Sidebar({ pendingCount = 0 }) {
