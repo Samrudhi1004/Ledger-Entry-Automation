@@ -147,6 +147,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
     def _authenticate_request_user(self, request):
         if request.user and request.user.is_authenticated:
+            if not request.user.is_active:
+                return None
             return request.user
         token = request.query_params.get('token')
         if token:
@@ -156,6 +158,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 user_id = valid_token.get('user_id')
                 User = get_user_model()
                 user = User.objects.get(id=user_id)
+                if not user.is_active:
+                    return None
                 request.user = user
                 return user
             except Exception:
