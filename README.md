@@ -48,12 +48,10 @@ flowchart TB
 For quick evaluation both locally and on live cloud environments:
 
 ### 🌐 Live Production / Local Credentials
-| Role | Username | Password | Recommended Platform | Primary Responsibilities |
-|---|---|---|:---:|---|
-| **Admin** | `admin` | `admin123` | 🌐 Web Dashboard | Master data, JH Checklist upload, SOP approvals, system configs |
-| **Supervisor** | `supervisor` | `supervisor123` | 🌐 Web / 📱 Mobile | 31-Day JH Matrix, shift audits, Form QF/MF-08 Excel export, live alerts |
-| **Inspector** | `inspector` | `inspector123` | 📱 Mobile App | First-Piece Inspection (1st PC Trial), setup approvals, voice entry |
-| **Operator** | `operator` | `operator123` | 📱 Mobile App | Daily JH shift checklists, approved SOP viewing/downloads, live chat |
+For security reasons, production and local credentials are not published in this repository. 
+
+- **Live Production:** Please contact your system administrator to provision your role-based accounts (Admin, Supervisor, Inspector, or Operator).
+- **Local Development:** Run `python backend/create_test_users.py` to seed your local database with default test accounts.
 
 ---
 
@@ -101,15 +99,15 @@ For quick evaluation both locally and on live cloud environments:
 
 ## 📱 Mobile App (Android APK)
 
-The compiled, production-ready release APK is located directly in the project root:
-* **File:** [`Inspection_Hub.apk`](file:///e:/Liha_Tech_Project1/Ledger_entry_automation/Inspection_Hub.apk)
+The compiled, production-ready release APK is provided via GitHub Releases:
+* **File:** Download `Inspection_Hub.apk` from the **[Releases](../../releases)** page.
 * **Target Backend:** Connected to Railway production API (`https://backend-production-343b4.up.railway.app/api`).
 * **Android Support:** Android 8.0 through Android 14+ (API levels 26 to 34+).
 
 ### To Install on Android:
-1. Transfer `Inspection_Hub.apk` to your phone via USB, Google Drive, or WhatsApp.
+1. Download `Inspection_Hub.apk` from the GitHub Releases page to your phone.
 2. Open the file in your phone's File Manager and tap **Install** (Allow *"Install unknown apps"* if prompted).
-3. Log in with `operator` / `operator123` or `inspector` / `inspector123`.
+3. Log in with your assigned credentials.
 
 ---
 
