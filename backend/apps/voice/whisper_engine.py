@@ -168,10 +168,10 @@ class WhisperEngine:
     def _transcribe_api(self, audio_file_path: str) -> dict:
         t_infer_start = time.perf_counter()
         try:
-            import openai
-            openai.api_key = settings.OPENAI_API_KEY
+            from openai import OpenAI
+            client = OpenAI(api_key=settings.OPENAI_API_KEY)
             with open(audio_file_path, 'rb') as audio_file:
-                response = openai.audio.transcriptions.create(
+                response = client.audio.transcriptions.create(
                     model='whisper-1',
                     file=audio_file,
                     response_format='verbose_json',
