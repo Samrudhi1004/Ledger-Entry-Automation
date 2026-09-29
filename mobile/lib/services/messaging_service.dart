@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api_service.dart';
 
 class MessagingService {
@@ -15,7 +14,6 @@ class MessagingService {
     }
   }
 
-  final _storage = const FlutterSecureStorage();
   WebSocketChannel? _channel;
   Function(Map<String, dynamic>)? onMessageReceived;
   Function(Map<String, dynamic>)? onMessageSent;
@@ -25,7 +23,7 @@ class MessagingService {
   Function(Map<String, dynamic>)? onMessageReaction;
 
   Future<String?> _getToken() async {
-    return await _storage.read(key: 'access_token');
+    return await ApiService.getToken();
   }
 
   Future<Map<String, String>> _getHeaders() async {
