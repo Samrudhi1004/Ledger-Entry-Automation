@@ -629,8 +629,8 @@ class SetupStatusView(APIView):
         ).order_by('-started_at').first()
 
         # ── 3. Determine "active" session for generic session_id field ─────────
-        # Prefer first_piece (for backward compat with clients using session_id)
-        session = fp_session or hourly_session
+        # Prioritize the hourly session if it exists so operators don't get reset to hour 1
+        session = hourly_session or fp_session
         has_today = bool(session)
 
         # ── 4. Fallback: search across all dates if nothing found today ────────
