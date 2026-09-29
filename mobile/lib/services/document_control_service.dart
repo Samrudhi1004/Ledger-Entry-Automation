@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'api_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -300,6 +303,37 @@ class DocumentControlService {
       return list.map((e) => DocumentActivity.fromJson(e as Map<String, dynamic>)).toList();
     }
     throw Exception('Failed to load history: ${response.statusCode}');
+  }
+
+  /// Download a document file directly to device storage
+  Future<String?> downloadDocumentFile(Document doc) async {
+    final url = doc.cloudinaryUrl;
+    if (url == null || url.isEmpty) return null;
+
+    try {
+      final uri = Uri.parse(url);
+      final response = await http.get(uri);
+      if (response.statusCode == 200) {
+        Directory dir;
+        try {
+          dir = (await getDownloadsDirectory()) ?? (await getApplicationDocumentsDirectory());
+        } catch (_) {
+          dir = await getApplicationDocumentsDirectory();
+        }
+
+        String name = doc.fileName ?? '${doc.documentNumber}_document.pdf';
+        name = name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+
+        final filePath = '${dir.path}/$name';
+        final file = File(filePath);
+        await file.writeAsBytes(response.bodyBytes);
+        debugPrint('[DocumentControlService] Document saved to: $filePath');
+        return filePath;
+      }
+    } catch (e) {
+      debugPrint('[DocumentControlService] Download error: $e');
+    }
+    return null;
   }
 
 

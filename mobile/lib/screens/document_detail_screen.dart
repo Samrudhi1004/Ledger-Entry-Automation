@@ -19,6 +19,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   List<DocumentActivity> _activities = [];
   bool _loading = true;
   bool _historyLoading = false;
+  bool _isDownloading = false;
   String? _error;
 
   static const _levelColors = {
@@ -75,16 +76,67 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
   Future<void> _openFile() async {
     final url = _doc?.cloudinaryUrl;
-    if (url == null) return;
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
+    if (url == null || url.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open the document file.')),
+          const SnackBar(content: Text('No document file attached or permission pending.')),
         );
       }
+      return;
+    }
+
+    setState(() => _isDownloading = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('⏳ Opening document...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    bool opened = false;
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+      if (!opened) {
+        opened = await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      debugPrint('[DocumentDetail] LaunchUrl error: $e');
+    }
+
+    // If external browser failed or could not open, perform direct in-app download
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⏳ Downloading document directly to device...'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      final localPath = await _service.downloadDocumentFile(_doc!);
+      if (mounted) {
+        if (localPath != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Document downloaded successfully!\nSaved to: $localPath'),
+              backgroundColor: const Color(0xFF16A34A),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Could not download or open document file.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() => _isDownloading = false);
     }
   }
 
@@ -121,9 +173,15 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         actions: [
           if (_doc?.cloudinaryUrl != null)
             IconButton(
-              icon: const Icon(Icons.download_rounded, color: Color(0xFF6366F1)),
+              icon: _isDownloading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF6366F1)),
+                    )
+                  : const Icon(Icons.download_rounded, color: Color(0xFF6366F1)),
               tooltip: 'Open / Download File',
-              onPressed: _openFile,
+              onPressed: _isDownloading ? null : _openFile,
             ),
         ],
       ),
@@ -322,7 +380,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
   Widget _buildFileCard() {
     return GestureDetector(
-      onTap: _openFile,
+      onTap: _isDownloading ? null : _openFile,
       child: Container(
         decoration: BoxDecoration(
           gradient: const LinearGradient(
@@ -339,13 +397,21 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-              child: const Icon(Icons.open_in_new_rounded, color: Colors.white, size: 20),
+              child: _isDownloading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.open_in_new_rounded, color: Colors.white, size: 20),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Open / View Document',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+                Text(
+                  _isDownloading ? 'Downloading / Opening File...' : 'Open / View Document',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                ),
                 const SizedBox(height: 2),
                 Text(_doc?.fileName ?? 'Document file',
                     style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 12),

@@ -133,17 +133,59 @@ class _DocumentControlScreenState extends State<DocumentControlScreen>
         d.description.toLowerCase().contains(q)).toList();
   }
 
-  Future<void> _openFile(String? url) async {
+  Future<void> _openFile(String? url, {Document? doc}) async {
     if (url == null || url.isEmpty) return;
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open document URL')),
-        );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('⏳ Opening document...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    bool opened = false;
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
+      if (!opened) {
+        opened = await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      debugPrint('[DocumentControl] LaunchUrl error: $e');
+    }
+
+    if (!opened && doc != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⏳ Downloading document directly to device...'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      final localPath = await _service.downloadDocumentFile(doc);
+      if (mounted) {
+        if (localPath != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Document downloaded successfully!\nSaved to: $localPath'),
+              backgroundColor: const Color(0xFF16A34A),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Could not download or open document file.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      }
+    } else if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open document URL')),
+      );
     }
   }
 
@@ -427,7 +469,7 @@ class _DocumentControlScreenState extends State<DocumentControlScreen>
                 children: [
                   if (doc.cloudinaryUrl != null)
                     OutlinedButton.icon(
-                      onPressed: () => _openFile(doc.cloudinaryUrl),
+                      onPressed: () => _openFile(doc.cloudinaryUrl, doc: doc),
                       icon: const Icon(Icons.remove_red_eye_outlined, size: 14),
                       label: const Text('View File', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                       style: OutlinedButton.styleFrom(
