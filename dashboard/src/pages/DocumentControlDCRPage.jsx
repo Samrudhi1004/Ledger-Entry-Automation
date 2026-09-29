@@ -13,6 +13,7 @@ import {
 import Header from '../components/layout/Header';
 import DCRSubmissionModal from '../components/document_control/DCRSubmissionModal';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
+import { useCompany } from '../context/CompanyContext';
 
 const STATUS_BADGES = {
   submitted:         { label: 'Submitted',         bg: '#eef2ff', color: '#4338ca', border: '#c7d2fe' },
@@ -26,6 +27,7 @@ const STATUS_BADGES = {
 
 export default function DocumentControlDCRPage() {
   const { user } = useAuth();
+  const { companyName } = useCompany() || {};
   const [searchParams, setSearchParams] = useSearchParams();
   const urlDcrId = searchParams.get('dcr') || searchParams.get('id');
   const urlTab = searchParams.get('tab');
@@ -553,7 +555,7 @@ export default function DocumentControlDCRPage() {
                     ) : (
                       <div style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: '18px', fontWeight: '900', color: '#1e293b' }}>
-                          [ {(selectedDcr.company_name || 'MM').substring(0, 2).toUpperCase()} ]
+                          [ {(selectedDcr.company_name || companyName || 'Company').substring(0, 2).toUpperCase()} ]
                         </div>
                         <div style={{ fontSize: '9px', fontWeight: '700', color: '#64748b' }}>QUALITY</div>
                       </div>
@@ -563,7 +565,7 @@ export default function DocumentControlDCRPage() {
                   {/* Center: Company Name */}
                   <div style={{ textAlign: 'center', padding: '10px 16px' }}>
                     <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', letterSpacing: '0.5px' }}>
-                      {(selectedDcr.company_name || 'MANTRI METALLICS PVT. LTD.').toUpperCase()}
+                      {(selectedDcr.company_name || companyName || 'Company Name').toUpperCase()}
                     </div>
                     <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', marginTop: '2px' }}>
                       Quality Management System

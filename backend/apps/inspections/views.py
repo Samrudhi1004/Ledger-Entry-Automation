@@ -1124,9 +1124,12 @@ def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
     align_left = Alignment(horizontal="left", vertical="center")
     align_right = Alignment(horizontal="right", vertical="center")
 
+    from .pdf_generator import get_factory_info
+    fac_name, fac_code = get_factory_info(qs)
+
     # 1. Title Banner (Rows 1 to 3)
     ws.merge_cells("A1:C2")
-    ws["A1"] = "HANUMAN ENGINEERING\nWORKS"
+    ws["A1"] = fac_name.upper()
     ws["A1"].font = title_font
     ws["A1"].alignment = align_center
 
@@ -1141,7 +1144,7 @@ def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
     ws["D1"].alignment = align_center
 
     ws.merge_cells("T1:V1")
-    ws["T1"] = "FORMAT NO. :- QF/MF-06"
+    ws["T1"] = f"FORMAT NO. :- {fac_code}/QF/MF-06"
     ws["T1"].font = sub_font
     ws["T1"].alignment = align_right
 
@@ -1318,7 +1321,7 @@ def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
     from openpyxl.utils import get_column_letter
     for col in ws.columns:
         max_length = 0
-        column = col[0].column_letter # Get the column name
+        column = get_column_letter(col[0].column) # Get the column name
         for cell in col:
             try:
                 if len(str(cell.value)) > max_length:

@@ -113,9 +113,9 @@ def generate_dcr_pdf(dcr):
     elements = []
 
     # Get active factory details
-    factory = Factory.objects.filter(is_active=True).first()
-    company_name = factory.name if factory else "Mantri Metallics Pvt. Ltd."
-    logo_url = factory.logo_url if factory else ""
+    factory = Factory.objects.filter(is_active=True).first() or Factory.objects.first()
+    company_name = factory.name if (factory and factory.name) else "Company Name"
+    logo_url = factory.logo_url if (factory and factory.logo_url) else ""
 
     # Prepare Logo element
     logo_elem = None
