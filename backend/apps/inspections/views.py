@@ -1318,17 +1318,24 @@ def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
     # L8 FIX: Auto-adjust column widths dynamically based on actual cell content.
     # Replaces the previous hardcoded col_widths dictionary that caused long 
     # text (like remarks or part numbers) to get cut off.
+    # L8B FIX: Guard against MergedCell stubs — openpyxl returns MergedCell proxy
+    # objects for non-origin cells in a merge range; these lack a .column attribute
+    # and must be skipped to avoid AttributeError.
     from openpyxl.utils import get_column_letter
+    from openpyxl.cell import MergedCell
     for col in ws.columns:
         max_length = 0
-        column = get_column_letter(col[0].column) # Get the column name
-        for cell in col:
+        real_cells = [c for c in col if not isinstance(c, MergedCell)]
+        if not real_cells:
+            continue
+        column = get_column_letter(real_cells[0].column)
+        for cell in real_cells:
             try:
                 if len(str(cell.value)) > max_length:
                     max_length = len(str(cell.value))
             except:
                 pass
-        
+
         # Add a little padding and cap the maximum width at 50 to avoid crazy wide columns
         adjusted_width = min(max_length + 2, 50)
         ws.column_dimensions[column].width = adjusted_width

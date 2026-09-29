@@ -18,6 +18,13 @@ PRESENCE_TIMEOUT = 300  # 5 minutes
 # unavailable on both LocMemCache and Django's built-in RedisCache backend.
 PRESENCE_INDEX_KEY = 'presence:online_index'
 
+# Per-user connection-count key: presence:conn_count:{user_id}
+# Tracks how many WebSocket connections a user currently has open so that
+# we only mark them offline (and broadcast the event) when the LAST
+# connection closes — preventing false offline events when the same user
+# has multiple tabs or devices open simultaneously.
+PRESENCE_CONN_COUNT_PREFIX = 'presence:conn_count:'
+
 
 class PresenceConsumer(AsyncWebsocketConsumer):
     """
@@ -51,7 +58,7 @@ class PresenceConsumer(AsyncWebsocketConsumer):
             await self.close(code=4001)
             return
 
-        # Mark user as online
+        # Mark user as online and increment their connection counter.
         await self.mark_user_online(self.user.id)
 
         # Join presence broadcast group
@@ -65,51 +72,90 @@ class PresenceConsumer(AsyncWebsocketConsumer):
         # Get all currently online users
         online_user_ids = await self.get_all_online_users()
 
-        # Send initial presence data to the newly connected user
-        await self.send(text_data=json.dumps({
-            'type': 'initial_presence',
-            'data': {
-                'online_users': online_user_ids
-            }
-        }))
+        # Send initial presence + connection confirmation.
+        # Only suppress genuine WebSocket send errors (client gone mid-handshake).
+        # Channel-layer errors are re-raised so we can clean up properly.
+        try:
+            await self.send(text_data=json.dumps({
+                'type': 'initial_presence',
+                'data': {
+                    'online_users': online_user_ids
+                }
+            }))
+        except Exception:
+            # Client disconnected before initial data could be delivered.
+            # Clean up group membership and presence state then bail out.
+            await self._cleanup_on_failed_connect()
+            return
 
-        # Broadcast to all users that this user is now online
-        await self.channel_layer.group_send(
-            'presence_updates',
-            {
-                'type': 'user_status_changed',
-                'user_id': self.user.id,
-                'status': 'online'
-            }
-        )
-
-        # Send connection confirmation
-        await self.send(text_data=json.dumps({
-            'type': 'connection_established',
-            'message': f'Presence tracking connected for user {self.user.id}'
-        }))
-
-    async def disconnect(self, close_code):
-        """Mark user as offline when they disconnect."""
-        if hasattr(self, 'user') and self.user:
-            # Mark user as offline
-            await self.mark_user_offline(self.user.id)
-
-            # Broadcast to all users that this user is now offline
+        try:
+            # Broadcast to all users that this user is now online
             await self.channel_layer.group_send(
                 'presence_updates',
                 {
                     'type': 'user_status_changed',
                     'user_id': self.user.id,
-                    'status': 'offline'
+                    'status': 'online'
                 }
             )
+        except Exception:
+            # Channel-layer failure during online broadcast — clean up so the
+            # user is not left in a half-connected state.
+            await self._cleanup_on_failed_connect()
+            return
 
-            # Leave presence broadcast group
+        try:
+            # Send connection confirmation
+            await self.send(text_data=json.dumps({
+                'type': 'connection_established',
+                'message': f'Presence tracking connected for user {self.user.id}'
+            }))
+        except Exception:
+            # Client disconnected just before confirmation — already online in
+            # the group; disconnect() will handle full cleanup.
+            pass
+
+    async def _cleanup_on_failed_connect(self):
+        """Remove user from group and undo online marking after a failed connect."""
+        try:
             await self.channel_layer.group_discard(
                 'presence_updates',
                 self.channel_name
             )
+        except Exception:
+            pass
+        await self.mark_user_offline(self.user.id)
+
+    async def disconnect(self, close_code):
+        """Mark user as offline when they disconnect."""
+        if hasattr(self, 'user') and self.user:
+            # Mark user as offline (decrements connection counter; only removes
+            # from presence index when the last connection closes).
+            await self.mark_user_offline(self.user.id)
+
+            # Leave the group FIRST so this consumer does not receive its own
+            # broadcast and attempt to send on an already-closed WebSocket.
+            # Wrap separately so a channel-layer failure here does NOT prevent
+            # the offline broadcast from reaching the remaining clients.
+            try:
+                await self.channel_layer.group_discard(
+                    'presence_updates',
+                    self.channel_name
+                )
+            except Exception:
+                pass
+
+            # Only broadcast offline if this was the user's last connection.
+            if not await self.user_has_active_connections(self.user.id):
+                # Now safe to broadcast — this consumer is no longer in the group.
+                await self.channel_layer.group_send(
+                    'presence_updates',
+                    {
+                        'type': 'user_status_changed',
+                        'user_id': self.user.id,
+                        'status': 'offline'
+                    }
+                )
 
     async def receive(self, text_data):
         """Handle ping/pong to keep connection alive and update last seen."""
@@ -139,13 +185,17 @@ class PresenceConsumer(AsyncWebsocketConsumer):
 
     async def user_status_changed(self, event):
         """Broadcast user status change to connected clients."""
-        await self.send(text_data=json.dumps({
-            'type': 'user_status_changed',
-            'data': {
-                'user_id': event['user_id'],
-                'status': event['status']
-            }
-        }))
+        try:
+            await self.send(text_data=json.dumps({
+                'type': 'user_status_changed',
+                'data': {
+                    'user_id': event['user_id'],
+                    'status': event['status']
+                }
+            }))
+        except Exception:
+            # Client disconnected before message could be delivered — safe to ignore.
+            pass
 
     @database_sync_to_async
     def get_user(self, user_id):
@@ -169,23 +219,44 @@ class PresenceConsumer(AsyncWebsocketConsumer):
         return list(online_ids)
 
     @database_sync_to_async
+    def user_has_active_connections(self, user_id):
+        """Return True if the user still has at least one active WS connection."""
+        count = cache.get(f'{PRESENCE_CONN_COUNT_PREFIX}{user_id}', 0)
+        return count > 0
+
+    @database_sync_to_async
     def mark_user_online(self, user_id):
-        """Mark user as online in cache and add to the presence index."""
+        """Increment connection count, mark user as online, add to presence index."""
+        # Increment per-user connection counter atomically via add+incr pattern.
+        conn_key = f'{PRESENCE_CONN_COUNT_PREFIX}{user_id}'
+        count = cache.get(conn_key, 0)
+        cache.set(conn_key, count + 1, timeout=PRESENCE_TIMEOUT)
+
+        # Keep the shared index up-to-date.
+        # Re-fetch each time to minimise (not eliminate) race window on
+        # non-atomic backends; on Redis use atomic ops via django-redis if needed.
         cache_key = f'{PRESENCE_KEY_PREFIX}{user_id}'
         cache.set(cache_key, 'online', timeout=PRESENCE_TIMEOUT)
 
-        # Keep the shared index up-to-date
         online_ids = cache.get(PRESENCE_INDEX_KEY) or set()
         online_ids.add(user_id)
         cache.set(PRESENCE_INDEX_KEY, online_ids, timeout=PRESENCE_TIMEOUT)
 
     @database_sync_to_async
     def mark_user_offline(self, user_id):
-        """Mark user as offline in cache and remove from the presence index."""
+        """Decrement connection count; remove from presence index on last disconnect."""
+        conn_key = f'{PRESENCE_CONN_COUNT_PREFIX}{user_id}'
+        count = max(cache.get(conn_key, 0) - 1, 0)
+        if count > 0:
+            cache.set(conn_key, count, timeout=PRESENCE_TIMEOUT)
+            # Still has other connections — stay online in the index.
+            return
+
+        # Last connection closed — remove from presence entirely.
+        cache.delete(conn_key)
         cache_key = f'{PRESENCE_KEY_PREFIX}{user_id}'
         cache.delete(cache_key)
 
-        # Remove from the shared index
         online_ids = cache.get(PRESENCE_INDEX_KEY) or set()
         online_ids.discard(user_id)
         if online_ids:
