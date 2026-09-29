@@ -28,9 +28,11 @@ export default function BugReportModal({ onClose }) {
         formData.append('screenshot', screenshot);
       }
 
+      // We MUST delete the default application/json header so Axios can automatically
+      // set multipart/form-data WITH the correct boundary string.
       const res = await api.post('/api/support/bug-reports/', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': undefined
         }
       });
 
