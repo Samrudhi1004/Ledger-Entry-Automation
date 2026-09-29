@@ -48,11 +48,15 @@ export default function JHInspectionReportsPage() {
     showAccessDenied(`You have view-only access to JH reports. Manage permission is required to ${action}.`);
     return false;
   };
-  const openChecklistManager = () => {
+  const openChecklistManager = (mId) => {
     if (!requireChecklistManage('upload a checklist')) return;
+    const chosen = (mId ? String(mId) : null) || (matrixMachine ? String(matrixMachine) : null) || (machines[0]?.id ? String(machines[0].id) : '');
+    setUploadTargetMachine(chosen);
     setShowUploadModal(true);
     setUploadError('');
     setUploadSuccessMsg('');
+    setParsedChecklistItems([]);
+    setUploadFile(null);
   };
 
   // Active Tab: 'log' | 'matrix'
@@ -80,8 +84,13 @@ export default function JHInspectionReportsPage() {
   const [loadingMatrix, setLoadingMatrix] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  // Machine-Specific Checklist Status State
+  const [machineChecklistStatus, setMachineChecklistStatus] = useState(null);
+  const [targetMachineChecklistStatus, setTargetMachineChecklistStatus] = useState(null);
+
   // Checklist Upload Modal State
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadTargetMachine, setUploadTargetMachine] = useState('');
   const [uploadModalTab, setUploadModalTab] = useState('upload'); // 'upload' | 'history'
   const [uploadFile, setUploadFile] = useState(null);
   const [isParsingFile, setIsParsingFile] = useState(false);
@@ -95,6 +104,45 @@ export default function JHInspectionReportsPage() {
   const [loadingVersionDetail, setLoadingVersionDetail] = useState(false);
   const [isRestoringVersion, setIsRestoringVersion] = useState(false);
 
+  // Fetch machine checklist status
+  const fetchMachineChecklistStatus = useCallback(async (machineId) => {
+    if (!machineId) {
+      setMachineChecklistStatus(null);
+      return;
+    }
+    try {
+      const res = await api.get('/api/inspections/jh/checklist/status/', { params: { machine: machineId } });
+      setMachineChecklistStatus(res.data);
+    } catch (err) {
+      console.error('Failed to fetch checklist status', err);
+    }
+  }, []);
+
+  const fetchTargetMachineChecklistStatus = useCallback(async (machineId) => {
+    if (!machineId) {
+      setTargetMachineChecklistStatus(null);
+      return;
+    }
+    try {
+      const res = await api.get('/api/inspections/jh/checklist/status/', { params: { machine: machineId } });
+      setTargetMachineChecklistStatus(res.data);
+    } catch (err) {
+      console.error('Failed to fetch target machine checklist status', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (matrixMachine) {
+      fetchMachineChecklistStatus(matrixMachine);
+    }
+  }, [matrixMachine, fetchMachineChecklistStatus]);
+
+  useEffect(() => {
+    if (uploadTargetMachine) {
+      fetchTargetMachineChecklistStatus(uploadTargetMachine);
+    }
+  }, [uploadTargetMachine, fetchTargetMachineChecklistStatus]);
+
   // Load Machines list
   useEffect(() => {
     async function fetchMachines() {
@@ -103,7 +151,9 @@ export default function JHInspectionReportsPage() {
         const mList = Array.isArray(res.data) ? res.data : (res.data?.results || []);
         setMachines(mList);
         if (mList.length > 0) {
-          setMatrixMachine(mList[0].id.toString());
+          const firstId = mList[0].id.toString();
+          setMatrixMachine(firstId);
+          setUploadTargetMachine(firstId);
         }
       } catch (err) {
         console.error('Failed to load machines', err);
@@ -226,14 +276,21 @@ export default function JHInspectionReportsPage() {
   };
 
   // Download Form QF/MF-08 template
-  const handleDownloadTemplate = async () => {
+  const handleDownloadTemplate = async (targetMachineId) => {
     try {
-      const res = await api.get('/api/inspections/jh/checklist/template/', { responseType: 'blob' });
+      const mId = targetMachineId || uploadTargetMachine || matrixMachine;
+      const targetObj = machines.find((m) => String(m.id) === String(mId));
+      const mCode = targetObj?.machine_code || '';
+      const params = mId ? { machine: mId } : {};
+      const res = await api.get('/api/inspections/jh/checklist/template/', {
+        params,
+        responseType: 'blob'
+      });
       const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'JH_Checklist_Template_Form_QF_MF_08.xlsx');
+      link.setAttribute('download', mCode ? `JH_Checklist_Template_${mCode}.xlsx` : 'JH_Checklist_Template_Form_QF_MF_08.xlsx');
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
@@ -282,16 +339,25 @@ export default function JHInspectionReportsPage() {
     setUploadError('');
     setUploadSuccessMsg('');
     try {
+      const targetMId = uploadTargetMachine || matrixMachine;
+      const targetObj = machines.find((m) => String(m.id) === String(targetMId));
       const res = await api.post('/api/inspections/jh/checklist/bulk_save/', {
+        machine_id: targetMId,
         items: parsedChecklistItems,
         replace_all: true,
-        filename: uploadFile?.name || 'uploaded_checklist.pdf',
-        notes: `Uploaded via Dashboard (${parsedChecklistItems.length} items)`,
+        filename: uploadFile?.name || 'uploaded_checklist.xlsx',
+        notes: `Uploaded via Dashboard for ${targetObj?.machine_code || 'Machine'} (${parsedChecklistItems.length} items)`,
       });
       setUploadSuccessMsg(res.data?.message || 'Checklist successfully updated in database!');
       fetchMatrix();
       fetchReports();
-      fetchChecklistVersions();
+      fetchChecklistVersions(targetMId);
+      if (targetMId) {
+        fetchTargetMachineChecklistStatus(targetMId);
+        if (targetMId === matrixMachine) {
+          fetchMachineChecklistStatus(matrixMachine);
+        }
+      }
       setTimeout(() => {
         setShowUploadModal(false);
         setParsedChecklistItems([]);
@@ -307,10 +373,12 @@ export default function JHInspectionReportsPage() {
   };
 
   // Fetch Checklist Versions History
-  const fetchChecklistVersions = async () => {
+  const fetchChecklistVersions = async (targetMId) => {
     setLoadingVersions(true);
     try {
-      const res = await api.get('/api/inspections/jh/checklist/versions/');
+      const mId = targetMId || uploadTargetMachine || matrixMachine;
+      const params = mId ? { machine: mId } : {};
+      const res = await api.get('/api/inspections/jh/checklist/versions/', { params });
       setChecklistVersions(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error('Failed to fetch checklist versions', err);
@@ -323,7 +391,8 @@ export default function JHInspectionReportsPage() {
   const handleViewVersionDetail = async (versionNumber) => {
     setLoadingVersionDetail(true);
     try {
-      const res = await api.get(`/api/inspections/jh/checklist/versions/${versionNumber}/`);
+      const params = uploadTargetMachine ? { machine: uploadTargetMachine } : {};
+      const res = await api.get(`/api/inspections/jh/checklist/versions/${versionNumber}/`, { params });
       setSelectedVersionDetail(res.data);
     } catch (err) {
       console.error('Failed to fetch version detail', err);
@@ -343,11 +412,19 @@ export default function JHInspectionReportsPage() {
     setUploadError('');
     setUploadSuccessMsg('');
     try {
-      const res = await api.post(`/api/inspections/jh/checklist/versions/${versionNumber}/restore/`);
+      const targetMId = uploadTargetMachine || matrixMachine;
+      const params = targetMId ? { machine: targetMId } : {};
+      const res = await api.post(`/api/inspections/jh/checklist/versions/${versionNumber}/restore/`, null, { params });
       setUploadSuccessMsg(res.data?.message || `Version v${versionNumber} restored successfully!`);
-      fetchChecklistVersions();
+      fetchChecklistVersions(targetMId);
       fetchMatrix();
       fetchReports();
+      if (targetMId) {
+        fetchTargetMachineChecklistStatus(targetMId);
+        if (targetMId === matrixMachine) {
+          fetchMachineChecklistStatus(matrixMachine);
+        }
+      }
     } catch (err) {
       console.error('Failed to restore version', err);
       setUploadError(err.response?.data?.error || 'Failed to restore version.');
@@ -934,6 +1011,59 @@ export default function JHInspectionReportsPage() {
                     }}
                   />
                 </div>
+
+                {/* Machine Checklist Status & Quick Upload Slot */}
+                {(() => {
+                  const currentMachineObj = machines.find((m) => String(m.id) === String(matrixMachine));
+                  const isCustom = machineChecklistStatus?.has_custom_checklist;
+                  return (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        background: isCustom ? '#F0FDF4' : '#FFFBEB',
+                        border: `1px solid ${isCustom ? '#BBF7D0' : '#FDE68A'}`,
+                        borderRadius: '8px',
+                        padding: '6px 12px',
+                        alignSelf: 'flex-end',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', color: isCustom ? '#15803D' : '#B45309' }}>
+                          {isCustom ? 'Custom Checklist Active' : 'Factory Default Template'}
+                        </div>
+                        <div style={{ fontSize: '12px', fontWeight: '700', color: '#0F172A' }}>
+                          {isCustom
+                            ? `v${machineChecklistStatus.version_number} (${machineChecklistStatus.total_items} Checkpoints)`
+                            : `(${machineChecklistStatus?.total_items || 27} Checkpoints)`
+                          }
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => openChecklistManager(matrixMachine)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          background: isCustom ? '#15803D' : '#D97706',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          fontSize: '11.5px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                        }}
+                        title={isCustom ? `Upload updated checklist for ${currentMachineObj?.machine_code || ''}` : `Upload custom checklist for ${currentMachineObj?.machine_code || ''}`}
+                      >
+                        <UploadCloud size={13} />
+                        <span>{isCustom ? 'Update' : `Upload for ${currentMachineObj?.machine_code || 'Machine'}`}</span>
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Legend */}
@@ -1624,6 +1754,67 @@ export default function JHInspectionReportsPage() {
                   parsedChecklistItems.length === 0 ? (
                     /* STEP 1: UPLOAD SCREEN */
                     <div>
+                      {/* Target Machine Selection & Status Card */}
+                      <div
+                        style={{
+                          background: '#FFFFFF',
+                          border: '1px solid #CBD5E1',
+                          borderRadius: '12px',
+                          padding: '16px',
+                          marginBottom: '18px',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                          <label style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Cog size={16} color="#4F46E5" />
+                            <span>1. Select Target Machine:</span>
+                          </label>
+                          {targetMachineChecklistStatus && (
+                            <span
+                              style={{
+                                padding: '3px 10px',
+                                borderRadius: '9999px',
+                                fontSize: '11px',
+                                fontWeight: '800',
+                                background: targetMachineChecklistStatus.has_custom_checklist ? '#DCFCE7' : '#FEF3C7',
+                                color: targetMachineChecklistStatus.has_custom_checklist ? '#166534' : '#92400E',
+                                border: `1px solid ${targetMachineChecklistStatus.has_custom_checklist ? '#86EFAC' : '#FCD34D'}`,
+                              }}
+                            >
+                              {targetMachineChecklistStatus.has_custom_checklist
+                                ? `Custom Checklist Active (v${targetMachineChecklistStatus.version_number} • ${targetMachineChecklistStatus.total_items} pts)`
+                                : `Using Factory Default Template (${targetMachineChecklistStatus.total_items || 27} pts)`}
+                            </span>
+                          )}
+                        </div>
+                        <select
+                          value={uploadTargetMachine}
+                          onChange={(e) => setUploadTargetMachine(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid #CBD5E1',
+                            fontSize: '13px',
+                            fontWeight: '700',
+                            color: '#0F172A',
+                            background: '#F8FAFC',
+                            outline: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {machines.map((m) => (
+                            <option key={m.id} value={m.id.toString()}>
+                              {m.machine_code} - {m.name || m.machine_code}
+                            </option>
+                          ))}
+                        </select>
+                        <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '6px' }}>
+                          Any checklist uploaded will bind strictly to this machine without altering other machines.
+                        </div>
+                      </div>
+
                       {/* Template download pill */}
                       <div
                         style={{
@@ -1641,14 +1832,15 @@ export default function JHInspectionReportsPage() {
                       >
                         <div>
                           <div style={{ fontSize: '13px', fontWeight: '700', color: '#1E40AF' }}>
-                            Need the standard template?
+                            Need the standard Form QF/MF-08 template?
                           </div>
                           <div style={{ fontSize: '11px', color: '#3B82F6' }}>
-                            Download our pre-formatted Form QF/MF-08 Excel template with Hindi headers and sample items.
+                            Download pre-formatted Excel template with Hindi headers and sample checkpoints.
                           </div>
                         </div>
                         <button
-                          onClick={handleDownloadTemplate}
+                          type="button"
+                          onClick={() => handleDownloadTemplate(uploadTargetMachine)}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -2145,6 +2337,53 @@ export default function JHInspectionReportsPage() {
                     ) : (
                       /* Table list of versions */
                       <div>
+                        {/* Machine Filter & Refresh Bar */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: '700', color: '#475569' }}>Filter by Machine:</label>
+                            <select
+                              value={uploadTargetMachine}
+                              onChange={(e) => {
+                                setUploadTargetMachine(e.target.value);
+                                fetchChecklistVersions(e.target.value);
+                              }}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                border: '1px solid #CBD5E1',
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                background: '#FFFFFF',
+                              }}
+                            >
+                              <option value="">All Machines / Default</option>
+                              {machines.map((m) => (
+                                <option key={m.id} value={m.id.toString()}>
+                                  {m.machine_code} - {m.name || m.machine_code}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => fetchChecklistVersions(uploadTargetMachine)}
+                            style={{
+                              background: '#FFFFFF',
+                              border: '1px solid #CBD5E1',
+                              borderRadius: '6px',
+                              padding: '5px 12px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <RefreshCw size={12} className={loadingVersions ? 'spin' : ''} /> Refresh History
+                          </button>
+                        </div>
+
                         {loadingVersions ? (
                           <div style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
                             <RefreshCw size={24} className="spin" style={{ margin: '0 auto 10px' }} />
@@ -2160,6 +2399,7 @@ export default function JHInspectionReportsPage() {
                               <thead>
                                 <tr style={{ background: '#0F172A', color: '#FFFFFF' }}>
                                   <th style={{ padding: '10px 14px', textAlign: 'center', width: '80px' }}>Version</th>
+                                  <th style={{ padding: '10px 14px', textAlign: 'center', width: '100px' }}>Machine</th>
                                   <th style={{ padding: '10px 14px', textAlign: 'left' }}>Filename / Source</th>
                                   <th style={{ padding: '10px 14px', textAlign: 'left' }}>Uploaded By</th>
                                   <th style={{ padding: '10px 14px', textAlign: 'left' }}>Upload Date & Time</th>
@@ -2180,6 +2420,11 @@ export default function JHInspectionReportsPage() {
                                     <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                                       <span style={{ fontWeight: '800', color: v.is_active ? '#166534' : '#0F172A' }}>
                                         v{v.version_number}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                      <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '700', background: v.machine_code ? '#EFF6FF' : '#F1F5F9', color: v.machine_code ? '#1D4ED8' : '#475569' }}>
+                                        {v.machine_code || 'Default'}
                                       </span>
                                     </td>
                                     <td style={{ padding: '10px 14px', fontWeight: '600', color: '#1E293B' }}>

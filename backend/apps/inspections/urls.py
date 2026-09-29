@@ -32,6 +32,7 @@ from .views import (
     JHChecklistVersionListView,
     JHChecklistVersionDetailView,
     JHChecklistVersionRestoreView,
+    JHChecklistStatusView,
 )
 
 router = SimpleRouter()
@@ -72,6 +73,7 @@ urlpatterns = [
     path('jh/checklist/bulk_save/',                         JHChecklistBulkSaveView.as_view(),           name='jh-checklist-bulk-save'),
     path('jh/checklist/bulk-save/',                         JHChecklistBulkSaveView.as_view(),           name='jh-checklist-bulk-save-alias'),
     path('jh/checklist/template/',                          JHChecklistTemplateDownloadView.as_view(),   name='jh-checklist-template-download'),
+    path('jh/checklist/status/',                           JHChecklistStatusView.as_view(),             name='jh-checklist-status'),
     path('jh/checklist/versions/',                          JHChecklistVersionListView.as_view(),        name='jh-checklist-versions-list'),
     path('jh/checklist/versions/<int:version_number>/',     JHChecklistVersionDetailView.as_view(),      name='jh-checklist-version-detail'),
     path('jh/checklist/versions/<int:version_number>/restore/', JHChecklistVersionRestoreView.as_view(), name='jh-checklist-version-restore'),

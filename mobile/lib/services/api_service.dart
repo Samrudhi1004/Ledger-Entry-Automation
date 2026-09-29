@@ -856,10 +856,13 @@ class ApiService {
   }
 
   // ── JH (Autonomous Maintenance) Inspections ─────────────────────────────────
-  static Future<List<dynamic>> getJhChecklistItems() async {
+  static Future<List<dynamic>> getJhChecklistItems({dynamic machineId}) async {
     try {
+      final uri = (machineId != null && machineId.toString().isNotEmpty)
+          ? Uri.parse('$baseUrl/inspections/jh/items/?machine=$machineId')
+          : Uri.parse('$baseUrl/inspections/jh/items/');
       final response = await authenticatedRequest(
-        (headers) => http.get(Uri.parse('$baseUrl/inspections/jh/items/'), headers: headers),
+        (headers) => http.get(uri, headers: headers),
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

@@ -51,8 +51,19 @@ def generate_jh_matrix_xlsx(
     _, days_in_month = calendar.monthrange(year, month)
     month_name = calendar.month_name[month]
 
-    # 2. Fetch checklist items
-    items = list(JHChecklistItem.objects.filter(is_active=True).order_by('sort_order', 'sub_no'))
+    # 2. Fetch checklist items (machine-specific with fallback to default template)
+    if machine:
+        custom_items = list(JHChecklistItem.objects.filter(machine=machine, is_active=True).order_by('sort_order', 'sub_no'))
+        if custom_items:
+            items = custom_items
+        else:
+            items = list(JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).order_by('sort_order', 'sub_no'))
+    else:
+        items = list(JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).order_by('sort_order', 'sub_no'))
+
+    # If still empty (e.g. initial setup before migration or seeding), fallback to any active
+    if not items:
+        items = list(JHChecklistItem.objects.filter(is_active=True).order_by('sort_order', 'sub_no'))
 
     # 3. Fetch inspection evaluations
     matrix = {}

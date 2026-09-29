@@ -10,13 +10,14 @@ except ImportError:
     pdfplumber = None
 
 
-def generate_jh_template_xlsx():
+def generate_jh_template_xlsx(machine_code: str = ""):
     """
     Generates a pre-formatted Form QF/MF-08 Excel template for managers to populate.
+    Can be customized with machine_code in header.
     """
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "JH_Checklist_Template"
+    ws.title = f"JH_{machine_code}_Template" if machine_code else "JH_Checklist_Template"
 
     # Header styling
     navy_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
@@ -28,7 +29,10 @@ def generate_jh_template_xlsx():
     # Title Banner
     ws.merge_cells("A1:K1")
     title_cell = ws["A1"]
-    title_cell.value = "FORM QF/MF-08 : JISHU-HOZEN (AUTONOMOUS MAINTENANCE) CHECKLIST MASTER TEMPLATE"
+    if machine_code:
+        title_cell.value = f"FORM QF/MF-08 : JISHU-HOZEN (AUTONOMOUS MAINTENANCE) CHECKLIST — MACHINE: {machine_code.upper()}"
+    else:
+        title_cell.value = "FORM QF/MF-08 : JISHU-HOZEN (AUTONOMOUS MAINTENANCE) CHECKLIST MASTER TEMPLATE"
     title_cell.font = Font(name="Arial", size=12, bold=True, color="000000")
     title_cell.fill = gold_fill
     title_cell.alignment = Alignment(horizontal="center", vertical="center")
