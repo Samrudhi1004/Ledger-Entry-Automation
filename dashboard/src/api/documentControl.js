@@ -56,11 +56,15 @@ export const reviseDocument = (id, formData) =>
 
 export const getDocumentHistory = (id) => api.get(`/documents/${id}/history/`);
 
-export const getDownloadUrl = (id) =>
-  `${BASE}/api/document-control/documents/${id}/download/`;
+export const getDownloadUrl = (id) => {
+  const token = localStorage.getItem('access_token');
+  return `${BASE}/api/document-control/documents/${id}/download/${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+};
 
-export const getPreviewUrl = (id) =>
-  `${BASE}/api/document-control/documents/${id}/preview/`;
+export const getPreviewUrl = (id) => {
+  const token = localStorage.getItem('access_token');
+  return `${BASE}/api/document-control/documents/${id}/preview/${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+};
 
 export const markObsolete = (id, comment = '') =>
   api.post(`/documents/${id}/obsolete/`, { comment });

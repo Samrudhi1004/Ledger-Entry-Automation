@@ -100,10 +100,11 @@ export default function DailyProductionReportsPage() {
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'Daily_Production_Reports.csv');
+      link.setAttribute('download', `Daily_Production_Reports_${dateFilter || 'All'}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to export Excel', err);
       alert('Failed to download Excel file.');
@@ -124,6 +125,7 @@ export default function DailyProductionReportsPage() {
       alert('Failed to download PDF.');
     }
   };
+
 
   // Summary Metrics
   const totalTarget = reports.reduce((sum, r) => sum + (r.production_target || 0), 0);

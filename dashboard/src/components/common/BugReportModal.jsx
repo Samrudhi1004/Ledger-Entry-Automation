@@ -30,7 +30,7 @@ export default function BugReportModal({ onClose }) {
 
       const res = await api.post('/api/support/bug-reports/', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data' // Axios handles the boundary automatically usually, but explicitly setting it to multipart/form-data tells the interceptor
+          'Content-Type': 'multipart/form-data'
         }
       });
 
@@ -39,7 +39,7 @@ export default function BugReportModal({ onClose }) {
         onClose();
       }, 2000);
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.detail || err.response?.data?.error || err.message);
     } finally {
       setIsSubmitting(false);
     }
