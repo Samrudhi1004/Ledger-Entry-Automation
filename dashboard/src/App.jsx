@@ -192,6 +192,22 @@ export default function App() {
         }
       />
       <Route
+        path="/production/downtime"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <DowntimeReportsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/production/daily-production"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <DailyProductionReportsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
         path="/production/jh-inspections"
         element={
           <ProtectedLayout pendingCount={pendingCount}>

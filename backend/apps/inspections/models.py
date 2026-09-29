@@ -311,8 +311,18 @@ class DowntimeReport(models.Model):
 class JHChecklistVersion(models.Model):
     """
     Audit log and version snapshot of every checklist upload/change.
+    Can be scoped per machine or null for the factory default template.
     """
-    version_number = models.IntegerField(unique=True, db_index=True)
+    machine = models.ForeignKey(
+        'machines.Machine',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='jh_checklist_versions',
+        db_index=True,
+        help_text='Machine this checklist version belongs to. Null = factory default template.'
+    )
+    version_number = models.IntegerField(db_index=True)
     filename = models.CharField(max_length=255, blank=True, default='')
     uploaded_by = models.ForeignKey('users.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='checklist_uploads')
     uploaded_at = models.DateTimeField(auto_now_add=True)
@@ -323,15 +333,28 @@ class JHChecklistVersion(models.Model):
     class Meta:
         db_table = 'jh_checklist_versions'
         ordering = ['-version_number']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['machine', 'version_number'],
+                name='unique_machine_version'
+            ),
+            models.UniqueConstraint(
+                fields=['version_number'],
+                condition=models.Q(machine__isnull=True),
+                name='unique_default_version'
+            )
+        ]
 
     def __str__(self):
-        return f"Checklist Version v{self.version_number} ({self.total_items} items) - {self.filename}"
+        m_str = self.machine.machine_code if self.machine else 'Default'
+        return f"Checklist Version v{self.version_number} [{m_str}] ({self.total_items} items) - {self.filename}"
 
 
 
 class JHChecklistItem(models.Model):
     """
     Master Autonomous Maintenance (Jishu Hozen) checklist items.
+    Can be bound to a specific machine or null for factory default template.
     Pre-seeded with standardized assembly checkpoints.
     """
     class ToolType(models.TextChoices):
@@ -339,6 +362,15 @@ class JHChecklistItem(models.Model):
         TOUCH = 'TOUCH', 'Touch (Hand)'
         TOOL = 'TOOL', 'Tool / Wrench (Spanner)'
 
+    machine = models.ForeignKey(
+        'machines.Machine',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='jh_checklist_items',
+        db_index=True,
+        help_text='Machine this checkpoint belongs to. Null = factory default template.'
+    )
     version = models.ForeignKey(JHChecklistVersion, on_delete=models.CASCADE, related_name='items', null=True, blank=True)
     sub_no = models.CharField(max_length=20, db_index=True)  # e.g. "1.1", "2.1"
     assembly = models.CharField(max_length=100, db_index=True)  # e.g. "1. Machine Front Side", "2. FIXTURE"
@@ -361,7 +393,8 @@ class JHChecklistItem(models.Model):
         ordering = ['sort_order', 'sub_no']
 
     def __str__(self):
-        return f"{self.sub_no} - {self.assembly} - {self.check_point[:30]}"
+        m_str = f"[{self.machine.machine_code}] " if self.machine else "[Default] "
+        return f"{m_str}{self.sub_no} - {self.assembly} - {self.check_point[:30]}"
 
 
 class JHInspectionRecord(models.Model):

@@ -65,29 +65,47 @@ class _JhInspectionScreenState extends State<JhInspectionScreen> {
       // 2. Fetch floor machines and auto-select if needed
       final machines = await ApiService.getMachines();
       _machines = machines;
+      dynamic selectedMachineId;
       if (mounted) {
         final inspectionProvider = Provider.of<InspectionProvider>(context, listen: false);
         if (inspectionProvider.selectedMachine == null && machines.isNotEmpty) {
           inspectionProvider.selectMachine(machines.first);
         }
+        selectedMachineId = inspectionProvider.selectedMachine?['id'];
       }
 
-      // 3. Fetch 27 checklist items
-      final items = await ApiService.getJhChecklistItems();
+      // 3. Fetch checklist items for selected machine (or fallback)
+      await _loadChecklistForMachine(selectedMachineId);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'डेटा लोड करने में विफल: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _loadChecklistForMachine(dynamic machineId) async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final items = await ApiService.getJhChecklistItems(machineId: machineId);
       if (mounted) {
         setState(() {
           _items = items;
           _isLoading = false;
+          _itemEvaluations.clear();
           // Pre-populate with OK by default for maximum shop floor efficiency
           for (var item in items) {
             final id = item['id'] as int;
-            if (!_itemEvaluations.containsKey(id)) {
-              _itemEvaluations[id] = {
-                'status': 'OK',
-                'remark': '',
-                'action_taken': '',
-              };
-            }
+            _itemEvaluations[id] = {
+              'status': 'OK',
+              'remark': '',
+              'action_taken': '',
+            };
           }
         });
       }
@@ -193,6 +211,7 @@ class _JhInspectionScreenState extends State<JhInspectionScreen> {
                         onTap: () {
                           Provider.of<InspectionProvider>(context, listen: false).selectMachine(m);
                           Navigator.pop(ctx);
+                          _loadChecklistForMachine(m['id']);
                         },
                         borderRadius: BorderRadius.circular(12),
                         child: Container(

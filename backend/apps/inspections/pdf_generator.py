@@ -15,18 +15,34 @@ def _xml_escape(text: str) -> str:
 
 def get_factory_info(session=None):
     """
-    Return (factory_name, factory_code) for the given session.
-    Resolves through session → machine → plant → factory first;
-    falls back to the first active factory globally.
+    Return (factory_name, factory_code) for reports strictly as per the
+    company details configured by the user in the Company Details section.
     """
-    if session and hasattr(session, 'machine') and session.machine \
-            and session.machine.plant and session.machine.plant.factory:
-        factory = session.machine.plant.factory
-        return factory.name, factory.code
-    factory = Factory.objects.filter(is_active=True).first()
-    if factory:
-        return factory.name, factory.code
-    return "MANTRI METALLICS PVT. LTD.", "MMPL"
+    # 1. Primary active factory configured by the user in Company Details
+    factory = Factory.objects.filter(is_active=True).order_by('id').first() or Factory.objects.order_by('id').first()
+    if factory and factory.name:
+        code = factory.code or "".join([w[0] for w in factory.name.split() if w]).upper() or "FAC"
+        return factory.name, code
+
+    # 2. Check linked machine/plant factory if primary not present
+    if session:
+        target = session
+        if hasattr(session, 'first') and callable(session.first):
+            target = session.first()
+        elif isinstance(session, (list, tuple)) and session:
+            target = session[0]
+
+        machine = getattr(target, 'machine', None)
+        if not machine and hasattr(target, 'production_report'):
+            machine = getattr(target.production_report, 'machine', None)
+
+        if machine and getattr(machine, 'plant', None) and getattr(machine.plant, 'factory', None):
+            linked_fac = machine.plant.factory
+            if linked_fac and linked_fac.name:
+                code = linked_fac.code or "".join([w[0] for w in linked_fac.name.split() if w]).upper() or "FAC"
+                return linked_fac.name, code
+
+    return "Company Name", "FAC"
 
 def generate_first_piece_pdf(session, doc_data: dict) -> str:
     media_pdf_dir = os.path.join(settings.MEDIA_ROOT, 'pdf_reports')
@@ -317,7 +333,7 @@ def generate_daily_production_pdf(report) -> str:
 
     elements = []
     
-    fac_name, fac_code = get_factory_info()
+    fac_name, fac_code = get_factory_info(report)
 
     # 1. Header
     header_data = [
@@ -444,7 +460,7 @@ def generate_downtime_pdf(qs, date_str: str, shift_str: str) -> str:
 
     elements = []
     
-    fac_name, fac_code = get_factory_info()
+    fac_name, fac_code = get_factory_info(qs)
 
     # 1. Header Table (Hanuman Engineering Works / DOWN TIME REPORT / Doc Ref)
     header_data = [

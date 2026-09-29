@@ -1124,9 +1124,12 @@ def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
     align_left = Alignment(horizontal="left", vertical="center")
     align_right = Alignment(horizontal="right", vertical="center")
 
+    from .pdf_generator import get_factory_info
+    fac_name, fac_code = get_factory_info(qs)
+
     # 1. Title Banner (Rows 1 to 3)
     ws.merge_cells("A1:C2")
-    ws["A1"] = "HANUMAN ENGINEERING\nWORKS"
+    ws["A1"] = fac_name.upper()
     ws["A1"].font = title_font
     ws["A1"].alignment = align_center
 
@@ -1141,7 +1144,7 @@ def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
     ws["D1"].alignment = align_center
 
     ws.merge_cells("T1:V1")
-    ws["T1"] = "FORMAT NO. :- QF/MF-06"
+    ws["T1"] = f"FORMAT NO. :- {fac_code}/QF/MF-06"
     ws["T1"].font = sub_font
     ws["T1"].alignment = align_right
 
@@ -1318,7 +1321,7 @@ def generate_downtime_xlsx(qs, date_str: str, shift_str: str) -> io.BytesIO:
     from openpyxl.utils import get_column_letter
     for col in ws.columns:
         max_length = 0
-        column = col[0].column_letter # Get the column name
+        column = get_column_letter(col[0].column) # Get the column name
         for cell in col:
             try:
                 if len(str(cell.value)) > max_length:
@@ -1537,17 +1540,41 @@ class DowntimeReportViewSet(viewsets.ModelViewSet):
 
 class JHChecklistItemsView(APIView):
     """
-    GET /api/inspections/jh/items/
-    Returns all active JH checklist checkpoints ordered by sort_order.
+    GET /api/inspections/jh/items/?machine=<id_or_code>
+    Returns active JH checklist checkpoints ordered by sort_order.
+    If machine has custom active checkpoints, returns those.
+    Otherwise, falls back to default factory template checkpoints (machine__isnull=True).
     """
     permission_classes = [HasAccess]
     access_key = 'production.jh.view'
 
     def get(self, request):
-        items = JHChecklistItem.objects.filter(is_active=True).order_by('sort_order', 'sub_no')
+        machine_param = request.query_params.get('machine')
+        target_machine = None
+        if machine_param:
+            if str(machine_param).isdigit():
+                target_machine = Machine.objects.filter(id=int(machine_param)).first()
+            else:
+                target_machine = Machine.objects.filter(machine_code__iexact=str(machine_param).strip()).first()
+
+        items = None
+        is_custom = False
+        if target_machine:
+            custom_items = JHChecklistItem.objects.filter(machine=target_machine, is_active=True).order_by('sort_order', 'sub_no')
+            if custom_items.exists():
+                items = custom_items
+                is_custom = True
+            else:
+                items = JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).order_by('sort_order', 'sub_no')
+        else:
+            items = JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).order_by('sort_order', 'sub_no')
+
         serializer = JHChecklistItemSerializer(items, many=True)
         return Response({
             'count': items.count(),
+            'is_custom': is_custom,
+            'machine_id': target_machine.id if target_machine else None,
+            'machine_code': target_machine.machine_code if target_machine else None,
             'results': serializer.data,
         }, status=status.HTTP_200_OK)
 
@@ -1797,7 +1824,16 @@ class JHInspectionMatrixView(APIView):
             active_shifts = ['I', 'II', 'III']
             shift_count = 3
 
-        items = list(JHChecklistItem.objects.filter(is_active=True).order_by('sort_order', 'sub_no'))
+        # Load machine-specific checkpoints if available, else fallback to default template
+        if machine:
+            custom_items = list(JHChecklistItem.objects.filter(machine=machine, is_active=True).order_by('sort_order', 'sub_no'))
+            if custom_items:
+                items = custom_items
+            else:
+                items = list(JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).order_by('sort_order', 'sub_no'))
+        else:
+            items = list(JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).order_by('sort_order', 'sub_no'))
+
         items_data = JHChecklistItemSerializer(items, many=True).data
 
         matrix = {}
@@ -1961,10 +1997,119 @@ class JHChecklistUploadParseView(APIView):
             return Response({'error': f'Failed to parse file: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class JHChecklistStatusView(APIView):
+    """
+    GET /api/inspections/jh/checklist/status/?machine=<id_or_code>
+    Returns checklist configuration status for a given machine (or default template).
+    """
+    permission_classes = [HasAccess]
+    access_key = 'production.jh.view'
+
+    def get(self, request):
+        from .models import JHChecklistVersion, JHChecklistItem
+
+        machine_param = request.query_params.get('machine')
+        target_machine = None
+        if machine_param:
+            if str(machine_param).isdigit():
+                target_machine = Machine.objects.filter(id=int(machine_param)).first()
+            else:
+                target_machine = Machine.objects.filter(machine_code__iexact=str(machine_param).strip()).first()
+
+        if target_machine:
+            custom_ver = JHChecklistVersion.objects.filter(machine=target_machine, is_active=True).select_related('uploaded_by').first()
+            custom_items_count = JHChecklistItem.objects.filter(machine=target_machine, is_active=True).count()
+
+            if custom_items_count > 0:
+                uploader_name = 'System'
+                if custom_ver and custom_ver.uploaded_by:
+                    uploader_name = f"{custom_ver.uploaded_by.first_name} {custom_ver.uploaded_by.last_name}".strip() or custom_ver.uploaded_by.username
+
+                return Response({
+                    'machine_id': target_machine.id,
+                    'machine_code': target_machine.machine_code,
+                    'machine_name': target_machine.name,
+                    'has_custom_checklist': True,
+                    'is_default': False,
+                    'version_number': custom_ver.version_number if custom_ver else 1,
+                    'total_items': custom_items_count,
+                    'filename': custom_ver.filename if custom_ver else '',
+                    'uploaded_at': custom_ver.uploaded_at.isoformat() if custom_ver and custom_ver.uploaded_at else None,
+                    'uploaded_by': uploader_name,
+                    'status_label': f"Custom Machine Checklist (v{custom_ver.version_number if custom_ver else 1} • {custom_items_count} checkpoints)",
+                }, status=status.HTTP_200_OK)
+
+            # Target machine has no custom checklist -> fallback to default template
+            default_ver = JHChecklistVersion.objects.filter(machine__isnull=True, is_active=True).first()
+            default_count = JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).count()
+            if default_count > 0:
+                return Response({
+                    'machine_id': target_machine.id,
+                    'machine_code': target_machine.machine_code,
+                    'machine_name': target_machine.name,
+                    'has_custom_checklist': False,
+                    'is_default': True,
+                    'version_number': default_ver.version_number if default_ver else None,
+                    'total_items': default_count,
+                    'filename': default_ver.filename if default_ver else '',
+                    'uploaded_at': default_ver.uploaded_at.isoformat() if default_ver and default_ver.uploaded_at else None,
+                    'uploaded_by': None,
+                    'status_label': f"Using Factory Default Template ({default_count} checkpoints)",
+                }, status=status.HTTP_200_OK)
+
+            return Response({
+                'machine_id': target_machine.id,
+                'machine_code': target_machine.machine_code,
+                'machine_name': target_machine.name,
+                'has_custom_checklist': False,
+                'is_default': False,
+                'version_number': None,
+                'total_items': 0,
+                'filename': '',
+                'uploaded_at': None,
+                'uploaded_by': None,
+                'status_label': "No Checklist Uploaded",
+            }, status=status.HTTP_200_OK)
+
+        # No machine specified: return factory default template info
+        default_ver = JHChecklistVersion.objects.filter(machine__isnull=True, is_active=True).first()
+        default_count = JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).count()
+
+        if default_count > 0:
+            return Response({
+                'machine_id': None,
+                'machine_code': None,
+                'machine_name': 'Default Factory Template',
+                'has_custom_checklist': False,
+                'is_default': True,
+                'version_number': default_ver.version_number if default_ver else None,
+                'total_items': default_count,
+                'filename': default_ver.filename if default_ver else '',
+                'uploaded_at': default_ver.uploaded_at.isoformat() if default_ver and default_ver.uploaded_at else None,
+                'uploaded_by': None,
+                'status_label': f"Factory Default Template ({default_count} checkpoints)",
+            }, status=status.HTTP_200_OK)
+
+        return Response({
+            'machine_id': None,
+            'machine_code': None,
+            'machine_name': 'Default Factory Template',
+            'has_custom_checklist': False,
+            'is_default': False,
+            'version_number': None,
+            'total_items': 0,
+            'filename': '',
+            'uploaded_at': None,
+            'uploaded_by': None,
+            'status_label': "No Default Template Configured",
+        }, status=status.HTTP_200_OK)
+
+
 class JHChecklistBulkSaveView(APIView):
     """
     POST /api/inspections/jh/checklist/bulk_save/
     Saves or replaces checklist items in the database atomically, recording version audit history.
+    Can be scoped to a specific machine via machine_id or machine_code.
     """
     permission_classes = [HasAccess]
     access_key = 'production.jh.manage'
@@ -1977,23 +2122,39 @@ class JHChecklistBulkSaveView(APIView):
         replace_all = request.data.get('replace_all', True)
         filename = request.data.get('filename') or 'uploaded_checklist.xlsx'
         notes = request.data.get('notes') or ''
+        machine_param = request.data.get('machine_id') or request.data.get('machine')
+
+        target_machine = None
+        if machine_param:
+            if str(machine_param).isdigit():
+                target_machine = Machine.objects.filter(id=int(machine_param)).first()
+            else:
+                target_machine = Machine.objects.filter(machine_code__iexact=str(machine_param).strip()).first()
 
         if not items_data or not isinstance(items_data, list):
             return Response({'error': 'A list of checklist items is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             with transaction.atomic():
-                # Compute next version number
-                last_ver = JHChecklistVersion.objects.order_by('-version_number').values_list('version_number', flat=True).first() or 0
+                # Compute next version number for this machine (or default)
+                if target_machine:
+                    last_ver = JHChecklistVersion.objects.filter(machine=target_machine).order_by('-version_number').values_list('version_number', flat=True).first() or 0
+                else:
+                    last_ver = JHChecklistVersion.objects.filter(machine__isnull=True).order_by('-version_number').values_list('version_number', flat=True).first() or 0
                 next_ver = last_ver + 1
 
                 if replace_all:
-                    # Deactivate existing active items and versions
-                    JHChecklistVersion.objects.filter(is_active=True).update(is_active=False)
-                    JHChecklistItem.objects.filter(is_active=True).update(is_active=False)
+                    # Deactivate existing active items and versions ONLY for this machine or default
+                    if target_machine:
+                        JHChecklistVersion.objects.filter(machine=target_machine, is_active=True).update(is_active=False)
+                        JHChecklistItem.objects.filter(machine=target_machine, is_active=True).update(is_active=False)
+                    else:
+                        JHChecklistVersion.objects.filter(machine__isnull=True, is_active=True).update(is_active=False)
+                        JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).update(is_active=False)
 
                 # Create new version record
                 ver_obj = JHChecklistVersion.objects.create(
+                    machine=target_machine,
                     version_number=next_ver,
                     filename=filename,
                     uploaded_by=request.user if request.user.is_authenticated else None,
@@ -2018,6 +2179,7 @@ class JHChecklistBulkSaveView(APIView):
                         tool_type = 'VISUAL'
 
                     item = JHChecklistItem(
+                        machine=target_machine,
                         version=ver_obj,
                         sub_no=sub_no,
                         assembly=assembly,
@@ -2043,9 +2205,12 @@ class JHChecklistBulkSaveView(APIView):
                 ver_obj.total_items = len(created_records)
                 ver_obj.save(update_fields=['total_items'])
 
+            m_code = target_machine.machine_code if target_machine else 'Default'
             return Response({
                 'success': True,
-                'message': f'Successfully saved {len(created_records)} checklist items as Version v{next_ver}.',
+                'message': f'Successfully saved {len(created_records)} checklist items as Version v{next_ver} for machine [{m_code}].',
+                'machine_id': target_machine.id if target_machine else None,
+                'machine_code': target_machine.machine_code if target_machine else None,
                 'version_number': next_ver,
                 'count': len(created_records),
             }, status=status.HTTP_200_OK)
@@ -2056,15 +2221,26 @@ class JHChecklistBulkSaveView(APIView):
 
 class JHChecklistVersionListView(APIView):
     """
-    GET /api/inspections/jh/checklist/versions/
-    Returns audit history of all uploaded checklist versions.
+    GET /api/inspections/jh/checklist/versions/?machine=<id_or_code>
+    Returns audit history of all uploaded checklist versions, optionally filtered by machine.
     """
     permission_classes = [HasAccess]
     access_key = 'production.jh.view'
 
     def get(self, request):
         from .models import JHChecklistVersion
-        versions = JHChecklistVersion.objects.select_related('uploaded_by').order_by('-version_number')
+        machine_param = request.query_params.get('machine')
+        qs = JHChecklistVersion.objects.select_related('uploaded_by', 'machine').order_by('-version_number')
+
+        if machine_param:
+            if str(machine_param).isdigit():
+                qs = qs.filter(machine_id=int(machine_param))
+            elif machine_param.lower() in ('default', 'none', 'null'):
+                qs = qs.filter(machine__isnull=True)
+            else:
+                qs = qs.filter(machine__machine_code__iexact=str(machine_param).strip())
+
+        versions = qs
         data = []
         for v in versions:
             uploader_name = 'System'
@@ -2072,6 +2248,8 @@ class JHChecklistVersionListView(APIView):
                 uploader_name = f"{v.uploaded_by.first_name} {v.uploaded_by.last_name}".strip() or v.uploaded_by.username
             data.append({
                 'id': v.id,
+                'machine_id': v.machine_id,
+                'machine_code': v.machine.machine_code if v.machine else None,
                 'version_number': v.version_number,
                 'filename': v.filename,
                 'uploaded_by': uploader_name,
@@ -2085,7 +2263,7 @@ class JHChecklistVersionListView(APIView):
 
 class JHChecklistVersionDetailView(APIView):
     """
-    GET /api/inspections/jh/checklist/versions/<int:version_number>/
+    GET /api/inspections/jh/checklist/versions/<int:version_number>/?machine=<id_or_code>
     Returns items for a specific historical checklist version.
     """
     permission_classes = [HasAccess]
@@ -2093,7 +2271,21 @@ class JHChecklistVersionDetailView(APIView):
 
     def get(self, request, version_number):
         from .models import JHChecklistVersion, JHChecklistItem
-        ver = JHChecklistVersion.objects.filter(version_number=version_number).first()
+        machine_param = request.query_params.get('machine')
+        qs = JHChecklistVersion.objects.all()
+        if machine_param:
+            if str(machine_param).isdigit():
+                qs = qs.filter(machine_id=int(machine_param))
+            elif machine_param.lower() in ('default', 'none', 'null'):
+                qs = qs.filter(machine__isnull=True)
+            else:
+                qs = qs.filter(machine__machine_code__iexact=str(machine_param).strip())
+
+        ver = qs.filter(version_number=version_number).first()
+        if not ver:
+            ver = JHChecklistVersion.objects.filter(id=version_number).first()
+        if not ver:
+            ver = JHChecklistVersion.objects.filter(version_number=version_number).first()
         if not ver:
             return Response({'error': 'Version not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -2114,6 +2306,8 @@ class JHChecklistVersionDetailView(APIView):
 
         return Response({
             'version_number': ver.version_number,
+            'machine_id': ver.machine_id,
+            'machine_code': ver.machine.machine_code if ver.machine else None,
             'filename': ver.filename,
             'is_active': ver.is_active,
             'total_items': len(items_data),
@@ -2123,8 +2317,8 @@ class JHChecklistVersionDetailView(APIView):
 
 class JHChecklistVersionRestoreView(APIView):
     """
-    POST /api/inspections/jh/checklist/versions/<int:version_number>/restore/
-    Rolls back / restores a previous checklist version as active.
+    POST /api/inspections/jh/checklist/versions/<int:version_number>/restore/?machine=<id_or_code>
+    Rolls back / restores a previous checklist version as active for this machine.
     """
     permission_classes = [HasAccess]
     access_key = 'production.jh.manage'
@@ -2133,15 +2327,33 @@ class JHChecklistVersionRestoreView(APIView):
         from django.db import transaction
         from .models import JHChecklistVersion, JHChecklistItem
 
-        ver = JHChecklistVersion.objects.filter(version_number=version_number).first()
+        machine_param = request.query_params.get('machine') or request.data.get('machine_id')
+        qs = JHChecklistVersion.objects.all()
+        if machine_param:
+            if str(machine_param).isdigit():
+                qs = qs.filter(machine_id=int(machine_param))
+            elif str(machine_param).lower() in ('default', 'none', 'null'):
+                qs = qs.filter(machine__isnull=True)
+            else:
+                qs = qs.filter(machine__machine_code__iexact=str(machine_param).strip())
+
+        ver = qs.filter(version_number=version_number).first()
+        if not ver:
+            ver = JHChecklistVersion.objects.filter(id=version_number).first()
+        if not ver:
+            ver = JHChecklistVersion.objects.filter(version_number=version_number).first()
         if not ver:
             return Response({'error': 'Version not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             with transaction.atomic():
-                # Deactivate all
-                JHChecklistVersion.objects.filter(is_active=True).update(is_active=False)
-                JHChecklistItem.objects.filter(is_active=True).update(is_active=False)
+                # Deactivate all active versions/items for this machine ONLY
+                if ver.machine:
+                    JHChecklistVersion.objects.filter(machine=ver.machine, is_active=True).update(is_active=False)
+                    JHChecklistItem.objects.filter(machine=ver.machine, is_active=True).update(is_active=False)
+                else:
+                    JHChecklistVersion.objects.filter(machine__isnull=True, is_active=True).update(is_active=False)
+                    JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).update(is_active=False)
 
                 # Activate selected version and its items
                 ver.is_active = True
@@ -2149,9 +2361,12 @@ class JHChecklistVersionRestoreView(APIView):
 
                 JHChecklistItem.objects.filter(version=ver).update(is_active=True)
 
+            m_code = ver.machine.machine_code if ver.machine else 'Default'
             return Response({
                 'success': True,
-                'message': f'Version v{version_number} ({ver.filename}) has been restored as the active checklist.',
+                'message': f'Version v{ver.version_number} ({ver.filename}) restored as active checklist for machine [{m_code}].',
+                'machine_id': ver.machine_id,
+                'machine_code': m_code,
                 'version_number': ver.version_number,
             }, status=status.HTTP_200_OK)
 
@@ -2161,8 +2376,8 @@ class JHChecklistVersionRestoreView(APIView):
 
 class JHChecklistTemplateDownloadView(APIView):
     """
-    GET /api/inspections/jh/checklist/template/
-    Downloads blank Form QF/MF-08 Excel template.
+    GET /api/inspections/jh/checklist/template/?machine=<id_or_code>
+    Downloads blank Form QF/MF-08 Excel template, optionally customized for a specific machine.
     """
     permission_classes = [HasAccess]
     access_key = 'production.jh.view'
@@ -2171,12 +2386,23 @@ class JHChecklistTemplateDownloadView(APIView):
         from django.http import HttpResponse
         from .jh_checklist_parser import generate_jh_template_xlsx
 
-        buf = generate_jh_template_xlsx()
+        machine_param = request.query_params.get('machine')
+        machine_code = ""
+        if machine_param:
+            if str(machine_param).isdigit():
+                m = Machine.objects.filter(id=int(machine_param)).first()
+                if m:
+                    machine_code = m.machine_code
+            else:
+                machine_code = str(machine_param).strip().upper()
+
+        buf = generate_jh_template_xlsx(machine_code=machine_code)
         response = HttpResponse(
             buf.getvalue(),
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-        response['Content-Disposition'] = 'attachment; filename="JH_Checklist_Template_Form_QF_MF_08.xlsx"'
+        fn = f"JH_Checklist_Template_{machine_code}.xlsx" if machine_code else "JH_Checklist_Template_Form_QF_MF_08.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{fn}"'
         return response
 
 

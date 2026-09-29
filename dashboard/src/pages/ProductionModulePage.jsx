@@ -23,7 +23,7 @@ export default function ProductionModulePage() {
         'End-of-day shift production targets, completed jobs, correct vs incorrect counts, rejection breakup (CR, MR, RW), achievement %, and supervisor filters.',
       details: ['End of Day Shift Production Logs', 'Target vs Actual Achievement %', 'CR / MR / RW Rejection Breakup'],
       actionText: 'Open Daily Production Reports',
-      link: '/reports/daily-production',
+      link: '/production/daily-production',
     },
     {
       id: 'downtime-reports',
@@ -38,7 +38,7 @@ export default function ProductionModulePage() {
         'Log shift downtime minutes (No Load, No Operator, U/M, Setting, Insp Wait, Tool Change, P/O, R/W, Tool Prob) automatically linked to submitted Daily Production Reports.',
       details: ['Operator & Machine Downtime Log', '9-Category Downtime Minutes Breakdown', 'Form QF/MF-06 Hanuman Engineering Format'],
       actionText: 'Open Downtime Reports',
-      link: '/reports/downtime?view=full',
+      link: '/production/downtime?view=full',
     },
     {
       id: 'jh-inspections',

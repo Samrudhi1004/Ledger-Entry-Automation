@@ -463,12 +463,12 @@ class DCRDetailSerializer(DCRListSerializer):
 
     def get_company_name(self, obj):
         from apps.machines.models import Factory
-        f = Factory.objects.filter(is_active=True).first()
-        return f.name if f else 'Mantri Metallics Pvt. Ltd.'
+        f = Factory.objects.filter(is_active=True).first() or Factory.objects.first()
+        return f.name if (f and f.name) else 'Company Name'
 
     def get_company_logo_url(self, obj):
         from apps.machines.models import Factory
-        f = Factory.objects.filter(is_active=True).first()
+        f = Factory.objects.filter(is_active=True).first() or Factory.objects.first()
         return f.logo_url if (f and f.logo_url) else ''
 
     def get_reviewed_by_name(self, obj):
