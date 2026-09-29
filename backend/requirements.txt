@@ -34,6 +34,7 @@ reportlab
 openpyxl
 pdfplumber
 pypdf
+openai
 # ─── Number Parsing ────────────────────────────────────────────
 word2number==1.1
 
