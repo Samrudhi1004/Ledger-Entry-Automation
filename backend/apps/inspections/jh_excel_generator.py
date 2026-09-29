@@ -61,10 +61,6 @@ def generate_jh_matrix_xlsx(
     else:
         items = list(JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).order_by('sort_order', 'sub_no'))
 
-    # If still empty (e.g. initial setup before migration or seeding), fallback to any active
-    if not items:
-        items = list(JHChecklistItem.objects.filter(is_active=True).order_by('sort_order', 'sub_no'))
-
     # 3. Fetch inspection evaluations
     matrix = {}
     for it in items:

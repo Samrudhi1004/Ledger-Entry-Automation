@@ -750,15 +750,30 @@ export default function JHInspectionReportsPage() {
                     gap: '8px',
                     padding: '6px 12px',
                     borderRadius: '8px',
-                    background: machineChecklistStatus.has_custom_checklist ? '#F0FDF4' : '#FFFBEB',
-                    border: `1px solid ${machineChecklistStatus.has_custom_checklist ? '#BBF7D0' : '#FDE68A'}`,
+                    background: machineChecklistStatus.has_custom_checklist
+                      ? '#F0FDF4'
+                      : (machineChecklistStatus.total_items > 0 ? '#FFFBEB' : '#F1F5F9'),
+                    border: `1px solid ${
+                      machineChecklistStatus.has_custom_checklist
+                        ? '#BBF7D0'
+                        : (machineChecklistStatus.total_items > 0 ? '#FDE68A' : '#CBD5E1')
+                    }`,
                     fontSize: '12px',
                   }}
                 >
-                  <span style={{ fontWeight: '700', color: machineChecklistStatus.has_custom_checklist ? '#15803D' : '#B45309' }}>
+                  <span
+                    style={{
+                      fontWeight: '700',
+                      color: machineChecklistStatus.has_custom_checklist
+                        ? '#15803D'
+                        : (machineChecklistStatus.total_items > 0 ? '#B45309' : '#64748B'),
+                    }}
+                  >
                     {machineChecklistStatus.has_custom_checklist
                       ? `Custom Checklist v${machineChecklistStatus.version_number} (${machineChecklistStatus.total_items} Items)`
-                      : `Default Checklist (${machineChecklistStatus.total_items || 27} Items)`}
+                      : (machineChecklistStatus.total_items > 0
+                          ? `Default Checklist (${machineChecklistStatus.total_items} Items)`
+                          : 'No Checklist Configured')}
                   </span>
                   <button
                     onClick={() => {
@@ -950,7 +965,7 @@ export default function JHInspectionReportsPage() {
                         <th style={{ padding: '14px 16px', fontWeight: '700' }}>Shift</th>
                         <th style={{ padding: '14px 16px', fontWeight: '700' }}>Machine</th>
                         <th style={{ padding: '14px 16px', fontWeight: '700' }}>Operator</th>
-                        <th style={{ padding: '14px 16px', fontWeight: '700' }}>Checkpoints (27 Items)</th>
+                        <th style={{ padding: '14px 16px', fontWeight: '700' }}>Checkpoints</th>
                         <th style={{ padding: '14px 16px', fontWeight: '700' }}>Audit Status</th>
                         <th style={{ padding: '14px 16px', fontWeight: '700', textAlign: 'right' }}>Actions</th>
                       </tr>
@@ -1234,9 +1249,34 @@ export default function JHInspectionReportsPage() {
                   <RefreshCw size={26} className="spin" style={{ margin: '0 auto 10px' }} />
                   <div>Loading 31-day compliance matrix...</div>
                 </div>
-              ) : !matrixData || !matrixData.items ? (
-                <div style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
-                  Select a machine to display the compliance matrix.
+              ) : !matrixData || !matrixData.items || matrixData.items.length === 0 ? (
+                <div style={{ padding: '48px 24px', textAlign: 'center', color: '#64748B' }}>
+                  <FileText size={40} color="#CBD5E1" style={{ margin: '0 auto 12px' }} />
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#1E293B', marginBottom: '6px' }}>
+                    No Checklist Configured for {machines.find(m => String(m.id) === String(matrixMachine))?.machine_code || 'This Machine'}
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#64748B', maxWidth: '460px', margin: '0 auto 16px' }}>
+                    This machine does not have a checklist uploaded yet. Please upload its checklist to view and track 31-day shift compliance.
+                  </div>
+                  <button
+                    onClick={() => openChecklistManager(matrixMachine)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      background: '#4F46E5',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      fontWeight: '700',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <UploadCloud size={15} />
+                    <span>Upload Checklist for {machines.find(m => String(m.id) === String(matrixMachine))?.machine_code || 'Machine'}</span>
+                  </button>
                 </div>
               ) : (
                 <div style={{ overflowX: 'auto', maxHeight: '75vh' }}>
@@ -1769,28 +1809,44 @@ export default function JHInspectionReportsPage() {
                 {/* Status Pill */}
                 {(() => {
                   const isCustom = machineChecklistStatus?.has_custom_checklist;
+                  const hasDefault = !isCustom && (machineChecklistStatus?.is_default && (machineChecklistStatus?.total_items > 0));
+                  const count = checklistItems.length || machineChecklistStatus?.total_items || 0;
+
                   return (
                     <div
                       style={{
                         display: 'flex',
                         alignItems: 'center',
                         gap: '10px',
-                        background: isCustom ? '#F0FDF4' : '#FFFBEB',
-                        border: `1px solid ${isCustom ? '#BBF7D0' : '#FDE68A'}`,
+                        background: isCustom ? '#F0FDF4' : hasDefault ? '#FFFBEB' : '#F8FAFC',
+                        border: `1px solid ${isCustom ? '#BBF7D0' : hasDefault ? '#FDE68A' : '#CBD5E1'}`,
                         borderRadius: '8px',
                         padding: '8px 14px',
                         alignSelf: 'flex-end',
                       }}
                     >
                       <div>
-                        <div style={{ fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', color: isCustom ? '#15803D' : '#B45309' }}>
-                          {isCustom ? 'Custom Checklist Active' : 'Factory Default Template'}
+                        <div
+                          style={{
+                            fontSize: '10px',
+                            fontWeight: '800',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                            color: isCustom ? '#15803D' : hasDefault ? '#B45309' : '#64748B',
+                          }}
+                        >
+                          {isCustom
+                            ? 'Custom Checklist Active'
+                            : hasDefault
+                            ? 'Factory Default Template'
+                            : 'No Checklist Configured'}
                         </div>
                         <div style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>
                           {isCustom
-                            ? `v${machineChecklistStatus.version_number} (${checklistItems.length || machineChecklistStatus.total_items} Checkpoints)`
-                            : `(${checklistItems.length || machineChecklistStatus?.total_items || 27} Checkpoints)`
-                          }
+                            ? `v${machineChecklistStatus.version_number} (${count} Checkpoints)`
+                            : hasDefault
+                            ? `(${count} Checkpoints)`
+                            : '0 Checkpoints Uploaded'}
                           {isCustom && machineChecklistStatus.filename && (
                             <span style={{ fontSize: '11px', fontWeight: '500', color: '#64748B', marginLeft: '6px' }}>
                               · {machineChecklistStatus.filename}
@@ -1869,7 +1925,7 @@ export default function JHInspectionReportsPage() {
                   }}
                 >
                   <UploadCloud size={16} />
-                  <span>{machineChecklistStatus?.has_custom_checklist ? 'Upload New Version' : 'Upload Custom Checklist'}</span>
+                  <span>{machineChecklistStatus?.has_custom_checklist ? 'Upload New Version' : 'Upload Machine Checklist'}</span>
                 </button>
               </div>
             </div>
@@ -1983,10 +2039,10 @@ export default function JHInspectionReportsPage() {
                 <div style={{ padding: '48px 24px', textAlign: 'center', color: '#64748B' }}>
                   <FileText size={40} color="#CBD5E1" style={{ margin: '0 auto 12px' }} />
                   <div style={{ fontSize: '16px', fontWeight: '800', color: '#1E293B', marginBottom: '6px' }}>
-                    No Checkpoints Available
+                    No Checkpoints Configured for {machines.find(m => String(m.id) === String(matrixMachine))?.machine_code || 'This Machine'}
                   </div>
-                  <div style={{ fontSize: '13px', color: '#64748B', maxWidth: '440px', margin: '0 auto 16px' }}>
-                    No checklist items found for this machine. Click below to upload an SOP Excel or PDF checklist.
+                  <div style={{ fontSize: '13px', color: '#64748B', maxWidth: '460px', margin: '0 auto 16px' }}>
+                    This machine does not have a checklist uploaded yet. Click below to upload its SOP Excel or PDF checklist.
                   </div>
                   <button
                     onClick={() => openChecklistManager(matrixMachine)}
@@ -2005,7 +2061,7 @@ export default function JHInspectionReportsPage() {
                     }}
                   >
                     <UploadCloud size={15} />
-                    <span>Upload Checklist Now</span>
+                    <span>Upload Checklist for {machines.find(m => String(m.id) === String(matrixMachine))?.machine_code || 'Machine'}</span>
                   </button>
                 </div>
               ) : (
@@ -2353,7 +2409,9 @@ export default function JHInspectionReportsPage() {
                             >
                               {targetMachineChecklistStatus.has_custom_checklist
                                 ? `Custom Checklist Active (v${targetMachineChecklistStatus.version_number} • ${targetMachineChecklistStatus.total_items} pts)`
-                                : `Using Factory Default Template (${targetMachineChecklistStatus.total_items || 27} pts)`}
+                                : (targetMachineChecklistStatus.total_items > 0
+                                    ? `Using Factory Default Template (${targetMachineChecklistStatus.total_items} pts)`
+                                    : 'No Checklist Configured Yet')}
                             </span>
                           )}
                         </div>

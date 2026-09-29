@@ -1569,10 +1569,6 @@ class JHChecklistItemsView(APIView):
         else:
             items = JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).order_by('sort_order', 'sub_no')
 
-        # Fallback to any active items if still empty
-        if not items.exists():
-            items = JHChecklistItem.objects.filter(is_active=True).order_by('sort_order', 'sub_no')
-
         serializer = JHChecklistItemSerializer(items, many=True)
         return Response({
             'count': items.count(),
@@ -1838,9 +1834,6 @@ class JHInspectionMatrixView(APIView):
         else:
             items = list(JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).order_by('sort_order', 'sub_no'))
 
-        if not items:
-            items = list(JHChecklistItem.objects.filter(is_active=True).order_by('sort_order', 'sub_no'))
-
         items_data = JHChecklistItemSerializer(items, many=True).data
 
         matrix = {}
@@ -2049,13 +2042,44 @@ class JHChecklistStatusView(APIView):
             # Target machine has no custom checklist -> fallback to default template
             default_ver = JHChecklistVersion.objects.filter(machine__isnull=True, is_active=True).first()
             default_count = JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).count()
-            if default_count == 0:
-                default_count = JHChecklistItem.objects.filter(is_active=True).count()
+            if default_count > 0:
+                return Response({
+                    'machine_id': target_machine.id,
+                    'machine_code': target_machine.machine_code,
+                    'machine_name': target_machine.name,
+                    'has_custom_checklist': False,
+                    'is_default': True,
+                    'version_number': default_ver.version_number if default_ver else None,
+                    'total_items': default_count,
+                    'filename': default_ver.filename if default_ver else '',
+                    'uploaded_at': default_ver.uploaded_at.isoformat() if default_ver and default_ver.uploaded_at else None,
+                    'uploaded_by': None,
+                    'status_label': f"Using Factory Default Template ({default_count} checkpoints)",
+                }, status=status.HTTP_200_OK)
 
             return Response({
                 'machine_id': target_machine.id,
                 'machine_code': target_machine.machine_code,
                 'machine_name': target_machine.name,
+                'has_custom_checklist': False,
+                'is_default': False,
+                'version_number': None,
+                'total_items': 0,
+                'filename': '',
+                'uploaded_at': None,
+                'uploaded_by': None,
+                'status_label': "No Checklist Uploaded",
+            }, status=status.HTTP_200_OK)
+
+        # No machine specified: return factory default template info
+        default_ver = JHChecklistVersion.objects.filter(machine__isnull=True, is_active=True).first()
+        default_count = JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).count()
+
+        if default_count > 0:
+            return Response({
+                'machine_id': None,
+                'machine_code': None,
+                'machine_name': 'Default Factory Template',
                 'has_custom_checklist': False,
                 'is_default': True,
                 'version_number': default_ver.version_number if default_ver else None,
@@ -2063,27 +2087,21 @@ class JHChecklistStatusView(APIView):
                 'filename': default_ver.filename if default_ver else '',
                 'uploaded_at': default_ver.uploaded_at.isoformat() if default_ver and default_ver.uploaded_at else None,
                 'uploaded_by': None,
-                'status_label': f"Using Factory Default Template ({default_count} checkpoints)",
+                'status_label': f"Factory Default Template ({default_count} checkpoints)",
             }, status=status.HTTP_200_OK)
-
-        # No machine specified: return factory default template info
-        default_ver = JHChecklistVersion.objects.filter(machine__isnull=True, is_active=True).first()
-        default_count = JHChecklistItem.objects.filter(machine__isnull=True, is_active=True).count()
-        if default_count == 0:
-            default_count = JHChecklistItem.objects.filter(is_active=True).count()
 
         return Response({
             'machine_id': None,
             'machine_code': None,
             'machine_name': 'Default Factory Template',
             'has_custom_checklist': False,
-            'is_default': True,
-            'version_number': default_ver.version_number if default_ver else None,
-            'total_items': default_count,
-            'filename': default_ver.filename if default_ver else '',
-            'uploaded_at': default_ver.uploaded_at.isoformat() if default_ver and default_ver.uploaded_at else None,
+            'is_default': False,
+            'version_number': None,
+            'total_items': 0,
+            'filename': '',
+            'uploaded_at': None,
             'uploaded_by': None,
-            'status_label': f"Factory Default Template ({default_count} checkpoints)",
+            'status_label': "No Default Template Configured",
         }, status=status.HTTP_200_OK)
 
 
