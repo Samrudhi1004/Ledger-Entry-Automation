@@ -1343,37 +1343,57 @@ class InspectionService:
             'result_status': result.status,
         }
 
-    # ── Hourly Time-Lock Management ───────────────────────────────────────
+    # ── Hourly Completion-Based Slot Management ───────────────────────────
     def get_hourly_status(self, session_id: str) -> dict:
-        """Returns time-locked status for hourly slots dynamically based on factory shift hours (1..8 or 1..12)."""
+        """
+        Returns completion-based status for hourly slots.
+        Slot 1 is always unlocked.
+        Slot N unlocks as soon as Slot N-1 has been completed (has measurements).
+        NO time lock — operator can proceed immediately after finishing previous slot.
+        """
         session = InspectionSession.objects.select_related('machine__plant__factory').get(session_id=session_id)
         shift_hours = 8
         if session.machine and session.machine.plant and session.machine.plant.factory:
             shift_hours = session.machine.plant.factory.shift_hours or 8
 
-        now = datetime.now(timezone.utc)
-        start = session.shift_start_time or session.started_at
-        elapsed_minutes = (now - start).total_seconds() / 60.0
+        # Get all completed hourly slots from the session document
+        doc = self.get_session_document(str(session_id)) or {}
+        measurements = doc.get('measurements', [])
+        completed_slots = set()
+        for m in measurements:
+            if m.get('inspection_type') == 'hourly':
+                slot = m.get('hourly_slot')
+                if slot:
+                    try:
+                        completed_slots.add(int(slot))
+                    except Exception:
+                        pass
 
         slots = []
         for i in range(1, shift_hours + 1):
-            unlock_minute = (i - 1) * 60  # 1/HR opens at 0m, 2/HR at 60m...
-            is_unlocked = elapsed_minutes >= unlock_minute
-            is_overdue  = elapsed_minutes >= (unlock_minute + 75)  # 15m grace period
+            # Slot 1 always unlocked; slot N unlocks when N-1 is completed
+            is_unlocked = (i == 1) or ((i - 1) in completed_slots)
+            is_completed = i in completed_slots
 
             slots.append({
                 'slot':          f"{i}/HR",
                 'slot_number':   i,
                 'is_unlocked':   is_unlocked,
-                'is_overdue':    is_overdue,
-                'unlock_minute': unlock_minute,
+                'is_completed':  is_completed,
+                'is_overdue':    False,   # time-lock removed
+                'unlock_minute': 0,       # kept for API compatibility
             })
+
+        now = datetime.now(timezone.utc)
+        start = session.shift_start_time or session.started_at
+        elapsed_minutes = (now - start).total_seconds() / 60.0
 
         return {
             'session_id':      str(session.session_id),
             'shift_hours':     shift_hours,
             'total_slots':     shift_hours,
             'elapsed_minutes': round(elapsed_minutes, 1),
+            'completed_slots': sorted(list(completed_slots)),
             'slots':           slots,
         }
 
