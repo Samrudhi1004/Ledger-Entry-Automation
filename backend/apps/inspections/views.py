@@ -243,7 +243,7 @@ class BatchMeasureView(APIView):
 
         session_obj = InspectionSession.objects.filter(session_id=session_id).first()
         session_insp_type = session_obj.inspection_type if session_obj else None
-        session_hourly_slot = (session_obj.hourly_unlocked_slot or session_obj.hourly_slot or 1) if session_obj else 1
+        session_hourly_slot = (session_obj.hourly_unlocked_slot or 1) if session_obj else 1
 
         results = []
         failed_codes = []
