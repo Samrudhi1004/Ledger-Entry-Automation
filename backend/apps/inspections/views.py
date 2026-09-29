@@ -684,8 +684,8 @@ class SetupStatusView(APIView):
         return Response({
             'has_today_report':          has_today,
             'is_setup_approved':         True,
-            # Generic session_id : first_piece preferred (backward compat)
-            'session_id':                str(fp_session.session_id) if fp_session else str(session.session_id),
+            # Generic session_id : return the ACTIVE session (hourly if exists, else first_piece)
+            'session_id':                str(session.session_id) if session else None,
             # Explicit typed IDs for report screens
             'first_piece_session_id':    str(fp_session.session_id) if fp_session else None,
             'latest_hourly_session_id':  str(hourly_session.session_id) if hourly_session else None,
