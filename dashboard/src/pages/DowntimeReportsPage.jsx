@@ -313,7 +313,7 @@ export default function DowntimeReportsPage() {
       />
 
       <div className="page-content" style={{ padding: '14px 16px', backgroundColor: '#F8FAFC', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>
-        <Breadcrumbs items={[{ label: 'Reports', to: '/reports' }, { label: 'Downtime Analysis' }]} />
+        <Breadcrumbs />
 
         {/* Navigation Tabs */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', borderBottom: '2px solid #E2E8F0', paddingBottom: '6px' }}>

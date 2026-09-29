@@ -32,6 +32,8 @@ export const canAny = (user, keys) => keys.some((key) => can(user, key));
 export function canOpenPath(user, path) {
   const routes = [
     ['/production/jh-inspections', ['production.jh.view']],
+    ['/production/downtime', ['production.downtime.view']],
+    ['/production/daily-production', ['production.daily.view']],
     ['/reports/daily-production', ['production.daily.view']],
     ['/reports/downtime', ['production.downtime.view']],
     ['/production', ['production.daily.view', 'production.downtime.view', 'production.jh.view']],
