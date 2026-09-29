@@ -15,7 +15,6 @@ class MessagingService {
     }
   }
 
-  final _storage = const FlutterSecureStorage();
   WebSocketChannel? _channel;
   Function(Map<String, dynamic>)? onMessageReceived;
   Function(Map<String, dynamic>)? onMessageSent;
@@ -25,7 +24,7 @@ class MessagingService {
   Function(Map<String, dynamic>)? onMessageReaction;
 
   Future<String?> _getToken() async {
-    return await _storage.read(key: 'access_token');
+    return await ApiService.getToken();
   }
 
   Future<Map<String, String>> _getHeaders() async {
