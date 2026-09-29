@@ -599,12 +599,22 @@ class DocumentViewSet(viewsets.ModelViewSet):
         is_owner = doc.uploaded_by_id == user.id
         is_reviewer_or_approver = (doc.reviewed_by_id == user.id) or (doc.approved_by_id == user.id)
         if not (is_manager or is_owner or is_reviewer_or_approver):
+            can_preview = False
             try:
                 perm = DocumentUserPermission.objects.get(document=doc, user=user)
-                if not perm.can_preview:
-                    return Response({'error': 'You do not have permission to preview this document.'}, status=403)
+                can_preview = perm.can_preview
             except DocumentUserPermission.DoesNotExist:
-                return Response({'error': 'Permission denied.'}, status=403)
+                pass
+
+            # Approved documents are previewable by allowed roles
+            if not can_preview and doc.status == Document.Status.APPROVED:
+                allowed_role_slugs = [r.slug for r in doc.allowed_roles.all()]
+                user_role = getattr(user, 'role', '')
+                if not allowed_role_slugs or user_role in allowed_role_slugs:
+                    can_preview = True
+
+            if not can_preview:
+                return Response({'error': 'You do not have permission to preview this document.'}, status=403)
 
         DocumentActivity.objects.create(document=doc, action='viewed', performed_by=user)
         return redirect(document_delivery_url(doc))
@@ -623,12 +633,22 @@ class DocumentViewSet(viewsets.ModelViewSet):
         is_manager = user.is_superuser or getattr(user, 'role', '') == 'admin'
         is_owner = doc.uploaded_by_id == user.id
         if not is_manager and not is_owner:
+            can_download = False
             try:
                 perm = DocumentUserPermission.objects.get(document=doc, user=user)
-                if not perm.can_download:
-                    return Response({'error': 'You do not have permission to download this document.'}, status=403)
+                can_download = perm.can_download
             except DocumentUserPermission.DoesNotExist:
-                return Response({'error': 'Permission denied.'}, status=403)
+                pass
+
+            # Approved documents can be downloaded by users with allowed roles
+            if not can_download and doc.status == Document.Status.APPROVED:
+                allowed_role_slugs = [r.slug for r in doc.allowed_roles.all()]
+                user_role = getattr(user, 'role', '')
+                if not allowed_role_slugs or user_role in allowed_role_slugs:
+                    can_download = True
+
+            if not can_download:
+                return Response({'error': 'You do not have permission to download this document.'}, status=403)
 
         DocumentActivity.objects.create(document=doc, action='downloaded', performed_by=user)
         return redirect(document_delivery_url(doc))

@@ -98,8 +98,19 @@ class DocumentListSerializer(serializers.ModelSerializer):
         is_reviewer_or_approver = (obj.reviewed_by_id == user.id) or (obj.approved_by_id == user.id)
         if is_admin or is_uploader or is_reviewer_or_approver:
             return True
+
         perm = self._get_user_perm(obj)
-        return bool(perm and perm.can_preview)
+        if perm and perm.can_preview:
+            return True
+
+        # Approved documents are readable by permitted roles (or all if allowed_roles is empty)
+        if obj.status == Document.Status.APPROVED:
+            allowed_role_slugs = [role.slug for role in obj.allowed_roles.all()]
+            user_role = getattr(user, 'role', '')
+            if not allowed_role_slugs or user_role in allowed_role_slugs:
+                return True
+
+        return False
 
     def get_delivery_url(self, obj):
         if self._user_can_preview(obj):
@@ -133,19 +144,34 @@ class DocumentListSerializer(serializers.ModelSerializer):
                 'can_manage_access': True,
             }
         is_reviewer_or_approver = (obj.reviewed_by_id == user.id) or (obj.approved_by_id == user.id)
+
+        # Check role-based permission for approved documents
+        is_approved = obj.status == Document.Status.APPROVED
+        role_allowed = True
+        if is_approved:
+            allowed_role_slugs = [role.slug for role in obj.allowed_roles.all()]
+            user_role = getattr(user, 'role', '')
+            if allowed_role_slugs and user_role not in allowed_role_slugs:
+                role_allowed = False
+
+        can_view_approved = is_approved and role_allowed
+
         perm = self._get_user_perm(obj)
         if perm:
             return {
-                'can_preview':  perm.can_preview or is_reviewer_or_approver,
-                'can_download': perm.can_download,
-                'can_print':    perm.can_print,
+                'can_preview':  perm.can_preview or is_reviewer_or_approver or can_view_approved,
+                'can_download': perm.can_download or can_view_approved,
+                'can_print':    perm.can_print or can_view_approved,
                 'can_edit':     perm.can_edit,
                 'can_delete':   perm.can_delete,
                 'can_manage_access': False,
             }
         return {
-            'can_preview': is_reviewer_or_approver, 'can_download': False,
-            'can_print': False, 'can_edit': False, 'can_delete': False,
+            'can_preview': is_reviewer_or_approver or can_view_approved,
+            'can_download': can_view_approved,
+            'can_print': can_view_approved,
+            'can_edit': False,
+            'can_delete': False,
             'can_manage_access': False,
         }
 
