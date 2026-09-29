@@ -88,7 +88,8 @@ class Machine(models.Model):
         ordering = ['machine_code']
 
     def __str__(self):
-        return f"{self.machine_code} : {self.name} ({self.plant.name})"
+        plant_name = self.plant.name if self.plant else "No Plant"
+        return f"{self.machine_code} : {self.name} ({plant_name})"
 
     def save(self, *args, **kwargs):
         # Auto-generate QR code value if not set

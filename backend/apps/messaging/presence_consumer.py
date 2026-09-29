@@ -65,29 +65,34 @@ class PresenceConsumer(AsyncWebsocketConsumer):
         # Get all currently online users
         online_user_ids = await self.get_all_online_users()
 
-        # Send initial presence data to the newly connected user
-        await self.send(text_data=json.dumps({
-            'type': 'initial_presence',
-            'data': {
-                'online_users': online_user_ids
-            }
-        }))
+        try:
+            # Send initial presence data to the newly connected user
+            await self.send(text_data=json.dumps({
+                'type': 'initial_presence',
+                'data': {
+                    'online_users': online_user_ids
+                }
+            }))
 
-        # Broadcast to all users that this user is now online
-        await self.channel_layer.group_send(
-            'presence_updates',
-            {
-                'type': 'user_status_changed',
-                'user_id': self.user.id,
-                'status': 'online'
-            }
-        )
+            # Broadcast to all users that this user is now online
+            await self.channel_layer.group_send(
+                'presence_updates',
+                {
+                    'type': 'user_status_changed',
+                    'user_id': self.user.id,
+                    'status': 'online'
+                }
+            )
 
-        # Send connection confirmation
-        await self.send(text_data=json.dumps({
-            'type': 'connection_established',
-            'message': f'Presence tracking connected for user {self.user.id}'
-        }))
+            # Send connection confirmation
+            await self.send(text_data=json.dumps({
+                'type': 'connection_established',
+                'message': f'Presence tracking connected for user {self.user.id}'
+            }))
+        except Exception:
+            # Client disconnected during connect() handshake (page refresh,
+            # network drop, etc.) — socket is already closed, safe to ignore.
+            pass
 
     async def disconnect(self, close_code):
         """Mark user as offline when they disconnect."""
@@ -95,7 +100,14 @@ class PresenceConsumer(AsyncWebsocketConsumer):
             # Mark user as offline
             await self.mark_user_offline(self.user.id)
 
-            # Broadcast to all users that this user is now offline
+            # Leave the group FIRST so this consumer does not receive its own
+            # broadcast and attempt to send on an already-closed WebSocket.
+            await self.channel_layer.group_discard(
+                'presence_updates',
+                self.channel_name
+            )
+
+            # Now safe to broadcast — this consumer is no longer in the group.
             await self.channel_layer.group_send(
                 'presence_updates',
                 {
@@ -103,12 +115,6 @@ class PresenceConsumer(AsyncWebsocketConsumer):
                     'user_id': self.user.id,
                     'status': 'offline'
                 }
-            )
-
-            # Leave presence broadcast group
-            await self.channel_layer.group_discard(
-                'presence_updates',
-                self.channel_name
             )
 
     async def receive(self, text_data):
@@ -139,13 +145,17 @@ class PresenceConsumer(AsyncWebsocketConsumer):
 
     async def user_status_changed(self, event):
         """Broadcast user status change to connected clients."""
-        await self.send(text_data=json.dumps({
-            'type': 'user_status_changed',
-            'data': {
-                'user_id': event['user_id'],
-                'status': event['status']
-            }
-        }))
+        try:
+            await self.send(text_data=json.dumps({
+                'type': 'user_status_changed',
+                'data': {
+                    'user_id': event['user_id'],
+                    'status': event['status']
+                }
+            }))
+        except Exception:
+            # Client disconnected before message could be delivered — safe to ignore.
+            pass
 
     @database_sync_to_async
     def get_user(self, user_id):
