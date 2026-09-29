@@ -47,6 +47,10 @@ const ROUTE_MAP = {
     { label: 'Reports', to: '/reports' },
     { label: 'Downtime Analysis' },
   ],
+  '/reports/daily-production': [
+    { label: 'Reports', to: '/reports' },
+    { label: 'Daily Production Reports' },
+  ],
   '/pending-reviews': [
     { label: 'Reports', to: '/reports' },
     { label: 'Pending Inspection Reviews' },
