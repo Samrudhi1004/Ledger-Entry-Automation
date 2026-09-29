@@ -28,11 +28,7 @@ export default function BugReportModal({ onClose }) {
         formData.append('screenshot', screenshot);
       }
 
-      const res = await api.post('/api/support/bug-reports/', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      const res = await api.post('/api/support/bug-reports/', formData);
 
       setSuccess(true);
       setTimeout(() => {
