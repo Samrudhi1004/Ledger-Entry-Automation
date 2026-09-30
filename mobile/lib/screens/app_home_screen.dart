@@ -37,8 +37,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   void initState() {
     super.initState();
     _loadDashboardData();
-    // Silently check for new messages every 15 seconds
-    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    // Silently check for new messages every 5 seconds
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _silentRefreshMessages();
     });
   }
