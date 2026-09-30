@@ -650,8 +650,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         ),
                         if (_unreadMessagesCount > 0)
                           Positioned(
-                            top: 8,
-                            right: 8,
+                            top: 4,
+                            right: 4,
                             child: Container(
                               padding: const EdgeInsets.all(4),
                               decoration: const BoxDecoration(
@@ -677,8 +677,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         ),
                         if (unreadNotifCount > 0)
                           Positioned(
-                            top: 8,
-                            right: 8,
+                            top: 4,
+                            right: 4,
                             child: Container(
                               padding: const EdgeInsets.all(4),
                               decoration: const BoxDecoration(
