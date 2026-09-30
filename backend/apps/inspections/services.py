@@ -827,21 +827,43 @@ class InspectionService:
             from django.utils import timezone as django_tz
             today = django_tz.localdate()
 
-            # Count how many distinct templates ran for this slot today
-            slot_sessions_qs = InspectionSession.objects.filter(
-                machine=session.machine,
-                part=session.part,
-                shift=session.shift,
-                inspection_type='hourly',
-                hourly_unlocked_slot=current_slot,
-                started_at__date=today,
+            # H5 FIX (Sourcery review): derive total_ops from CONFIGURED templates,
+            # not from sessions that already exist for this slot.
+            #
+            # Bug in original logic: if only OP-10 started Slot 2, total_ops = 1
+            # and completed_ops = 1 immediately after OP-10 finishes, so the next
+            # slot unlocks even though OP-02 hasn't started yet.
+            #
+            # Correct approach: count how many hourly InspectionTemplates are
+            # configured for this part. That is the expected number of operations
+            # that must all complete before the slot advances.
+            from apps.parts.models import InspectionTemplate as _IT
+            expected_op_ids = set(
+                _IT.objects
+                .filter(part=session.part, inspection_type='hourly')
+                .values_list('id', flat=True)
             )
-            total_ops = slot_sessions_qs.values('template_id').distinct().count()
-            completed_ops = slot_sessions_qs.filter(
-                status__in=['completed', 'pending_review', 'approved', 'finalized_passed']
-            ).values('template_id').distinct().count()
+            total_ops = len(expected_op_ids)
 
-            all_ops_done = (total_ops > 0 and completed_ops >= total_ops)
+            if total_ops == 0:
+                # No hourly templates configured — nothing to gate on; skip unlock
+                all_ops_done = False
+            else:
+                # Count how many of those configured templates have a completed
+                # session for this exact slot today
+                completed_op_ids = set(
+                    InspectionSession.objects.filter(
+                        machine=session.machine,
+                        part=session.part,
+                        shift=session.shift,
+                        inspection_type='hourly',
+                        hourly_unlocked_slot=current_slot,
+                        started_at__date=today,
+                        status__in=['completed', 'pending_review', 'approved', 'finalized_passed'],
+                        template_id__in=expected_op_ids,
+                    ).values_list('template_id', flat=True).distinct()
+                )
+                all_ops_done = (completed_op_ids >= expected_op_ids)
 
             if all_ops_done:
                 # Advance the next slot on the first_piece (setup) session
