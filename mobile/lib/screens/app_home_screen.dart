@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -30,11 +31,41 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   List<Map<String, dynamic>> _supervisorNotifications = [];
   List<dynamic> _teamMembers = [];
   int _unreadMessagesCount = 0;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+    // Silently check for new messages every 15 seconds
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _silentRefreshMessages();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _silentRefreshMessages() async {
+    if (!mounted) return;
+    try {
+      final msgProvider = Provider.of<MessagingProvider>(context, listen: false);
+      final convs = await msgProvider.globalService.fetchConversations();
+      if (convs.isNotEmpty || _unreadMessagesCount == 0) {
+        int unreadMsgs = 0;
+        for (var c in convs) {
+          unreadMsgs += (c['unread_count'] as int? ?? 0);
+        }
+        if (mounted && _unreadMessagesCount != unreadMsgs) {
+          setState(() {
+            _unreadMessagesCount = unreadMsgs;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadDashboardData() async {
