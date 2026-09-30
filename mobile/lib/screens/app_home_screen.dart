@@ -95,16 +95,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
         });
       }
 
-      // Add General Supervisor Quality Directive Notification
-      notifs.add({
-        'id': 'directive_1',
-        'type': 'directive',
-        'title': '📢 Supervisor Quality Directive',
-        'subtitle': 'Quality Control Supervisor',
-        'message': 'Verify chamfer dimensions (CHA-01) and bore tolerances strictly for production run.',
-        'time': 'Today, 08:00 AM',
-        'is_read': true,
-      });
+
 
       // Fetch dynamic station team operators from backend (100% dynamic from backend API)
       final dynamicUsers = await ApiService.getUsers(role: 'operator');
