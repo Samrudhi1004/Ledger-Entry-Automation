@@ -72,15 +72,28 @@ def process_measurement_in_background(
         return result
     except Exception as exc:
         duration_ms = (time.perf_counter() - t_start) * 1000
+        
+        # Differentiate between client-side issues (404/400) and server bugs (500)
+        exc_str = str(exc)
+        is_not_found = "matching query does not exist" in exc_str
+        is_client_error = is_not_found or isinstance(exc, ValueError)
+        
+        status_code = 404 if is_not_found else 400
+        
         err_res = {
-            'error': str(exc),
-            'status_code': 400,
+            'error': exc_str,
+            'status_code': status_code,
             'process_duration_ms': round(duration_ms, 2),
         }
         if idempotency_key:
             cache_key = f"idempotency_{idempotency_key}"
             cache.set(cache_key, err_res, timeout=1800)
-        logger.error("Error executing measurement task for %s: %s", parameter_code, exc)
+            
+        if is_client_error:
+            logger.warning("Client error in measurement task for %s: %s", parameter_code, exc_str)
+        else:
+            logger.error("Error executing measurement task for %s: %s", parameter_code, exc_str, exc_info=True)
+            
         return err_res
 
 
