@@ -4,10 +4,10 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../services/api_service.dart';
-import 'inspection_voice_screen.dart';
 import 'machine_select_screen.dart';
 import 'report_sheet_screen.dart';
 import 'daily_production_report_screen.dart';
+import 'operation_hourly_slot_screen.dart';
 import 'login_screen.dart';
 import 'messaging/messages_screen.dart';
 
@@ -24,6 +24,9 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
   bool _isSetupApproved = true;
   int _activeSlot = 1;
   String _assignedInspectorName = 'Samruddhi Bartakke';
+  // Per-operation slot tracking (populated from SetupStatus operations[] field)
+  Map<int, List<int>> _opCompletedSlots = {};
+  Map<int, int> _opActiveSlots = {};
 
   @override
   void initState() {
@@ -111,12 +114,26 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
         }
       } catch (_) {}
 
+      // Build per-operation slot info from the new operations[] API field
+      final List<dynamic> opsFromApi = setupStatus['operations'] ?? [];
+      final Map<int, List<int>> opCompletedSlots = {};
+      final Map<int, int> opActiveSlots = {};
+      for (final op in opsFromApi) {
+        final tid = op['template_id'] as int?;
+        if (tid != null) {
+          opCompletedSlots[tid] = List<int>.from(op['completed_slots'] ?? []);
+          opActiveSlots[tid] = (op['active_slot'] ?? 1) as int;
+        }
+      }
+
       if (mounted) {
         setState(() {
           _templates = sorted;
           _isSetupApproved = approved;
           _activeSlot = slot > 0 ? slot : 1;
           _assignedInspectorName = inspectorName;
+          _opCompletedSlots = opCompletedSlots;
+          _opActiveSlots = opActiveSlots;
           _isLoading = false;
         });
       }
@@ -546,122 +563,6 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
             ),
 
             const SizedBox(height: 22),
-            Text(
-              'HOURLY IN-PROCESS INSPECTION SLOTS (1/HR - ${provider.shiftHours}/HR)',
-              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.1),
-            ),
-            const SizedBox(height: 12),
-
-            // Horizontal Hourly Slots Strip
-            SizedBox(
-              height: 52,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: provider.shiftHours,
-                itemBuilder: (context, index) {
-                  final slotNum = index + 1;
-                  final isUnlocked = provider.isHourlySlotUnlocked(slotNum);
-                  final isCompleted = provider.completedHourlySlots.contains(slotNum);
-                  final isSelected = provider.hourlySlot == slotNum;
-
-                  return GestureDetector(
-                    onTap: () {
-                      if (isCompleted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('🔒 Slot $slotNum/HR is already completed & submitted. Rewriting is not allowed.'),
-                            backgroundColor: const Color(0xFFF59E0B),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      } else if (!isUnlocked) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('🔒 Complete Slot ${slotNum - 1}/HR before opening Slot $slotNum/HR.'),
-                            backgroundColor: const Color(0xFFF59E0B),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      } else {
-                        provider.setHourlySlot(slotNum);
-                        setState(() {
-                          _activeSlot = slotNum;
-                        });
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('🟢 Slot $slotNum/HR Selected. Tap operation below to record.'),
-                            backgroundColor: const Color(0xFF10B981),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      }
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? const Color(0xFF10B981).withValues(alpha: 0.25)
-                            : isCompleted
-                                ? Colors.blue.withValues(alpha: 0.15)
-                                : isUnlocked
-                                    ? const Color(0xFF0F172A)
-                                    : const Color(0xFF0F172A),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isSelected
-                              ? const Color(0xFF10B981)
-                              : isCompleted
-                                  ? Colors.blueAccent
-                                  : isUnlocked
-                                      ? const Color(0xFF334155)
-                                      : const Color(0xFF1E293B),
-                          width: isSelected ? 2 : 1,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isCompleted
-                                ? Icons.check_circle_rounded
-                                : isSelected
-                                    ? Icons.play_circle_fill_rounded
-                                    : isUnlocked
-                                        ? Icons.play_arrow_rounded
-                                        : Icons.lock_rounded,
-                            color: isSelected
-                                ? const Color(0xFF10B981)
-                                : isCompleted
-                                    ? Colors.blueAccent
-                                    : isUnlocked
-                                        ? Colors.white
-                                        : const Color(0xFF64748B),
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '$slotNum hr',
-                            style: TextStyle(
-                              color: isSelected
-                                  ? const Color(0xFF10B981)
-                                  : isUnlocked
-                                      ? Colors.white
-                                      : const Color(0xFF64748B),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          if (isCompleted) ...[
-                            const SizedBox(width: 4),
-                            const Icon(Icons.check, color: Colors.blueAccent, size: 12),
-                          ],
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
 
             const SizedBox(height: 24),
             Row(
@@ -764,17 +665,66 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                                   ),
                                 ],
                               ),
+                              const SizedBox(height: 6),
+                              // Mini slot progress preview for this operation
+                              Builder(builder: (_) {
+                                final tid = t['id'] as int? ?? 0;
+                                final done = _opCompletedSlots[tid] ?? [];
+                                final active = _opActiveSlots[tid] ?? 1;
+                                return Wrap(
+                                  spacing: 4,
+                                  runSpacing: 4,
+                                  children: List.generate(
+                                    provider.shiftHours > 8 ? 8 : provider.shiftHours,
+                                    (i) {
+                                      final s = i + 1;
+                                      final isDone = done.contains(s);
+                                      final isAct = s == active && !isDone;
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: isDone
+                                              ? Colors.blueAccent.withValues(alpha: 0.15)
+                                              : isAct
+                                                  ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                                  : Colors.transparent,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: isDone
+                                                ? Colors.blueAccent
+                                                : isAct
+                                                    ? const Color(0xFF10B981)
+                                                    : const Color(0xFF334155),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          isDone ? '✓$s' : isAct ? '▶$s' : '🔒$s',
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            color: isDone
+                                                ? Colors.blueAccent
+                                                : isAct
+                                                    ? const Color(0xFF10B981)
+                                                    : const Color(0xFF64748B),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                );
+                              }),
                             ],
                           ),
                           trailing: Icon(
                             _isSetupApproved ? Icons.edit_note_rounded : Icons.lock_rounded,
                             color: _isSetupApproved ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
                           ),
-                          onTap: () async {
+                          onTap: () {
                             if (!_isSetupApproved && provider.completedHourlySlots.isEmpty) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('🔒 Hourly inspections are locked. Waiting for Quality Inspector First Piece finalization.'),
+                                  content: Text('Hourly inspections locked. Waiting for Quality Inspector First Piece finalization.'),
                                   backgroundColor: Color(0xFFF59E0B),
                                   behavior: SnackBarBehavior.floating,
                                 ),
@@ -782,36 +732,27 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                               return;
                             }
 
-                            if (provider.completedHourlySlots.contains(_activeSlot)) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('🔒 Slot $_activeSlot/HR is already completed & submitted. Rewriting is not allowed.'),
-                                  backgroundColor: const Color(0xFFF59E0B),
-                                  behavior: SnackBarBehavior.floating,
+                            // Navigate to this operation's per-operation slot screen
+                            final tid = t['id'] as int? ?? 0;
+                            final List<int> completedSlotsForOp =
+                                _opCompletedSlots[tid] ?? [];
+                            final int activeSlotForOp =
+                                _opActiveSlots[tid] ?? 1;
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => OperationHourlySlotScreen(
+                                  template: t,
+                                  totalSlots: provider.shiftHours,
+                                  completedSlots: completedSlotsForOp,
+                                  activeSlot: activeSlotForOp,
                                 ),
-                              );
-                              return;
-                            }
-
-                            await provider.loadParameters(t);
-                            final started = await provider.startSession(
-                              trial: 1,
-                              inspectionType: 'hourly',
-                              hourlySlot: _activeSlot,
-                            );
-                            if (started && context.mounted) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
-                              );
-                            } else if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Cannot start hourly inspection: ${provider.errorMessage ?? "Awaiting 1st Piece finalization."}'),
-                                  backgroundColor: const Color(0xFFEF4444),
-                                ),
-                              );
-                            }
+                              ),
+                            ).then((_) {
+                              // Refresh when returning from slot screen
+                              setState(() { _isLoading = true; });
+                              _loadOperatorTemplates();
+                            });
                           },
                         ),
                       );

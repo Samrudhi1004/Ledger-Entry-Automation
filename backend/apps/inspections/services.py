@@ -298,6 +298,12 @@ class InspectionService:
             filter_kwargs['trial_number'] = trial_number
         elif actual_inspection_type == 'hourly':
             filter_kwargs['hourly_unlocked_slot'] = hourly_slot
+            # H5 FIX (per-operation session isolation): include the template so that
+            # two different operations (e.g. OP-10 and OP-02) running on the same
+            # machine+part+shift at the same slot each get their OWN InspectionSession.
+            # Without this, both operators hit the same session row and corrupt each
+            # other's measurement data (race condition / data collision).
+            filter_kwargs['template'] = template
 
         with transaction.atomic():
             # Lock any matching rows so concurrent requests queue up here
@@ -811,6 +817,72 @@ class InspectionService:
             },
             save=True
         )
+
+        # H5 FIX: Per-operation slot unlock.
+        # When an hourly session is completed, check if ALL operations
+        # (templates) for this machine+part+shift+slot are also done.
+        # Only then unlock the next slot on the parent first_piece session.
+        if session.inspection_type == 'hourly':
+            current_slot = session.hourly_unlocked_slot
+            from django.utils import timezone as django_tz
+            today = django_tz.localdate()
+
+            # H5 FIX (Sourcery review): derive total_ops from CONFIGURED templates,
+            # not from sessions that already exist for this slot.
+            #
+            # Bug in original logic: if only OP-10 started Slot 2, total_ops = 1
+            # and completed_ops = 1 immediately after OP-10 finishes, so the next
+            # slot unlocks even though OP-02 hasn't started yet.
+            #
+            # Correct approach: count how many hourly InspectionTemplates are
+            # configured for this part. That is the expected number of operations
+            # that must all complete before the slot advances.
+            from apps.parts.models import InspectionTemplate as _IT
+            expected_op_ids = set(
+                _IT.objects
+                .filter(part=session.part, inspection_type='hourly')
+                .values_list('id', flat=True)
+            )
+            total_ops = len(expected_op_ids)
+
+            if total_ops == 0:
+                # No hourly templates configured — nothing to gate on; skip unlock
+                all_ops_done = False
+            else:
+                # Count how many of those configured templates have a completed
+                # session for this exact slot today
+                completed_op_ids = set(
+                    InspectionSession.objects.filter(
+                        machine=session.machine,
+                        part=session.part,
+                        shift=session.shift,
+                        inspection_type='hourly',
+                        hourly_unlocked_slot=current_slot,
+                        started_at__date=today,
+                        status__in=['completed', 'pending_review', 'approved', 'finalized_passed'],
+                        template_id__in=expected_op_ids,
+                    ).values_list('template_id', flat=True).distinct()
+                )
+                all_ops_done = (completed_op_ids >= expected_op_ids)
+
+            if all_ops_done:
+                # Advance the next slot on the first_piece (setup) session
+                fp_session = InspectionSession.objects.filter(
+                    machine=session.machine,
+                    part=session.part,
+                    shift=session.shift,
+                    inspection_type='first_piece',
+                    started_at__date=today,
+                    is_setup_approved=True,
+                ).order_by('-started_at').first()
+
+                if fp_session and fp_session.hourly_unlocked_slot == current_slot:
+                    fp_session.hourly_unlocked_slot = current_slot + 1
+                    fp_session.save(update_fields=['hourly_unlocked_slot'])
+                    logger.info(
+                        '[SLOT UNLOCK] All %d ops done for slot %d. Unlocked slot %d on FP session %s.',
+                        total_ops, current_slot, current_slot + 1, fp_session.session_id,
+                    )
 
         self._push_session_event(session, 'session_completed')
         return session
