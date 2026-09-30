@@ -29,7 +29,7 @@ class MessageBubble extends StatelessWidget {
 
   String _formatTime(String timestamp) {
     try {
-      final dateTime = DateTime.parse(timestamp);
+      final dateTime = DateTime.parse(timestamp).toLocal();
       return DateFormat('HH:mm').format(dateTime);
     } catch (e) {
       return '';
