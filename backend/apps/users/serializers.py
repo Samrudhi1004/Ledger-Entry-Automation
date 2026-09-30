@@ -162,9 +162,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_permissions(self, obj):
         return sorted(obj.effective_access())
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._role_cache = None
+
     def get_role_name(self, obj):
-        role = AccessRole.objects.filter(slug=obj.role).first()
-        return role.name if role else obj.role
+        if self._role_cache is None:
+            self._role_cache = {r.slug: r.name for r in AccessRole.objects.all()}
+        return self._role_cache.get(obj.role, obj.role)
 
     def get_profile_photo_url(self, obj):
         request = self.context.get('request')
@@ -197,9 +202,14 @@ class UserListSerializer(serializers.ModelSerializer):
     assigned_shift_display = serializers.CharField(source='get_assigned_shift_display', read_only=True)
     role_name = serializers.SerializerMethodField()
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._role_cache = None
+
     def get_role_name(self, obj):
-        role = AccessRole.objects.filter(slug=obj.role).first()
-        return role.name if role else obj.role
+        if self._role_cache is None:
+            self._role_cache = {r.slug: r.name for r in AccessRole.objects.all()}
+        return self._role_cache.get(obj.role, obj.role)
 
     class Meta:
         model  = User
