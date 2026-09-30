@@ -7,22 +7,23 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.document_control.models import DCRNotification
 from apps.users.models import User
 
 from .models import CalibrationEmailLog, CalibrationEquipment
 
 
-def _access_emails(permission, excluding=None):
-    return [user.email for user in User.objects.filter(is_active=True).exclude(email='')
+def _access_users(permission, excluding=None):
+    return [user for user in User.objects.filter(is_active=True)
             if user.has_access(permission) and not (excluding and user.has_access(excluding))]
 
 
-def _calibrator_emails():
-    return _access_emails('calibration.manage', excluding='roles.manage')
+def _calibrator_users():
+    return _access_users('calibration.manage', excluding='roles.manage')
 
 
-def _admin_emails():
-    return [user.email for user in User.objects.filter(is_active=True).exclude(email='')
+def _admin_users():
+    return [user for user in User.objects.filter(is_active=True)
             if user.has_access('roles.manage') and user.has_access('calibration.view')]
 
 
@@ -37,13 +38,35 @@ def _unique_emails(*email_lists):
     return emails
 
 
-def _send_once(key, subject, body, recipients, html_message=None):
-    if not recipients:
-        return False
+def _unique_users(*user_lists):
+    users = []
+    seen = set()
+    for user_list in user_lists:
+        for user in user_list:
+            if user.pk not in seen:
+                seen.add(user.pk)
+                users.append(user)
+    return users
+
+
+def _claim_delivery(key):
     try:
         with transaction.atomic():
             CalibrationEmailLog.objects.create(key=key)
     except IntegrityError:
+        return False
+    return True
+
+
+def _send_email_once(key, subject, body, recipients, html_message=None):
+    if not recipients:
+        return False
+    # Preserve the old event key so deploying this change cannot resend an
+    # email whose delivery was already recorded by the previous implementation.
+    if CalibrationEmailLog.objects.filter(key=key).exists():
+        return False
+    email_key = f'{key}:email'
+    if not _claim_delivery(email_key):
         return False
 
     try:
@@ -56,9 +79,54 @@ def _send_once(key, subject, body, recipients, html_message=None):
             html_message=html_message,
         )
     except Exception:
-        CalibrationEmailLog.objects.filter(key=key).delete()
+        CalibrationEmailLog.objects.filter(key=email_key).delete()
         raise
     return True
+
+
+def _send_bell_once(key, notification_users, notification_title, notification_message, notification_url):
+    if not notification_users:
+        return False
+    bell_key = f'{key}:bell'
+    with transaction.atomic():
+        if not _claim_delivery(bell_key):
+            return False
+        DCRNotification.objects.bulk_create([
+            DCRNotification(
+                recipient=user,
+                title=notification_title,
+                message=notification_message,
+                action_type=DCRNotification.ActionType.GENERAL,
+                action_url=notification_url,
+            )
+            for user in notification_users
+        ])
+    return True
+
+
+def _send_once(
+    key,
+    subject,
+    body,
+    recipients,
+    html_message=None,
+    notification_users=None,
+    notification_title='',
+    notification_message='',
+    notification_url='',
+):
+    notification_users = notification_users or []
+    if not recipients and not notification_users:
+        return False
+    email_sent = _send_email_once(key, subject, body, recipients, html_message)
+    bell_sent = _send_bell_once(
+        key,
+        notification_users,
+        notification_title,
+        notification_message,
+        notification_url,
+    )
+    return email_sent or bell_sent
 
 
 def _next_month(today):
@@ -217,8 +285,8 @@ def _schedule_email_html(today, month_label, next_equipment):
 '''
 
 
-def _alert_email_content(today):
-    alerts = _calibration_alerts(today)
+def _alert_email_content(today, alerts=None):
+    alerts = alerts if alerts is not None else _calibration_alerts(today)
     alert_lines = '\n'.join(_equipment_line(item, today) for item in alerts)
     body = (
         f'Calibration alert for {today:%d %B %Y}\n\n'
@@ -269,10 +337,11 @@ def _alert_email_content(today):
     return f'[Calibration Alert] Action Required : {len(alerts)} equipment', body, html_message, alerts
 
 
-def _send_monthly_due_list(today, recipients):
+def _send_monthly_due_list(today, recipients, notification_users):
     if today.day < 25:
         return False
     target_month, next_equipment = _next_month_equipment(today)
+    month_label = target_month.strftime('%B %Y')
     subject, body, html_message, _ = _schedule_email_content(today)
     if not next_equipment:
         return False
@@ -282,27 +351,49 @@ def _send_monthly_due_list(today, recipients):
         body,
         recipients,
         html_message,
+        notification_users=notification_users,
+        notification_title=f'Calibration plan ready for {month_label}',
+        notification_message=(
+            f'{len(next_equipment)} equipment scheduled for calibration in {month_label}. '
+            'Review the calibration plan.'
+        ),
+        notification_url=f'/calibration/plan?year={target_month.year}',
     )
 
 
-def _send_calibration_alerts(today, recipients):
-    if not _calibration_alerts(today):
+def _send_calibration_alerts(today, recipients, notification_users):
+    alerts = _calibration_alerts(today)
+    if not alerts:
         return False
-    subject, body, html_message, _ = _alert_email_content(today)
+    subject, body, html_message, _ = _alert_email_content(today, alerts)
     return _send_once(
         f'calibration-alert:{today:%Y-%m-%d}',
         subject,
         body,
         recipients,
         html_message,
+        notification_users=notification_users,
+        notification_title='Calibration action required',
+        notification_message=(
+            f'{len(alerts)} equipment requires attention: '
+            'due within 10 days, overdue, or under repair.'
+        ),
+        notification_url='/calibration',
     )
 
 
 def check_calibration_email_notifications(today=None):
     today = today or timezone.localdate()
-    calibrator_recipients = _calibrator_emails()
-    if calibrator_recipients:
-        _send_monthly_due_list(today, calibrator_recipients)
-    alert_recipients = _unique_emails(_admin_emails(), calibrator_recipients)
-    if alert_recipients:
-        _send_calibration_alerts(today, alert_recipients)
+    calibrator_users = _calibrator_users()
+    calibrator_recipients = _unique_emails(
+        [user.email for user in calibrator_users if user.email]
+    )
+    if calibrator_recipients or calibrator_users:
+        _send_monthly_due_list(today, calibrator_recipients, calibrator_users)
+
+    alert_users = _unique_users(_admin_users(), calibrator_users)
+    alert_recipients = _unique_emails(
+        [user.email for user in alert_users if user.email]
+    )
+    if alert_recipients or alert_users:
+        _send_calibration_alerts(today, alert_recipients, alert_users)
