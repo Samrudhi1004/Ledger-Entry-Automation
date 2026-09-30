@@ -642,6 +642,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                       },
                     ),
                     Stack(
+                      clipBehavior: Clip.none,
                       children: [
                         IconButton(
                           icon: const Icon(Icons.chat_outlined, color: Color(0xFF4F46E5), size: 24),
@@ -650,8 +651,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         ),
                         if (_unreadMessagesCount > 0)
                           Positioned(
-                            top: 8,
-                            right: 8,
+                            top: 0,
+                            right: 0,
                             child: Container(
                               padding: const EdgeInsets.all(4),
                               decoration: const BoxDecoration(
@@ -669,6 +670,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                       ],
                     ),
                     Stack(
+                      clipBehavior: Clip.none,
                       children: [
                         IconButton(
                           icon: const Icon(Icons.notifications_none_rounded, color: Color(0xFF0F172A), size: 26),
@@ -677,8 +679,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         ),
                         if (unreadNotifCount > 0)
                           Positioned(
-                            top: 8,
-                            right: 8,
+                            top: 0,
+                            right: 0,
                             child: Container(
                               padding: const EdgeInsets.all(4),
                               decoration: const BoxDecoration(
