@@ -75,10 +75,15 @@ def process_measurement_in_background(
         
         # Differentiate between client-side issues (404/400) and server bugs (500)
         exc_str = str(exc)
-        is_not_found = "matching query does not exist" in exc_str
-        is_client_error = is_not_found or isinstance(exc, ValueError)
+        is_not_found = "matching query does not exist" in exc_str or "not found for part" in exc_str
+        is_client_error = (
+            is_not_found or
+            "First Piece Inspection is limited" in exc_str or
+            "No active inspection template found" in exc_str or
+            (isinstance(exc, ValueError) and "could not convert string to float" in exc_str)
+        )
         
-        status_code = 404 if is_not_found else 400
+        status_code = 404 if is_not_found else (400 if is_client_error else 500)
         
         err_res = {
             'error': exc_str,
