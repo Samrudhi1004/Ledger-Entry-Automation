@@ -101,7 +101,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
   String _formatTime(String? timestamp) {
     if (timestamp == null) return '';
     try {
-      final dateTime = DateTime.parse(timestamp);
+      final dateTime = DateTime.parse(timestamp).toLocal();
       final now = DateTime.now();
       final difference = now.difference(dateTime);
 
