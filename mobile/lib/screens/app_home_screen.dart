@@ -100,32 +100,43 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
 
 
       // Fetch dynamic station team operators from backend (100% dynamic from backend API)
-      final dynamicUsers = await ApiService.getUsers(role: 'operator');
-      final operatorsOnly = dynamicUsers.where((u) {
-        final role = (u['role'] ?? '').toString().toLowerCase();
-        return role == 'operator';
-      }).toList();
-
-      // Fetch unread messages count
-      int unreadMsgs = 0;
+      List<dynamic> operatorsOnly = _teamMembers;
       try {
-        final msgProvider = Provider.of<MessagingProvider>(context, listen: false);
-        final convs = await msgProvider.globalService.fetchConversations();
-        for (var c in convs) {
-          unreadMsgs += (c['unread_count'] as int? ?? 0);
-        }
+        final dynamicUsers = await ApiService.getUsers(role: 'operator');
+        operatorsOnly = dynamicUsers.where((u) {
+          final role = (u['role'] ?? '').toString().toLowerCase();
+          return role == 'operator';
+        }).toList();
       } catch (_) {}
 
       if (mounted) {
         setState(() {
           _supervisorNotifications = notifs;
           _teamMembers = operatorsOnly;
-          _unreadMessagesCount = unreadMsgs;
         });
       }
     } catch (_) {
       // Handle error silently
     }
+
+    // Fetch unread messages independently
+    try {
+      final msgProvider = Provider.of<MessagingProvider>(context, listen: false);
+      final convs = await msgProvider.globalService.fetchConversations();
+      
+      // Preserve old count on failure (when fetch returns empty but we know we had unread messages)
+      if (convs.isNotEmpty || _unreadMessagesCount == 0) {
+        int unreadMsgs = 0;
+        for (var c in convs) {
+          unreadMsgs += (c['unread_count'] as int? ?? 0);
+        }
+        if (mounted) {
+          setState(() {
+            _unreadMessagesCount = unreadMsgs;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   void _showNotificationsModal(BuildContext context) {
