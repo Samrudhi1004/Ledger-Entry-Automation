@@ -591,6 +591,11 @@ class SetupStatusView(APIView):
     """
     GET /api/inspections/setup-status/?machine=2
     Returns whether 1st Piece Inspection is approved for a machine.
+
+    New (per-operation session isolation):
+      Response includes an `operations[]` array where each entry has its own
+      completed_slots, active_slot, and per-slot session_id list. This powers
+      the 2-level drill-down UX: Operations List -> Per-Op Slot Screen -> Voice Entry.
     """
     permission_classes = [HasAccess]
     access_key = 'quality.inspections.record'
@@ -604,7 +609,7 @@ class SetupStatusView(APIView):
         from django.utils import timezone
         today = timezone.localdate()
 
-        # ── Build shared machine filter ────────────────────────────────────────
+        # ── Build shared machine filter ────────────────────────────────────────────────────────
         if str(machine_id).isdigit():
             mach_q = Q(machine_id=int(machine_id)) | Q(machine__machine_code=machine_id)
         else:
@@ -619,16 +624,19 @@ class SetupStatusView(APIView):
             inspection_type='first_piece',
         ).order_by('-trial_number', '-started_at').first()
 
-        # ── 2. Find today's latest hourly session ──────────────────────────────
-        hourly_session = InspectionSession.objects.select_related(
-            'part', 'machine', 'machine__plant__factory'
+        # ── 2. Find ALL of today's hourly sessions (all operations, all slots) ────
+        hourly_sessions_qs = InspectionSession.objects.select_related(
+            'part', 'machine', 'machine__plant__factory', 'template'
         ).filter(
             mach_q,
             started_at__date=today,
             inspection_type='hourly',
-        ).order_by('-started_at').first()
+        ).order_by('template_id', 'hourly_unlocked_slot', '-started_at')
 
-        # ── 3. Determine "active" session for generic session_id field ─────────
+        # Latest single hourly session kept for backward compat
+        hourly_session = hourly_sessions_qs.first()
+
+        # ── 3. Determine "active" session for generic session_id field ───────────
         # Prioritize the hourly session if it exists so operators don't get reset to hour 1
         session = hourly_session or fp_session
         has_today = bool(session)
@@ -644,37 +652,80 @@ class SetupStatusView(APIView):
                 'has_today_report': False,
                 'is_setup_approved': False,
                 'status': 'no_session_today',
-                'message': 'No inspection started for today.'
+                'message': 'No inspection started for today.',
+                'operations': [],
             })
 
-        # ── 5. Compute completed hourly slots from hourly sessions directly ────
-        # Use get_session_document (which merges all related sessions) on the
-        # first_piece session so we get both trial and hourly measurements.
-        completed_slots = []
-        try:
-            ref_session = fp_session or session
-            doc = _service.get_session_document(str(ref_session.session_id))
-            if doc and 'measurements' in doc:
-                slot_set = set()
-                for m in doc['measurements']:
-                    if m.get('inspection_type') == 'hourly':
-                        slot = m.get('hourly_slot')
-                        if slot:
-                            try:
-                                slot_set.add(int(slot))
-                            except Exception:
-                                pass
-                completed_slots = sorted(list(slot_set))
-        except Exception:
-            pass
+        # ── 5. Build per-operation operations[] array ────────────────────────────
+        # Group today's hourly sessions by template (operation).
+        # For each template, collect per-slot session info.
+        from collections import defaultdict
+        operations = []
+        template_sessions = defaultdict(list)
+        for hs in hourly_sessions_qs:
+            tid = hs.template_id
+            if tid is not None:
+                template_sessions[tid].append(hs)
 
-        next_slot = (max(completed_slots) + 1) if completed_slots else 1
+        for tid, sessions_for_op in template_sessions.items():
+            # De-duplicate: keep only the latest session per slot
+            slot_map = {}
+            for s in sessions_for_op:
+                slot = s.hourly_unlocked_slot
+                if slot not in slot_map:
+                    slot_map[slot] = s
 
-        # ── 6. Extract part / machine metadata from the primary session ────────
+            completed_slots_op = []
+            active_slot_op = None
+            active_session_id_op = None
+            slot_details = []
+
+            for slot_num in sorted(slot_map.keys()):
+                s = slot_map[slot_num]
+                is_done = (
+                    s.status in ('completed', 'approved', 'finalized_passed')
+                    or (s.total_parameters > 0 and s.recorded_count >= s.total_parameters)
+                )
+                if is_done:
+                    completed_slots_op.append(slot_num)
+                elif active_slot_op is None:
+                    active_slot_op = slot_num
+                    active_session_id_op = str(s.session_id)
+
+                slot_details.append({
+                    'slot':             slot_num,
+                    'session_id':       str(s.session_id),
+                    'status':           s.status,
+                    'recorded_count':   s.recorded_count,
+                    'total_parameters': s.total_parameters,
+                    'is_complete':      is_done,
+                })
+
+            next_slot_op = (max(completed_slots_op) + 1) if completed_slots_op else 1
+
+            t = sessions_for_op[0].template
+            operations.append({
+                'template_id':        tid,
+                'template_name':      (t.name or '') if t else '',
+                'inspection_type':    (t.inspection_type if t else 'hourly'),
+                'total_parameters':   (t.target_parameter_count if t else 0),
+                'completed_slots':    completed_slots_op,
+                'active_slot':        active_slot_op or next_slot_op,
+                'active_session_id':  active_session_id_op,
+                'next_unlocked_slot': next_slot_op,
+                'hourly_sessions':    slot_details,
+            })
+
+        # ── 6. Legacy completed_slots (union across all operations) ───────────────
+        # Kept for backward compatibility with old mobile clients.
+        all_completed = sorted({s for op in operations for s in op['completed_slots']})
+        next_slot_global = (max(all_completed) + 1) if all_completed else 1
+
+        # ── 7. Extract part / machine metadata from the primary session ────────
         ref = fp_session or session
-        part_id   = ref.part.id if ref.part else None
-        part_no   = ref.part.part_number if ref.part else None
-        part_name = ref.part.part_name if ref.part else None
+        part_id    = ref.part.id if ref.part else None
+        part_no    = ref.part.part_number if ref.part else None
+        part_name  = ref.part.part_name if ref.part else None
         mach_db_id = ref.machine.id if ref.machine else None
 
         shift_hrs = 8
@@ -682,11 +733,10 @@ class SetupStatusView(APIView):
             shift_hrs = ref.machine.plant.factory.shift_hours or 8
 
         return Response({
+            # ── Backward-compatible fields ──────────────────────────────────────────────────────────
             'has_today_report':          has_today,
             'is_setup_approved':         True,
-            # Generic session_id : return the ACTIVE session (hourly if exists, else first_piece)
             'session_id':                str(session.session_id) if session else None,
-            # Explicit typed IDs for report screens
             'first_piece_session_id':    str(fp_session.session_id) if fp_session else None,
             'latest_hourly_session_id':  str(hourly_session.session_id) if hourly_session else None,
             'status':                    session.status,
@@ -697,11 +747,12 @@ class SetupStatusView(APIView):
             'part_id':                   part_id,
             'part_number':               part_no,
             'part_name':                 part_name,
-            'completed_hourly_slots':    completed_slots,
-            'next_unlocked_slot':        next_slot,
-            'message':                   'Today\'s inspection report active.' if has_today else 'No inspection started for today.',
+            'completed_hourly_slots':    all_completed,
+            'next_unlocked_slot':        next_slot_global,
+            'message':                   "Today's inspection report active." if has_today else 'No inspection started for today.',
+            # ── New per-operation array ───────────────────────────────────────────────────────────────
+            'operations':                operations,
         })
-
 
 # ─── Finalize First Piece Inspection ──────────────────────────────────────
 class FinalizeFirstPieceView(APIView):
