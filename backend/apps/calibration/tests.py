@@ -12,6 +12,8 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
+from apps.document_control.models import DCRNotification
+
 from .models import CalibrationEmailLog, CalibrationEquipment, CalibrationPlanEntry, CalibrationRecord
 from .notification_service import check_calibration_email_notifications
 from .serializers import CalibrationEquipmentSerializer
@@ -84,6 +86,10 @@ class CalibrationEmailNotificationTests(TestCase):
         self.assertIn('EQ-MONTHLY', send_mail.call_args.args[1])
         self.assertNotIn('CURRENT MONTH ALERTS', send_mail.call_args.args[1])
         self.assertEqual(CalibrationEmailLog.objects.count(), 1)
+        notification = DCRNotification.objects.get(recipient=self.calibrator)
+        self.assertEqual(notification.title, 'Calibration plan ready for October 2026')
+        self.assertEqual(notification.action_url, '/calibration/plan?year=2026')
+        self.assertFalse(notification.is_read)
 
     @patch('apps.calibration.notification_service.send_mail')
     def test_alerts_are_sent_to_admins_and_calibrators(self, send_mail):
@@ -102,6 +108,12 @@ class CalibrationEmailNotificationTests(TestCase):
         self.assertEqual(send_mail.call_args.args[3], [self.admin.email, self.calibrator.email])
         self.assertIn('EQ-DUE-SOON', send_mail.call_args.args[1])
         self.assertIn('EQ-REPAIR', send_mail.call_args.args[1])
+        notifications = DCRNotification.objects.filter(action_url='/calibration')
+        self.assertEqual(notifications.count(), 2)
+        self.assertSetEqual(
+            set(notifications.values_list('recipient_id', flat=True)),
+            {self.admin.id, self.calibrator.id},
+        )
 
 def equipment_data(**overrides):
     data = {
