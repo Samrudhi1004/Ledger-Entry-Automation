@@ -79,8 +79,7 @@ def process_measurement_in_background(
         is_client_error = (
             is_not_found or
             "First Piece Inspection is limited" in exc_str or
-            "No active inspection template found" in exc_str or
-            (isinstance(exc, ValueError) and "could not convert string to float" in exc_str)
+            "No active inspection template found" in exc_str
         )
         
         status_code = 404 if is_not_found else (400 if is_client_error else 500)
