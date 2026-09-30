@@ -164,12 +164,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._role_cache = None
+        self._role_cache = {}
 
     def get_role_name(self, obj):
-        if self._role_cache is None:
-            self._role_cache = {r.slug: r.name for r in AccessRole.objects.all()}
-        return self._role_cache.get(obj.role, obj.role)
+        if obj.role not in self._role_cache:
+            role = AccessRole.objects.only('name').filter(slug=obj.role).first()
+            self._role_cache[obj.role] = role.name if role else obj.role
+        return self._role_cache[obj.role]
 
     def get_profile_photo_url(self, obj):
         request = self.context.get('request')
@@ -204,12 +205,13 @@ class UserListSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._role_cache = None
+        self._role_cache = {}
 
     def get_role_name(self, obj):
-        if self._role_cache is None:
-            self._role_cache = {r.slug: r.name for r in AccessRole.objects.all()}
-        return self._role_cache.get(obj.role, obj.role)
+        if obj.role not in self._role_cache:
+            role = AccessRole.objects.only('name').filter(slug=obj.role).first()
+            self._role_cache[obj.role] = role.name if role else obj.role
+        return self._role_cache[obj.role]
 
     class Meta:
         model  = User
