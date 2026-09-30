@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
+import '../providers/messaging_provider.dart';
 import '../services/api_service.dart';
 import '../services/persistence_service.dart';
 import 'account_screen.dart';
@@ -28,6 +29,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   int _currentIndex = 0;
   List<Map<String, dynamic>> _supervisorNotifications = [];
   List<dynamic> _teamMembers = [];
+  int _unreadMessagesCount = 0;
 
   @override
   void initState() {
@@ -98,11 +100,14 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
 
 
       // Fetch dynamic station team operators from backend (100% dynamic from backend API)
-      final dynamicUsers = await ApiService.getUsers(role: 'operator');
-      final operatorsOnly = dynamicUsers.where((u) {
-        final role = (u['role'] ?? '').toString().toLowerCase();
-        return role == 'operator';
-      }).toList();
+      List<dynamic> operatorsOnly = _teamMembers;
+      try {
+        final dynamicUsers = await ApiService.getUsers(role: 'operator');
+        operatorsOnly = dynamicUsers.where((u) {
+          final role = (u['role'] ?? '').toString().toLowerCase();
+          return role == 'operator';
+        }).toList();
+      } catch (_) {}
 
       if (mounted) {
         setState(() {
@@ -113,6 +118,25 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
     } catch (_) {
       // Handle error silently
     }
+
+    // Fetch unread messages independently
+    try {
+      final msgProvider = Provider.of<MessagingProvider>(context, listen: false);
+      final convs = await msgProvider.globalService.fetchConversations();
+      
+      // Preserve old count on failure (when fetch returns empty but we know we had unread messages)
+      if (convs.isNotEmpty || _unreadMessagesCount == 0) {
+        int unreadMsgs = 0;
+        for (var c in convs) {
+          unreadMsgs += (c['unread_count'] as int? ?? 0);
+        }
+        if (mounted) {
+          setState(() {
+            _unreadMessagesCount = unreadMsgs;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   void _showNotificationsModal(BuildContext context) {
@@ -617,10 +641,32 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         );
                       },
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.chat_outlined, color: Color(0xFF4F46E5), size: 24),
-                      tooltip: 'Messages',
-                      onPressed: () => Navigator.pushNamed(context, '/messages'),
+                    Stack(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.chat_outlined, color: Color(0xFF4F46E5), size: 24),
+                          tooltip: 'Messages',
+                          onPressed: () => Navigator.pushNamed(context, '/messages').then((_) => _loadDashboardData()),
+                        ),
+                        if (_unreadMessagesCount > 0)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFEF4444),
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                              child: Text(
+                                '$_unreadMessagesCount',
+                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     Stack(
                       children: [
