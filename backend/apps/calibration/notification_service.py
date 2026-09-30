@@ -49,6 +49,61 @@ def _unique_users(*user_lists):
     return users
 
 
+def _claim_delivery(key):
+    try:
+        with transaction.atomic():
+            CalibrationEmailLog.objects.create(key=key)
+    except IntegrityError:
+        return False
+    return True
+
+
+def _send_email_once(key, subject, body, recipients, html_message=None):
+    if not recipients:
+        return False
+    # Preserve the old event key so deploying this change cannot resend an
+    # email whose delivery was already recorded by the previous implementation.
+    if CalibrationEmailLog.objects.filter(key=key).exists():
+        return False
+    email_key = f'{key}:email'
+    if not _claim_delivery(email_key):
+        return False
+
+    try:
+        send_mail(
+            subject,
+            body,
+            settings.DEFAULT_FROM_EMAIL,
+            recipients,
+            fail_silently=False,
+            html_message=html_message,
+        )
+    except Exception:
+        CalibrationEmailLog.objects.filter(key=email_key).delete()
+        raise
+    return True
+
+
+def _send_bell_once(key, notification_users, notification_title, notification_message, notification_url):
+    if not notification_users:
+        return False
+    bell_key = f'{key}:bell'
+    with transaction.atomic():
+        if not _claim_delivery(bell_key):
+            return False
+        DCRNotification.objects.bulk_create([
+            DCRNotification(
+                recipient=user,
+                title=notification_title,
+                message=notification_message,
+                action_type=DCRNotification.ActionType.GENERAL,
+                action_url=notification_url,
+            )
+            for user in notification_users
+        ])
+    return True
+
+
 def _send_once(
     key,
     subject,
@@ -63,36 +118,15 @@ def _send_once(
     notification_users = notification_users or []
     if not recipients and not notification_users:
         return False
-    try:
-        with transaction.atomic():
-            CalibrationEmailLog.objects.create(key=key)
-    except IntegrityError:
-        return False
-
-    try:
-        if recipients:
-            send_mail(
-                subject,
-                body,
-                settings.DEFAULT_FROM_EMAIL,
-                recipients,
-                fail_silently=False,
-                html_message=html_message,
-            )
-        DCRNotification.objects.bulk_create([
-            DCRNotification(
-                recipient=user,
-                title=notification_title,
-                message=notification_message,
-                action_type=DCRNotification.ActionType.GENERAL,
-                action_url=notification_url,
-            )
-            for user in notification_users
-        ])
-    except Exception:
-        CalibrationEmailLog.objects.filter(key=key).delete()
-        raise
-    return True
+    email_sent = _send_email_once(key, subject, body, recipients, html_message)
+    bell_sent = _send_bell_once(
+        key,
+        notification_users,
+        notification_title,
+        notification_message,
+        notification_url,
+    )
+    return email_sent or bell_sent
 
 
 def _next_month(today):

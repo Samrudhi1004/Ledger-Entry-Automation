@@ -85,7 +85,7 @@ class CalibrationEmailNotificationTests(TestCase):
         self.assertEqual(send_mail.call_args.args[3], [self.calibrator.email])
         self.assertIn('EQ-MONTHLY', send_mail.call_args.args[1])
         self.assertNotIn('CURRENT MONTH ALERTS', send_mail.call_args.args[1])
-        self.assertEqual(CalibrationEmailLog.objects.count(), 1)
+        self.assertEqual(CalibrationEmailLog.objects.count(), 2)
         notification = DCRNotification.objects.get(recipient=self.calibrator)
         self.assertEqual(notification.title, 'Calibration plan ready for October 2026')
         self.assertEqual(notification.action_url, '/calibration/plan?year=2026')
@@ -114,6 +114,35 @@ class CalibrationEmailNotificationTests(TestCase):
             set(notifications.values_list('recipient_id', flat=True)),
             {self.admin.id, self.calibrator.id},
         )
+
+    @patch('apps.calibration.notification_service.send_mail')
+    def test_bell_retry_does_not_resend_successful_email(self, send_mail):
+        CalibrationEquipment.objects.create(**equipment_data(
+            equipment_id='EQ-BELL-RETRY', serial_number='SN-BELL-RETRY',
+            next_calibration_date=date(2026, 8, 30),
+        ))
+        real_bulk_create = DCRNotification.objects.bulk_create
+        attempts = 0
+
+        def fail_once(*args, **kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError('bell delivery failed')
+            return real_bulk_create(*args, **kwargs)
+
+        with patch(
+            'apps.calibration.notification_service.DCRNotification.objects.bulk_create',
+        ) as bulk_create:
+            bulk_create.side_effect = fail_once
+
+            with self.assertRaises(RuntimeError):
+                check_calibration_email_notifications(date(2026, 8, 24))
+            check_calibration_email_notifications(date(2026, 8, 24))
+
+        self.assertEqual(send_mail.call_count, 1)
+        self.assertEqual(bulk_create.call_count, 2)
+        self.assertEqual(DCRNotification.objects.filter(action_url='/calibration').count(), 2)
 
 def equipment_data(**overrides):
     data = {
