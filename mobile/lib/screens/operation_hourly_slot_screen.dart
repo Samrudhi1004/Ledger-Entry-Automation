@@ -410,6 +410,20 @@ class _OperationHourlySlotScreenState extends State<OperationHourlySlotScreen> {
       return;
     }
 
+    final key = InspectionProvider.operationKey(widget.template, 'hourly');
+    provider.switchActiveOperation(key);
+    
+    if (provider.sessionId != null && provider.hourlySlot == slotNum) {
+      if (context.mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+        );
+        if (mounted) await _refreshSlots();
+      }
+      return;
+    }
+
     await provider.loadParameters(widget.template);
     final started = await provider.startSession(
       trial: 1,

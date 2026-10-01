@@ -152,6 +152,9 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     final isInspector = auth.isInspector;
     final inspType = isInspector ? 'first_piece' : 'hourly';
 
+    final key = InspectionProvider.operationKey(template, inspType);
+    provider.switchActiveOperation(key);
+
     final parentId = (isInspector && trialNumber > 1)
         ? (provider.trialSessionIds[trialNumber - 1] ?? provider.sessionId)
         : null;

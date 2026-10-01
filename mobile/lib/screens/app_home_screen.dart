@@ -1256,12 +1256,12 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
     final userId = auth.userId ?? auth.username ?? 'operator';
 
-    // 1. If session is active in provider memory, open InspectionVoiceScreen directly
+    // 1. If session is active in provider memory, open OperationSelectScreen
     if (provider.sessionId != null || provider.recordedResults.isNotEmpty) {
       if (context.mounted) {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+          MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
         );
       }
       return;
@@ -1282,7 +1282,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
         if (context.mounted) {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+            MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
           );
         }
         return;
