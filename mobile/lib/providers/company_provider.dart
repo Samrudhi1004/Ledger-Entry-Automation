@@ -14,7 +14,24 @@ class CompanyProvider extends ChangeNotifier {
 
   String get companyName => _companyName;
   String get companyCode => _companyCode;
-  String get logoUrl => _logoUrl;
+  String get logoUrl {
+    final raw = _logoUrl.trim();
+    if (raw.isEmpty) return '';
+    // If it's already an absolute URL not pointing to local loopback
+    if (raw.startsWith('https://') || (raw.startsWith('http://') && !raw.contains('localhost') && !raw.contains('127.0.0.1'))) {
+      return raw;
+    }
+    // Resolve relative path or loopback to the active ApiService host
+    final baseOrigin = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+    if (raw.startsWith('/')) {
+      return '$baseOrigin$raw';
+    }
+    if (raw.contains('localhost:8000') || raw.contains('127.0.0.1:8000')) {
+      final pathPart = raw.split(':8000').last;
+      return '$baseOrigin$pathPart';
+    }
+    return raw;
+  }
   int get shiftHours => _shiftHours;
   int get totalShiftsPerDay => _totalShiftsPerDay;
   List<String> get availableShifts => _shiftHours == 12 ? const ['I', 'II'] : const ['I', 'II', 'III'];

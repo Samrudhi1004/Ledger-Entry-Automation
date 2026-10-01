@@ -12,6 +12,22 @@ export const updateCompanyDetails = async (id, data) => {
   return res;
 };
 
+// Upload company logo file (multipart/form-data)
+export const uploadCompanyLogo = async (id, file) => {
+  const formData = new FormData();
+  formData.append('logo', file);
+  const res = await api.post(`/api/machines/factories/${id}/upload-logo/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res;
+};
+
+// Remove company logo
+export const removeCompanyLogo = async (id) => {
+  const res = await api.delete(`/api/machines/factories/${id}/upload-logo/`);
+  return res;
+};
+
 // Get connected plants overview
 export const getCompanyPlants = async () => {
   const res = await api.get('/api/machines/plants/');

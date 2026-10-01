@@ -92,7 +92,9 @@ class User(AbstractUser):
         verbose_name_plural = 'Users'
 
     def __str__(self):
-        return f"{self.get_full_name()} ({self.employee_id}) : {self.get_role_display()}"
+        role_label = str(self.role).replace('_', ' ').title() if self.role else 'User'
+        emp = f" ({self.employee_id})" if self.employee_id else ""
+        return f"{self.get_full_name() or self.username}{emp} : {role_label}"
 
     def effective_access(self):
         if not self.is_active:

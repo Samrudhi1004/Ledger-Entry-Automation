@@ -7,6 +7,7 @@ with dynamic Company Logo & Name and editable Header references.
 import io
 import os
 import urllib.request
+from django.conf import settings
 from django.utils import timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -121,13 +122,22 @@ def generate_dcr_pdf(dcr):
     logo_elem = None
     if logo_url:
         try:
-            if logo_url.startswith('http://') or logo_url.startswith('https://'):
-                req = urllib.request.Request(logo_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=3) as response:
-                    img_data = io.BytesIO(response.read())
-                    logo_elem = RLImage(img_data, width=50, height=40)
-            elif os.path.exists(logo_url):
-                logo_elem = RLImage(logo_url, width=50, height=40)
+            if factory and factory.logo and hasattr(factory.logo, 'path') and os.path.exists(factory.logo.path):
+                logo_elem = RLImage(factory.logo.path, width=50, height=40)
+            elif '/media/' in logo_url:
+                rel_path = logo_url.split('/media/', 1)[1]
+                disk_path = os.path.join(settings.MEDIA_ROOT, rel_path)
+                if os.path.exists(disk_path):
+                    logo_elem = RLImage(disk_path, width=50, height=40)
+
+            if not logo_elem:
+                if logo_url.startswith('http://') or logo_url.startswith('https://'):
+                    req = urllib.request.Request(logo_url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=3) as response:
+                        img_data = io.BytesIO(response.read())
+                        logo_elem = RLImage(img_data, width=50, height=40)
+                elif os.path.exists(logo_url):
+                    logo_elem = RLImage(logo_url, width=50, height=40)
         except Exception:
             logo_elem = None
 

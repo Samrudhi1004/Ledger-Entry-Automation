@@ -440,6 +440,10 @@ class _SummaryScreenState extends State<SummaryScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(ctx);
+              provider.recordedResults.clear();
+              provider.pendingBatchValues.clear();
+              provider.parameters = [];
+              provider.currentParamIndex = 0;
               if (!isInspector && provider.selectedTemplate != null) {
                 Navigator.pushAndRemoveUntil(
                   context,
