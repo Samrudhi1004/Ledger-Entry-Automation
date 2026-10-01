@@ -2,18 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/inspection_provider.dart';
+import '../services/api_service.dart';
 import 'inspection_voice_screen.dart';
+import 'operation_select_screen.dart';
 
 /// Per-operation hourly slot picker screen (Light Theme UI).
 ///
-/// Navigation flow:
-///   OperationSelectScreen / OperatorHomeScreen  ->  (tap operation card)
-///   OperationHourlySlotScreen  ->  (tap slot)
-///   InspectionVoiceScreen
-///
-/// Each operation has its own independent slot progress, so OP-10 completing
-/// Slot 2 does NOT mark Slot 2 as done for OP-02.
-class OperationHourlySlotScreen extends StatelessWidget {
+/// Features:
+/// - Clean, single vertical cards view (redundant horizontal strip removed).
+/// - Dynamic refresh of per-operation slot progress from backend.
+/// - Immediate visual feedback for completed, active, and locked slots.
+class OperationHourlySlotScreen extends StatefulWidget {
   final Map<String, dynamic> template;
   final int totalSlots;
   final List<int> completedSlots;
@@ -23,14 +22,73 @@ class OperationHourlySlotScreen extends StatelessWidget {
     super.key,
     required this.template,
     required this.totalSlots,
-    required this.completedSlots,
-    required this.activeSlot,
+    this.completedSlots = const [],
+    this.activeSlot = 1,
   });
 
+  @override
+  State<OperationHourlySlotScreen> createState() => _OperationHourlySlotScreenState();
+}
+
+class _OperationHourlySlotScreenState extends State<OperationHourlySlotScreen> {
+  late List<int> _completedSlots;
+  late int _activeSlot;
+  bool _isRefreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _completedSlots = List<int>.from(widget.completedSlots);
+    _activeSlot = widget.activeSlot;
+    _refreshSlots();
+  }
+
+  Future<void> _refreshSlots() async {
+    if (!mounted) return;
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    try {
+      final provider = Provider.of<InspectionProvider>(context, listen: false);
+      final machineId = provider.selectedMachine?['id'] ?? 1;
+      final setupStatus = await ApiService.checkSetupApproved(machineId);
+      final List<dynamic> opsFromApi = setupStatus['operations'] ?? [];
+      final tid = widget.template['id'] as int?;
+
+      for (final op in opsFromApi) {
+        if (op['template_id'] == tid) {
+          if (mounted) {
+            final List<int> backendSlots = List<int>.from(op['completed_slots'] ?? []);
+            int backendActive = (op['active_slot'] ?? 1) as int;
+            final Set<int> merged = {..._completedSlots, ...backendSlots};
+            final sortedMerged = merged.toList()..sort();
+            if (sortedMerged.contains(backendActive) && backendActive < widget.totalSlots) {
+              backendActive = sortedMerged.last + 1;
+            }
+            setState(() {
+              _completedSlots = sortedMerged;
+              _activeSlot = backendActive;
+            });
+          }
+          break;
+        }
+      }
+    } catch (e) {
+      debugPrint('[SLOT_SCREEN] Error refreshing slots: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
+    }
+  }
+
   String get _opName {
-    final name = (template['name'] ?? '').toString().trim();
+    final name = (widget.template['name'] ?? '').toString().trim();
     if (name.isNotEmpty) return name;
-    final v = template['version']?.toString() ?? '';
+    final v = widget.template['version']?.toString() ?? '';
     return 'Op $v — Inspection';
   }
 
@@ -45,7 +103,16 @@ class OperationHourlySlotScreen extends StatelessWidget {
         elevation: 1,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
+              );
+            }
+          },
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,7 +187,7 @@ class OperationHourlySlotScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'Hourly In-Process Inspection  •  ${template['target_parameter_count'] ?? template['total_parameters'] ?? '?'} params',
+                          'Hourly In-Process Inspection  •  ${widget.template['target_parameter_count'] ?? widget.template['total_parameters'] ?? '?'} params',
                           style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                         ),
                       ],
@@ -134,7 +201,7 @@ class OperationHourlySlotScreen extends StatelessWidget {
                       border: Border.all(color: const Color(0xFFA7F3D0)),
                     ),
                     child: Text(
-                      '${completedSlots.length}/$totalSlots done',
+                      '${_completedSlots.length}/${widget.totalSlots} done',
                       style: const TextStyle(
                         color: Color(0xFF059669),
                         fontSize: 11,
@@ -146,105 +213,35 @@ class OperationHourlySlotScreen extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 20),
-            Text(
-              'HOURLY IN-PROCESS INSPECTION SLOTS (1/HR - $totalSlots/HR)',
-              style: const TextStyle(
-                color: Color(0xFF475569),
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.0,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Horizontal slot strip (Light Theme)
-            SizedBox(
-              height: 48,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: totalSlots,
-                itemBuilder: (context, index) {
-                  final slotNum = index + 1;
-                  final isCompleted = completedSlots.contains(slotNum);
-                  final isActive = slotNum == activeSlot;
-                  final isUnlocked = isCompleted || isActive || slotNum <= activeSlot;
-
-                  final Color bgColor;
-                  final Color borderColor;
-                  final Color textColor;
-                  final IconData icon;
-
-                  if (isCompleted) {
-                    bgColor = const Color(0xFFECFDF5);
-                    borderColor = const Color(0xFFA7F3D0);
-                    textColor = const Color(0xFF059669);
-                    icon = Icons.check_circle_rounded;
-                  } else if (isActive) {
-                    bgColor = const Color(0xFFEFF6FF);
-                    borderColor = const Color(0xFF2563EB);
-                    textColor = const Color(0xFF2563EB);
-                    icon = Icons.play_circle_fill_rounded;
-                  } else if (isUnlocked) {
-                    bgColor = Colors.white;
-                    borderColor = const Color(0xFFCBD5E1);
-                    textColor = const Color(0xFF0F172A);
-                    icon = Icons.play_arrow_rounded;
-                  } else {
-                    bgColor = const Color(0xFFF1F5F9);
-                    borderColor = const Color(0xFFE2E8F0);
-                    textColor = const Color(0xFF94A3B8);
-                    icon = Icons.lock_rounded;
-                  }
-
-                  return GestureDetector(
-                    onTap: () => _onSlotTapped(context, provider, slotNum, isCompleted, isUnlocked),
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: bgColor,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: borderColor, width: isActive ? 2 : 1),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(icon, color: textColor, size: 16),
-                          const SizedBox(width: 6),
-                          Text(
-                            '$slotNum/HR',
-                            style: TextStyle(
-                              color: textColor,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-
             const SizedBox(height: 24),
-            const Text(
-              'SLOT DETAILS',
-              style: TextStyle(
-                color: Color(0xFF475569),
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.0,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'HOURLY INSPECTION SLOTS (1/HR - ${widget.totalSlots}/HR)',
+                  style: const TextStyle(
+                    color: Color(0xFF475569),
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                if (_isRefreshing)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
 
-            // Slot detail cards (Light Theme)
-            ...List.generate(totalSlots, (index) {
+            // Clean vertical slot detail cards (Single view, no double horizontal strip)
+            ...List.generate(widget.totalSlots, (index) {
               final slotNum = index + 1;
-              final isCompleted = completedSlots.contains(slotNum);
-              final isActive = slotNum == activeSlot;
-              final isUnlocked = isCompleted || isActive || slotNum <= activeSlot;
+              final isCompleted = _completedSlots.contains(slotNum);
+              final isActive = slotNum == _activeSlot;
+              final isUnlocked = isCompleted || isActive || slotNum <= _activeSlot;
 
               final Color cardBg;
               final Color borderColor;
@@ -413,7 +410,7 @@ class OperationHourlySlotScreen extends StatelessWidget {
       return;
     }
 
-    await provider.loadParameters(template);
+    await provider.loadParameters(widget.template);
     final started = await provider.startSession(
       trial: 1,
       inspectionType: 'hourly',
@@ -421,10 +418,13 @@ class OperationHourlySlotScreen extends StatelessWidget {
     );
 
     if (started && context.mounted) {
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
       );
+      if (mounted) {
+        await _refreshSlots();
+      }
     } else if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
