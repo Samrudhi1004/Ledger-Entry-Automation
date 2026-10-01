@@ -247,21 +247,14 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    const Color(0xFF0F172A),
-                    const Color(0xFF1E293B).withValues(alpha: 0.6),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
                   )
                 ],
               ),
@@ -270,11 +263,11 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      color: const Color(0xFFEFF6FF),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
                     ),
-                    child: const Icon(Icons.precision_manufacturing_rounded, color: Color(0xFF10B981), size: 30),
+                    child: const Icon(Icons.precision_manufacturing_rounded, color: Color(0xFF2563EB), size: 28),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -283,29 +276,29 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                       children: [
                         Text(
                           provider.selectedMachine?['name'] ?? 'CNC Turning Center 01',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                          style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           'Code: ${provider.selectedMachine?['machine_code'] ?? 'CNC-01'}  •  Part: ${provider.selectedPart?['part_number'] ?? 'FBT00222'}',
-                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                         ),
                         const SizedBox(height: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                            color: const Color(0xFFEFF6FF),
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+                            border: Border.all(color: const Color(0xFFDBEAFE)),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.verified_user_rounded, color: Color(0xFF38BDF8), size: 12),
+                              const Icon(Icons.verified_user_rounded, color: Color(0xFF2563EB), size: 12),
                               const SizedBox(width: 4),
                               Text(
                                 'Quality Inspector: $_assignedInspectorName',
-                                style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold),
+                                style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold),
                               ),
                             ],
                           ),
@@ -321,12 +314,12 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                       );
                     },
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFF38BDF8)),
+                      side: const BorderSide(color: Color(0xFF2563EB)),
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       minimumSize: Size.zero,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: const Text('CHANGE', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
+                    child: const Text('CHANGE', style: TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -610,16 +603,16 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                       return Container(
                         margin: const EdgeInsets.only(bottom: 14),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: _isSetupApproved ? const Color(0xFF1E293B) : const Color(0xFFF59E0B).withValues(alpha: 0.3),
+                            color: _isSetupApproved ? const Color(0xFFE2E8F0) : const Color(0xFFFDE68A),
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.2),
+                              color: Colors.black.withValues(alpha: 0.04),
                               blurRadius: 8,
-                              offset: const Offset(0, 4),
+                              offset: const Offset(0, 3),
                             )
                           ],
                         ),
@@ -627,12 +620,12 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                           contentPadding: const EdgeInsets.all(16),
                           leading: CircleAvatar(
                             backgroundColor: _isSetupApproved
-                                ? const Color(0xFF10B981).withValues(alpha: 0.2)
-                                : const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                                ? const Color(0xFFEFF6FF)
+                                : const Color(0xFFFEF3C7),
                             child: Text(
                               _isSetupApproved ? '$_activeSlot/H' : '🔒',
                               style: TextStyle(
-                                color: _isSetupApproved ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                                color: _isSetupApproved ? const Color(0xFF2563EB) : const Color(0xFFD97706),
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
                               ),
@@ -640,7 +633,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                           ),
                           title: Text(
                             title,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                            style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 15),
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

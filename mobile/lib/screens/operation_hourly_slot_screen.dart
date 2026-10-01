@@ -1,13 +1,13 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/inspection_provider.dart';
 import 'inspection_voice_screen.dart';
 
-/// Per-operation hourly slot picker screen.
+/// Per-operation hourly slot picker screen (Light Theme UI).
 ///
 /// Navigation flow:
-///   OperatorHomeScreen  ->  (tap operation card)
+///   OperationSelectScreen / OperatorHomeScreen  ->  (tap operation card)
 ///   OperationHourlySlotScreen  ->  (tap slot)
 ///   InspectionVoiceScreen
 ///
@@ -75,30 +75,37 @@ class OperationHourlySlotScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Operation summary banner
+            // Operation summary banner (Light Theme Card)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
                     ),
-                    child: const Icon(Icons.precision_manufacturing_rounded,
-                        color: Color(0xFF10B981), size: 26),
+                    child: const Icon(
+                      Icons.precision_manufacturing_rounded,
+                      color: Color(0xFF2563EB),
+                      size: 26,
+                    ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,30 +113,33 @@ class OperationHourlySlotScreen extends StatelessWidget {
                         Text(
                           _opName,
                           style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14),
+                            color: Color(0xFF0F172A),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
                         ),
                         const SizedBox(height: 3),
                         Text(
                           'Hourly In-Process Inspection  •  ${template['target_parameter_count'] ?? template['total_parameters'] ?? '?'} params',
-                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                         ),
                       ],
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                      color: const Color(0xFFECFDF5),
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFA7F3D0)),
                     ),
                     child: Text(
                       '${completedSlots.length}/$totalSlots done',
                       style: const TextStyle(
-                          color: Color(0xFF10B981),
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold),
+                        color: Color(0xFF059669),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -137,19 +147,20 @@ class OperationHourlySlotScreen extends StatelessWidget {
             ),
 
             const SizedBox(height: 20),
-            const Text(
-              'HOURLY IN-PROCESS INSPECTION SLOTS',
-              style: TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.1),
+            Text(
+              'HOURLY IN-PROCESS INSPECTION SLOTS (1/HR - $totalSlots/HR)',
+              style: const TextStyle(
+                color: Color(0xFF475569),
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.0,
+              ),
             ),
             const SizedBox(height: 12),
 
-            // Horizontal slot strip
+            // Horizontal slot strip (Light Theme)
             SizedBox(
-              height: 52,
+              height: 48,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 itemCount: totalSlots,
@@ -159,63 +170,55 @@ class OperationHourlySlotScreen extends StatelessWidget {
                   final isActive = slotNum == activeSlot;
                   final isUnlocked = isCompleted || isActive || slotNum <= activeSlot;
 
+                  final Color bgColor;
+                  final Color borderColor;
+                  final Color textColor;
+                  final IconData icon;
+
+                  if (isCompleted) {
+                    bgColor = const Color(0xFFECFDF5);
+                    borderColor = const Color(0xFFA7F3D0);
+                    textColor = const Color(0xFF059669);
+                    icon = Icons.check_circle_rounded;
+                  } else if (isActive) {
+                    bgColor = const Color(0xFFEFF6FF);
+                    borderColor = const Color(0xFF2563EB);
+                    textColor = const Color(0xFF2563EB);
+                    icon = Icons.play_circle_fill_rounded;
+                  } else if (isUnlocked) {
+                    bgColor = Colors.white;
+                    borderColor = const Color(0xFFCBD5E1);
+                    textColor = const Color(0xFF0F172A);
+                    icon = Icons.play_arrow_rounded;
+                  } else {
+                    bgColor = const Color(0xFFF1F5F9);
+                    borderColor = const Color(0xFFE2E8F0);
+                    textColor = const Color(0xFF94A3B8);
+                    icon = Icons.lock_rounded;
+                  }
+
                   return GestureDetector(
                     onTap: () => _onSlotTapped(context, provider, slotNum, isCompleted, isUnlocked),
                     child: Container(
-                      margin: const EdgeInsets.only(right: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        color: isActive
-                            ? const Color(0xFF10B981).withValues(alpha: 0.2)
-                            : isCompleted
-                                ? Colors.blue.withValues(alpha: 0.12)
-                                : const Color(0xFF0F172A),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isActive
-                              ? const Color(0xFF10B981)
-                              : isCompleted
-                                  ? Colors.blueAccent
-                                  : const Color(0xFF1E293B),
-                          width: isActive ? 2 : 1,
-                        ),
+                        color: bgColor,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: borderColor, width: isActive ? 2 : 1),
                       ),
                       child: Row(
                         children: [
-                          Icon(
-                            isCompleted
-                                ? Icons.check_circle_rounded
-                                : isActive
-                                    ? Icons.play_circle_fill_rounded
-                                    : isUnlocked
-                                        ? Icons.play_arrow_rounded
-                                        : Icons.lock_rounded,
-                            color: isActive
-                                ? const Color(0xFF10B981)
-                                : isCompleted
-                                    ? Colors.blueAccent
-                                    : isUnlocked
-                                        ? Colors.white
-                                        : const Color(0xFF64748B),
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
+                          Icon(icon, color: textColor, size: 16),
+                          const SizedBox(width: 6),
                           Text(
-                            '$slotNum hr',
+                            '$slotNum/HR',
                             style: TextStyle(
-                              color: isActive
-                                  ? const Color(0xFF10B981)
-                                  : isUnlocked
-                                      ? Colors.white
-                                      : const Color(0xFF64748B),
+                              color: textColor,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
                           ),
-                          if (isCompleted) ...[
-                            const SizedBox(width: 4),
-                            const Icon(Icons.check, color: Colors.blueAccent, size: 12),
-                          ],
                         ],
                       ),
                     ),
@@ -228,44 +231,55 @@ class OperationHourlySlotScreen extends StatelessWidget {
             const Text(
               'SLOT DETAILS',
               style: TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.1),
+                color: Color(0xFF475569),
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.0,
+              ),
             ),
             const SizedBox(height: 12),
 
-            // Slot detail cards
+            // Slot detail cards (Light Theme)
             ...List.generate(totalSlots, (index) {
               final slotNum = index + 1;
               final isCompleted = completedSlots.contains(slotNum);
               final isActive = slotNum == activeSlot;
               final isUnlocked = isCompleted || isActive || slotNum <= activeSlot;
 
+              final Color cardBg;
               final Color borderColor;
-              final Color labelColor;
+              final Color statusColor;
+              final Color iconBg;
               final IconData iconData;
               final String statusLabel;
 
               if (isCompleted) {
-                borderColor = Colors.blueAccent;
-                labelColor = Colors.blueAccent;
+                cardBg = Colors.white;
+                borderColor = const Color(0xFFA7F3D0);
+                statusColor = const Color(0xFF059669);
+                iconBg = const Color(0xFFECFDF5);
                 iconData = Icons.check_circle_rounded;
                 statusLabel = 'COMPLETED';
               } else if (isActive) {
-                borderColor = const Color(0xFF10B981);
-                labelColor = const Color(0xFF10B981);
+                cardBg = Colors.white;
+                borderColor = const Color(0xFF2563EB);
+                statusColor = const Color(0xFF2563EB);
+                iconBg = const Color(0xFFEFF6FF);
                 iconData = Icons.play_circle_fill_rounded;
                 statusLabel = 'ACTIVE — TAP TO RECORD';
               } else if (isUnlocked) {
-                borderColor = const Color(0xFF334155);
-                labelColor = Colors.white;
+                cardBg = Colors.white;
+                borderColor = const Color(0xFFE2E8F0);
+                statusColor = const Color(0xFF64748B);
+                iconBg = const Color(0xFFF8FAFC);
                 iconData = Icons.play_arrow_rounded;
                 statusLabel = 'UNLOCKED';
               } else {
-                borderColor = const Color(0xFF1E293B);
-                labelColor = const Color(0xFF64748B);
-                iconData = Icons.lock_rounded;
+                cardBg = const Color(0xFFFAFAFA);
+                borderColor = const Color(0xFFE2E8F0);
+                statusColor = const Color(0xFF94A3B8);
+                iconBg = const Color(0xFFF1F5F9);
+                iconData = Icons.lock_outline_rounded;
                 statusLabel = 'LOCKED';
               }
 
@@ -275,14 +289,16 @@ class OperationHourlySlotScreen extends StatelessWidget {
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
+                    color: cardBg,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: borderColor, width: isActive ? 1.5 : 1),
+                    border: Border.all(color: borderColor, width: isActive ? 1.8 : 1),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 6,
-                        offset: const Offset(0, 3),
+                        color: isActive
+                            ? const Color(0xFF2563EB).withValues(alpha: 0.12)
+                            : Colors.black.withValues(alpha: 0.03),
+                        blurRadius: isActive ? 8 : 4,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
@@ -291,10 +307,10 @@ class OperationHourlySlotScreen extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: labelColor.withValues(alpha: 0.12),
+                          color: iconBg,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(iconData, color: labelColor, size: 22),
+                        child: Icon(iconData, color: statusColor, size: 22),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -303,25 +319,56 @@ class OperationHourlySlotScreen extends StatelessWidget {
                           children: [
                             Text(
                               'Slot $slotNum/HR',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15),
+                              style: TextStyle(
+                                color: isUnlocked || isCompleted
+                                    ? const Color(0xFF0F172A)
+                                    : const Color(0xFF94A3B8),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
                             ),
                             const SizedBox(height: 3),
                             Text(
                               statusLabel,
                               style: TextStyle(
-                                  color: labelColor,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.8),
+                                color: statusColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
+                              ),
                             ),
                           ],
                         ),
                       ),
-                      if (isActive || (isUnlocked && !isCompleted))
-                        Icon(Icons.chevron_right_rounded, color: labelColor, size: 24),
+                      if (isActive)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2563EB),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'RECORD',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 14),
+                            ],
+                          ),
+                        )
+                      else if (isCompleted)
+                        const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 22)
+                      else if (isUnlocked)
+                        const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF64748B), size: 14)
+                      else
+                        const Icon(Icons.lock_rounded, color: Color(0xFFCBD5E1), size: 18),
                     ],
                   ),
                 ),
@@ -345,7 +392,7 @@ class OperationHourlySlotScreen extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Slot $slotNum/HR for $_opName is already completed. Rewriting is not allowed.'),
-            backgroundColor: const Color(0xFFF59E0B),
+            backgroundColor: const Color(0xFFD97706),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -358,7 +405,7 @@ class OperationHourlySlotScreen extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Complete Slot ${slotNum - 1}/HR for $_opName first.'),
-            backgroundColor: const Color(0xFFF59E0B),
+            backgroundColor: const Color(0xFFD97706),
             behavior: SnackBarBehavior.floating,
           ),
         );
