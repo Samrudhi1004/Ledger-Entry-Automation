@@ -674,6 +674,8 @@ class InspectionProvider with ChangeNotifier {
       // Session fully submitted — clear local saved state so it doesn't
       // appear as a resume-able session on next app open.
       await PersistenceService.clearState();
+      sessionId = null;
+      parentSessionId = null;
       if (inspectionType == 'hourly') {
         if (!completedHourlySlots.contains(currentSlot)) {
           completedHourlySlots.add(currentSlot);
@@ -699,6 +701,8 @@ class InspectionProvider with ChangeNotifier {
       // Session finalized — clear local saved state so it doesn't
       // appear as a resume-able session on next app open.
       await PersistenceService.clearState();
+      sessionId = null;
+      parentSessionId = null;
       completedHourlySlots.add(hourlySlot);
       if (hourlySlot < 8) {
         hourlySlot = hourlySlot + 1;

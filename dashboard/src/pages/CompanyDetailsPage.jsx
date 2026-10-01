@@ -1,13 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import { useAuth } from '../context/AuthContext';
 import { can } from '../utils/access';
 import { useCompany } from '../context/CompanyContext';
-import { getCompanyDetails, updateCompanyDetails, getCompanyPlants } from '../api/company';
 import {
-  Building2, AlertCircle, CheckCircle2, User, Clock, ShieldCheck, Lock, Save, Loader2
+  getCompanyDetails, updateCompanyDetails, getCompanyPlants,
+  uploadCompanyLogo, removeCompanyLogo
+} from '../api/company';
+import {
+  Building2, AlertCircle, CheckCircle2, User, Clock, ShieldCheck, Lock, Save, Loader2,
+  Upload, Trash2
 } from 'lucide-react';
 
 export default function CompanyDetailsPage() {
@@ -20,6 +24,11 @@ export default function CompanyDetailsPage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [factoryId, setFactoryId] = useState(null);
+
+  const fileInputRef = useRef(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [showManualUrl, setShowManualUrl] = useState(false);
 
   const [company, setCompany] = useState({
     name: '',
@@ -114,6 +123,59 @@ export default function CompanyDetailsPage() {
       shift_hours: hours,
       total_shifts_per_day: hours === 12 ? 2 : 3,
     }));
+  };
+
+  const handleLogoFileSelect = async (file) => {
+    if (!file || !isAdmin || !factoryId) return;
+
+    const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml', 'image/webp'];
+    if (!allowed.includes(file.type) && !file.name.match(/\.(png|jpe?g|svg|webp)$/i)) {
+      setError('Please upload a valid image file (PNG, JPG, SVG, or WebP).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image file size must be less than 5MB.');
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    setError('');
+    try {
+      const res = await uploadCompanyLogo(factoryId, file);
+      if (res?.data?.logo_url) {
+        setCompany((prev) => ({ ...prev, logo_url: res.data.logo_url }));
+        if (refreshCompany) refreshCompany();
+        setSuccessMsg('Company logo uploaded and updated across the entire system!');
+        setTimeout(() => setSuccessMsg(''), 4500);
+      }
+    } catch (err) {
+      console.error('Failed to upload logo:', err);
+      setError(err.response?.data?.detail || 'Failed to upload logo file. Please try again.');
+    } finally {
+      setIsUploadingLogo(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleLogoRemove = async () => {
+    if (!isAdmin || !factoryId) return;
+    if (!window.confirm('Are you sure you want to remove the company logo?')) return;
+
+    setIsUploadingLogo(true);
+    setError('');
+    try {
+      await removeCompanyLogo(factoryId);
+      setCompany((prev) => ({ ...prev, logo_url: '' }));
+      if (refreshCompany) refreshCompany();
+      setSuccessMsg('Company logo removed.');
+      setTimeout(() => setSuccessMsg(''), 3500);
+    } catch (err) {
+      console.error('Failed to remove logo:', err);
+      setError(err.response?.data?.detail || 'Failed to remove logo.');
+    } finally {
+      setIsUploadingLogo(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -446,9 +508,9 @@ export default function CompanyDetailsPage() {
                   </div>
                 </div>
 
-                {/* Row 4: GSTIN & Company Logo URL */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <div className="form-group" style={{ margin: 0 }}>
+                {/* Row 4: GSTIN & Company Logo */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
+                  <div className="form-group" style={{ margin: 0, minWidth: 0 }}>
                     <label className="form-label">GSTIN / Tax Registration No.</label>
                     <input
                       className="form-input font-mono"
@@ -461,45 +523,143 @@ export default function CompanyDetailsPage() {
                     />
                   </div>
 
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Company Logo URL (Reports & PDFs)</label>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                      <input
-                        className="form-input"
-                        name="logo_url"
-                        value={company.logo_url || ''}
-                        readOnly={!isAdmin}
-                        onChange={handleChange}
-                        placeholder="https://... or /logo.png"
-                        style={{ ...inputStyle(), flex: 1 }}
-                      />
-                      {company.logo_url && (
-                        <div
-                          style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 6,
-                            border: '1px solid var(--border)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            overflow: 'hidden',
-                            backgroundColor: '#ffffff',
-                            padding: 2,
-                            flexShrink: 0,
-                          }}
-                        >
-                          <img
-                            src={company.logo_url}
-                            alt="Logo"
-                            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                            onError={(e) => {
-                              e.target.style.display = 'none';
+                  <div className="form-group" style={{ margin: 0, minWidth: 0 }}>
+                    <label className="form-label" style={{ marginBottom: 6 }}>Company Logo (Reports, Mobile & PDFs)</label>
+
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      style={{ display: 'none' }}
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleLogoFileSelect(file);
+                      }}
+                    />
+
+                    {company.logo_url ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 10,
+                          padding: '0 12px',
+                          height: 42,
+                          background: 'var(--bg-elevated)',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--border)',
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 6,
+                              border: '1px solid var(--border)',
+                              backgroundColor: '#ffffff',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              overflow: 'hidden',
+                              padding: 2,
+                              flexShrink: 0,
                             }}
-                          />
+                          >
+                            <img
+                              src={company.logo_url}
+                              alt="Company Logo"
+                              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                              onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                          </div>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                            Active Logo
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.62rem',
+                              padding: '1px 5px',
+                              borderRadius: 4,
+                              background: 'rgba(16, 185, 129, 0.1)',
+                              color: '#10b981',
+                              fontWeight: 700,
+                            }}
+                          >
+                            LIVE
+                          </span>
                         </div>
-                      )}
-                    </div>
+
+                        {isAdmin && (
+                          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={isUploadingLogo}
+                              style={{ padding: '4px 8px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 4, height: 28 }}
+                            >
+                              {isUploadingLogo ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                              Change
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={handleLogoRemove}
+                              disabled={isUploadingLogo}
+                              style={{ padding: '4px 6px', fontSize: '0.75rem', color: '#ef4444', height: 28 }}
+                              title="Remove logo"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div
+                        onDragOver={(e) => { e.preventDefault(); if (isAdmin) setIsDragOver(true); }}
+                        onDragLeave={() => setIsDragOver(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setIsDragOver(false);
+                          const file = e.dataTransfer.files?.[0];
+                          if (file) handleLogoFileSelect(file);
+                        }}
+                        onClick={() => { if (isAdmin && !isUploadingLogo) fileInputRef.current?.click(); }}
+                        style={{
+                          border: `2px dashed ${isDragOver ? 'var(--accent-blue)' : 'var(--border)'}`,
+                          backgroundColor: isDragOver ? 'rgba(56, 189, 248, 0.05)' : 'var(--bg-elevated)',
+                          borderRadius: 'var(--radius-md)',
+                          padding: '0 12px',
+                          height: 42,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          cursor: isAdmin ? 'pointer' : 'default',
+                          transition: 'all 0.15s ease',
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        {isUploadingLogo ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent-blue)' }} />
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                              Uploading & saving logo...
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload size={15} style={{ color: 'var(--accent-blue)' }} />
+                            <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-primary)' }}>
+                              {isAdmin ? 'Upload Company Logo (PNG, JPG, SVG)' : 'No logo uploaded'}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 

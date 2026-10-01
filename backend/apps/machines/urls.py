@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    FactoryListCreateView, FactoryDetailView,
+    FactoryListCreateView, FactoryDetailView, FactoryUploadLogoView,
     PlantListCreateView, PlantDetailView,
     MachineListCreateView, MachineDetailView,
     MachineByQRView,
@@ -8,8 +8,9 @@ from .views import (
 
 urlpatterns = [
     # Factories
-    path('factories/',          FactoryListCreateView.as_view(), name='factory-list'),
-    path('factories/<int:pk>/', FactoryDetailView.as_view(),     name='factory-detail'),
+    path('factories/',                      FactoryListCreateView.as_view(), name='factory-list'),
+    path('factories/<int:pk>/',             FactoryDetailView.as_view(),     name='factory-detail'),
+    path('factories/<int:pk>/upload-logo/', FactoryUploadLogoView.as_view(), name='factory-upload-logo'),
 
     # Plants
     path('plants/',             PlantListCreateView.as_view(),   name='plant-list'),

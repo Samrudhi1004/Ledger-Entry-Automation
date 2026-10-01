@@ -1,7 +1,10 @@
+import os
+import uuid
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
+from rest_framework.parsers import MultiPartParser, FormParser
 
 from .models import Factory, Plant, Machine
 from .serializers import FactorySerializer, PlantSerializer, MachineSerializer, MachineListSerializer
@@ -63,6 +66,106 @@ class FactoryDetailView(generics.RetrieveUpdateDestroyAPIView):
                 )
         except Exception:
             pass
+
+
+class FactoryUploadLogoView(APIView):
+    """
+    POST /api/machines/factories/<id>/upload-logo/
+    Uploads a new company logo image file (multipart/form-data with 'logo' or 'file').
+    Saves to Cloudinary if configured, or local media storage.
+    Updates factory.logo and factory.logo_url with full absolute URL.
+
+    DELETE /api/machines/factories/<id>/upload-logo/
+    Removes the custom uploaded logo and resets logo_url to empty.
+    """
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_permissions(self):
+        return [HasAccess('quality.machines.manage')]
+
+    def post(self, request, pk):
+        try:
+            factory = Factory.objects.get(pk=pk)
+        except Factory.DoesNotExist:
+            return Response({'detail': 'Factory not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        file_obj = request.FILES.get('logo') or request.FILES.get('file')
+        if not file_obj:
+            return Response(
+                {'detail': 'No file uploaded. Please supply a "logo" image file.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate file extension
+        ext = os.path.splitext(file_obj.name)[1].lower()
+        allowed_exts = ['.png', '.jpg', '.jpeg', '.svg', '.webp']
+        if ext not in allowed_exts:
+            return Response(
+                {'detail': f'Unsupported file type "{ext}". Allowed types: {", ".join(allowed_exts)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate file size (max 5 MB)
+        max_bytes = 5 * 1024 * 1024
+        if file_obj.size > max_bytes:
+            return Response(
+                {'detail': f'File size exceeds 5MB limit ({file_obj.size / (1024*1024):.1f}MB).'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 1. Try Cloudinary if available and configured
+        uploaded_to_cloudinary = False
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            if os.getenv('CLOUDINARY_CLOUD_NAME'):
+                upload_res = cloudinary.uploader.upload(
+                    file_obj,
+                    folder='company_logos',
+                    resource_type='image',
+                    public_id=f"factory_{factory.id}_{uuid.uuid4().hex[:8]}"
+                )
+                if upload_res and 'secure_url' in upload_res:
+                    factory.logo_url = upload_res['secure_url']
+                    factory.save()
+                    uploaded_to_cloudinary = True
+        except Exception:
+            pass
+
+        # 2. Local media storage fallback
+        if not uploaded_to_cloudinary:
+            factory.logo = file_obj
+            factory.save()
+            absolute_url = request.build_absolute_uri(factory.logo.url)
+            factory.logo_url = absolute_url
+            Factory.objects.filter(pk=factory.pk).update(logo_url=absolute_url)
+
+        return Response({
+            'success': True,
+            'message': 'Company logo uploaded successfully.',
+            'logo_url': factory.logo_url,
+            'factory_id': factory.id,
+            'factory_name': factory.name,
+        }, status=status.HTTP_200_OK)
+
+    def delete(self, request, pk):
+        try:
+            factory = Factory.objects.get(pk=pk)
+        except Factory.DoesNotExist:
+            return Response({'detail': 'Factory not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if factory.logo:
+            try:
+                factory.logo.delete(save=False)
+            except Exception:
+                pass
+        factory.logo_url = ''
+        factory.save()
+        return Response({
+            'success': True,
+            'message': 'Company logo removed successfully.',
+            'logo_url': '',
+        }, status=status.HTTP_200_OK)
 
 
 # ─── Plant ────────────────────────────────────────────────────────────────

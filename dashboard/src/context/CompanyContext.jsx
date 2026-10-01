@@ -38,13 +38,13 @@ export const CompanyProvider = ({ children }) => {
     return () => { mounted = false; };
   }, []);
 
-  // Dynamically update browser tab favicon if custom logo_url is provided
+  // Dynamically update browser tab favicon and touch icons if custom logo_url is provided
   useEffect(() => {
     if (logoUrl) {
-      const favicon = document.querySelector("link[rel~='icon']");
-      if (favicon) {
-        favicon.href = logoUrl;
-      }
+      const iconLinks = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon']");
+      iconLinks.forEach((link) => {
+        link.href = logoUrl;
+      });
     }
   }, [logoUrl]);
 

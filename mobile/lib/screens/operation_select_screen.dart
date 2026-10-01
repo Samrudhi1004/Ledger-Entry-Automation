@@ -267,11 +267,6 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ⚡ LIVE RESUMING CARD (If session is in-progress or app was restarted mid-entry)
-              if (provider.sessionId != null || provider.recordedResults.isNotEmpty) ...[
-                _buildResumeInspectionCard(provider),
-                const SizedBox(height: 12),
-              ],
 
               // Selected Machine & Part Banner
               Container(
@@ -580,10 +575,40 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                                 Expanded(
                                                   child: Text(
                                                     title,
-                                                    style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 15),
+                                                    style: const TextStyle(
+                                                      color: Color(0xFF0F172A),
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 15,
+                                                    ),
                                                     overflow: TextOverflow.ellipsis,
                                                   ),
                                                 ),
+                                                if (cycleTimeMins > 0) ...[
+                                                  const SizedBox(width: 6),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFFF0FDF4),
+                                                      borderRadius: BorderRadius.circular(4),
+                                                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        const Icon(Icons.timer_outlined, size: 10, color: Color(0xFF059669)),
+                                                        const SizedBox(width: 3),
+                                                        Text(
+                                                          '${cycleTimeMins.toStringAsFixed(1)} min',
+                                                          style: const TextStyle(
+                                                            color: Color(0xFF059669),
+                                                            fontSize: 9,
+                                                            fontWeight: FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
                                                 if (isPublished) ...[
                                                   const SizedBox(width: 6),
                                                   Container(
@@ -599,30 +624,22 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                               ],
                                             ),
                                             const SizedBox(height: 4),
-                                            Row(
+                                            Wrap(
+                                              spacing: 6,
+                                              runSpacing: 4,
+                                              crossAxisAlignment: WrapCrossAlignment.center,
                                               children: [
                                                 Text(
                                                   isInspector
                                                       ? 'Type: ${t['inspection_type_display'] ?? t['inspection_type']}'
                                                       : 'Hourly • Slot ${_opActiveSlots[t['id'] ?? 0] ?? 1}/HR Active',
-                                                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                                                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
                                                 ),
-                                                const SizedBox(width: 8),
-                                                const Text('•', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-                                                const SizedBox(width: 8),
+                                                const Text('•', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
                                                 Text(
                                                   '⚡ $paramCount Params',
-                                                  style: const TextStyle(color: Color(0xFF2563EB), fontSize: 12, fontWeight: FontWeight.bold),
+                                                  style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold),
                                                 ),
-                                                if (cycleTimeMins > 0) ...[
-                                                  const SizedBox(width: 8),
-                                                  const Text('•', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-                                                  const SizedBox(width: 8),
-                                                  Text(
-                                                    '  $cycleTimeMins min',
-                                                    style: const TextStyle(color: Color(0xFF059669), fontSize: 12, fontWeight: FontWeight.bold),
-                                                  ),
-                                                ],
                                               ],
                                             ),
                                             if (!isInspector) ...[
@@ -987,103 +1004,5 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     );
   }
 
-  Widget _buildResumeInspectionCard(InspectionProvider provider) {
-    final recordedCount = provider.recordedResults.length;
-    final totalCount = provider.parameters.length;
-    String slotText;
-    if (provider.inspectionType == 'first_piece') {
-      slotText = '1ST PC #${provider.trialNumber}';
-    } else if (provider.inspectionType == 'hourly') {
-      slotText = 'SLOT ${provider.hourlySlot}/HR';
-    } else {
-      slotText = 'IN PROGRESS';
-    }
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF93C5FD), width: 1.5),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A0F172A),
-            blurRadius: 10,
-            offset: Offset(0, 3),
-          )
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2563EB),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 20),
-                  ),
-                  const SizedBox(width: 10),
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'RESUME LIVE INSPECTION',
-                        style: TextStyle(color: Color(0xFF1E40AF), fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
-                      ),
-                      Text(
-                        'In-progress session active',
-                        style: TextStyle(color: Color(0xFF3B82F6), fontSize: 11),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFBFDBFE)),
-                ),
-                child: Text(
-                  slotText,
-                  style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold, fontSize: 11),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Part: ${provider.selectedPart?['part_number'] ?? '—'}  •  Progress: $recordedCount of ${totalCount > 0 ? totalCount : '—'} parameters recorded',
-            style: const TextStyle(color: Color(0xFF1E293B), fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2563EB),
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 44),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              elevation: 0,
-            ),
-            icon: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
-            label: const Text('RESUME DATA ENTRY NOW', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          ),
-        ],
-      ),
-    );
-  }
 }

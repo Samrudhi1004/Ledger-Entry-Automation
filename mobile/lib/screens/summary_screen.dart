@@ -4,8 +4,8 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
 import 'app_home_screen.dart';
+import 'operation_hourly_slot_screen.dart';
 import 'operation_select_screen.dart';
-import 'report_sheet_screen.dart';
 
 class SummaryScreen extends StatefulWidget {
   const SummaryScreen({super.key});
@@ -429,7 +429,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                     ? (isPassed
                         ? 'Production line setup is approved. Operators may proceed with hourly manufacturing.'
                         : 'Setup parameters failed validation. Corrective trial required.')
-                    : 'Hourly Slot ${provider.hourlySlot}/HR recorded successfully into the digital F02 inspection ledger.',
+                    : 'Hourly Slot ${provider.completedHourlySlots.isNotEmpty ? provider.completedHourlySlots.last : provider.hourlySlot}/HR recorded successfully into the digital F02 inspection ledger.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
               ),
@@ -440,11 +440,30 @@ class _SummaryScreenState extends State<SummaryScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(ctx);
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
-                (route) => false,
-              );
+              provider.recordedResults.clear();
+              provider.pendingBatchValues.clear();
+              provider.parameters = [];
+              provider.currentParamIndex = 0;
+              if (!isInspector && provider.selectedTemplate != null) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => OperationHourlySlotScreen(
+                      template: provider.selectedTemplate!,
+                      totalSlots: provider.shiftHours > 0 ? provider.shiftHours : 8,
+                      completedSlots: provider.completedHourlySlots.toList(),
+                      activeSlot: provider.hourlySlot,
+                    ),
+                  ),
+                  (route) => route.isFirst,
+                );
+              } else {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
+                  (route) => false,
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2563EB),
@@ -453,7 +472,10 @@ class _SummaryScreenState extends State<SummaryScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               elevation: 0,
             ),
-            child: const Text('CONTINUE TO OPERATIONS', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: Text(
+              isInspector ? 'CONTINUE TO OPERATIONS' : 'CONTINUE TO NEXT SLOT',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),

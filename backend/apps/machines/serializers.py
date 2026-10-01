@@ -15,6 +15,20 @@ class FactorySerializer(serializers.ModelSerializer):
             'is_active', 'plant_count', 'created_at'
         ]
 
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        url = ret.get('logo_url') or (instance.logo.url if getattr(instance, 'logo', None) else '')
+        if url:
+            if not (url.startswith('http://') or url.startswith('https://')):
+                request = self.context.get('request')
+                if request:
+                    ret['logo_url'] = request.build_absolute_uri(url)
+                else:
+                    ret['logo_url'] = url
+            else:
+                ret['logo_url'] = url
+        return ret
+
 
 class PlantSerializer(serializers.ModelSerializer):
     factory_name   = serializers.CharField(source='factory.name', read_only=True)
