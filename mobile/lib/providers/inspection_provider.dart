@@ -542,7 +542,17 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
     isLoading = false;
     if (result != null &&
         (result.containsKey('session_id') || result.containsKey('id'))) {
-      op.sessionId = result['session_id'] ?? result['id'];
+      final newSessionId = result['session_id'] ?? result['id'];
+      
+      // If the session ID is different, we are starting a completely new session.
+      // Clear out any old measurements that were stored locally.
+      if (op.sessionId != newSessionId) {
+        op.recordedResults.clear();
+        op.pendingBatchValues.clear();
+        op.currentParamIndex = 0;
+      }
+      
+      op.sessionId = newSessionId;
       if (inspectionType == 'first_piece' && trial >= 1) {
         trialSessionIds[trial] = op.sessionId!;
       }

@@ -27,7 +27,7 @@ export default function MachineDetailPage() {
   const [machine, setMachine]         = useState(null);
   const [performance, setPerformance] = useState(null);
   const [historySessions, setHistorySessions] = useState([]);
-  const [activeSessionDoc, setActiveSessionDoc] = useState(null);
+  const [activeSessionDocs, setActiveSessionDocs] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [lastUpdatedCode, setLastUpdatedCode] = useState(null);
   const [selectedHistorySessionId, setSelectedHistorySessionId] = useState(null);
@@ -58,23 +58,36 @@ export default function MachineDetailPage() {
       const sessionsList = sRes.data?.results ?? sRes.data ?? [];
       setHistorySessions(Array.isArray(sessionsList) ? sessionsList : []);
 
-      // 4. Find today's active inspection session for this machine
+      // 4. Find today's active inspection sessions for this machine
       // Compare using local date (IST) : not raw UTC string slice
       const todayLocal = new Date().toLocaleDateString('en-CA'); // "YYYY-MM-DD" in local TZ
 
-      const activeOrLatest = (Array.isArray(sessionsList) ? sessionsList : []).find((s) => {
+      const todaySessions = (Array.isArray(sessionsList) ? sessionsList : []).filter((s) => {
         if (!s.started_at) return false;
-        // Parse the timestamp (honours +05:30 offset from Django) and get local date
         const sDateLocal = new Date(s.started_at).toLocaleDateString('en-CA');
         return sDateLocal === todayLocal;
-      }) || (Array.isArray(sessionsList) && sessionsList.length > 0 ? sessionsList[0] : null);
+      });
 
+      const activeOpsMap = {};
+      todaySessions.forEach(s => {
+        const opName = s.template_name || (s.template_version ? `Operation ${s.template_version}` : '-');
+        const opKey = `${s.part_number}_${opName}`;
+        // Keep the latest one for each operation
+        if (!activeOpsMap[opKey]) {
+          activeOpsMap[opKey] = s;
+        }
+      });
+      
+      let activeOrLatestOps = Object.values(activeOpsMap);
+      if (activeOrLatestOps.length === 0 && sessionsList.length > 0) {
+        activeOrLatestOps.push(sessionsList[0]);
+      }
 
-      if (activeOrLatest) {
-        const docRes = await getSessionDetail(activeOrLatest.session_id);
-        setActiveSessionDoc(docRes.data);
+      if (activeOrLatestOps.length > 0) {
+        const docs = await Promise.all(activeOrLatestOps.map(s => getSessionDetail(s.session_id)));
+        setActiveSessionDocs(docs.map(res => res.data));
       } else {
-        setActiveSessionDoc(null);
+        setActiveSessionDocs([]);
       }
     } catch {
       /* handle errors gracefully */
@@ -124,12 +137,15 @@ export default function MachineDetailPage() {
 
     // If measurement recorded for this machine
     if (latest.event === 'measurement_recorded' && latest.machine_code === currentMachineCode) {
-      setActiveSessionDoc((prev) => {
-        const base = prev || {
+      setActiveSessionDocs((prevDocs) => {
+        const sessionIndex = prevDocs.findIndex(d => d.session_id === latest.session_id);
+        const base = sessionIndex >= 0 ? prevDocs[sessionIndex] : {
           session_id: latest.session_id,
           machine_code: latest.machine_code,
           part_number: latest.part_number,
           part_name: latest.part_name,
+          template_name: latest.template_name,
+          template_version: latest.template_version,
           operator_name: latest.operator_name,
           shift: latest.shift || 'A',
           measurements: [],
@@ -169,11 +185,19 @@ export default function MachineDetailPage() {
           updatedMeasurements.push(newMeasurement);
         }
 
-        return {
+        const newDoc = {
           ...base,
           measurements: updatedMeasurements,
           progress: latest.progress ?? base.progress,
         };
+        
+        if (sessionIndex >= 0) {
+          const nextDocs = [...prevDocs];
+          nextDocs[sessionIndex] = newDoc;
+          return nextDocs;
+        } else {
+          return [newDoc, ...prevDocs];
+        }
       });
 
       // Highlight updated cell briefly
@@ -214,8 +238,6 @@ export default function MachineDetailPage() {
     );
   }
 
-  // Active measurements & grouped parameters
-  const activeMeasurements = activeSessionDoc?.measurements || [];
   const isValOOC = (val, lower, upper, status) => {
     if (status === 'out_of_spec' || status === 'rejected' || status === 'ooc') return true;
     if (val === undefined || val === null || val === '') return false;
@@ -225,66 +247,6 @@ export default function MachineDetailPage() {
     if (upper !== undefined && upper !== null && upper !== '' && num > Number(upper)) return true;
     return false;
   };
-
-  const paramMap = {};
-  activeMeasurements.forEach((m) => {
-    const code = m.parameter_code;
-    const trialNo = m.trial_number || 1;
-    const isHourlyMeas = m.inspection_type === 'hourly';
-
-    if (!paramMap[code]) {
-      paramMap[code] = {
-        code: code,
-        name: m.parameter_name,
-        nominal: m.nominal,
-        lower_limit: m.lower_limit,
-        upper_limit: m.upper_limit,
-        unit: m.unit,
-        trials: {},
-        trialStatuses: {},
-        trialsOOC: {},
-        hourly: {},
-        hourlyStatuses: {},
-        hourlyOOC: {},
-        hasOOC: false,
-        lastVoiceText: m.voice_raw_text,
-      };
-    } else {
-      if (m.lower_limit !== undefined && m.lower_limit !== null) paramMap[code].lower_limit = m.lower_limit;
-      if (m.upper_limit !== undefined && m.upper_limit !== null) paramMap[code].upper_limit = m.upper_limit;
-    }
-
-    const isOOC = (m.status === 'out_of_spec' || m.status === 'rejected' || m.status === 'ooc') ||
-                  isValOOC(m.measured_value, m.lower_limit ?? paramMap[code].lower_limit, m.upper_limit ?? paramMap[code].upper_limit);
-
-    if (isHourlyMeas) {
-      const slot = m.hourly_slot || 1;
-      paramMap[code].hourly[slot] = m.measured_value;
-      paramMap[code].hourlyStatuses[slot] = m.status;
-      paramMap[code].hourlyOOC[slot] = isOOC;
-    } else {
-      const tNo = (trialNo >= 1 && trialNo <= 3) ? trialNo : 1;
-      paramMap[code].trials[tNo] = m.measured_value;
-      paramMap[code].trialStatuses[tNo] = m.status;
-      paramMap[code].trialsOOC[tNo] = isOOC;
-    }
-
-    if (m.voice_raw_text) {
-      paramMap[code].lastVoiceText = m.voice_raw_text;
-    }
-  });
-
-  // Calculate hasOOC based on latest first piece trial and recorded hourly slots
-  Object.values(paramMap).forEach((p) => {
-    const trialKeys = Object.keys(p.trials).map(Number).sort((a, b) => b - a);
-    const latestTrial = trialKeys[0];
-    const isLatestTrialOOC = latestTrial ? (p.trialsOOC[latestTrial] || p.trialStatuses[latestTrial] === 'out_of_spec') : false;
-    const isAnyHourlyOOC = Object.values(p.hourlyOOC).some(Boolean) || Object.values(p.hourlyStatuses).some((st) => st === 'out_of_spec');
-
-    p.hasOOC = isLatestTrialOOC || isAnyHourlyOOC;
-  });
-
-  const groupedParams = Object.values(paramMap);
 
   return (
     <>
@@ -320,9 +282,9 @@ export default function MachineDetailPage() {
         <div className="card mb-20">
           <div className="section-header" style={{ marginBottom: 16 }}>
             <div className="section-title" style={{ fontSize: '1.05rem' }}>
-              <span className="dot" style={{ background: activeSessionDoc ? 'var(--accent-purple)' : 'var(--accent-blue)' }} />
+              <span className="dot" style={{ background: activeSessionDocs.length > 0 ? 'var(--accent-purple)' : 'var(--accent-blue)' }} />
               Live Operator Inspection Sheet ({companyCode} Form F02)
-              {activeSessionDoc && (
+              {activeSessionDocs.length > 0 && (
                 <span className="badge badge-voice" style={{ marginLeft: 8, animation: 'pulse-badge 1s infinite' }}>
                   REAL-TIME LIVE UPDATES
                 </span>
@@ -337,7 +299,7 @@ export default function MachineDetailPage() {
             </div>
           </div>
 
-          {!activeSessionDoc ? (
+          {activeSessionDocs.length === 0 ? (
             <div className="empty-state" style={{ padding: '40px 20px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)' }}>
               <div className="empty-state-text" style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 No Live Inspection Started for Today ({machine.machine_code})
@@ -347,6 +309,69 @@ export default function MachineDetailPage() {
               </p>
             </div>
           ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+              {activeSessionDocs.map((doc) => {
+                const activeMeasurements = doc?.measurements || [];
+                const paramMap = {};
+                activeMeasurements.forEach((m) => {
+                  const code = m.parameter_code;
+                  const trialNo = m.trial_number || 1;
+                  const isHourlyMeas = m.inspection_type === 'hourly';
+
+                  if (!paramMap[code]) {
+                    paramMap[code] = {
+                      code: code,
+                      name: m.parameter_name,
+                      nominal: m.nominal,
+                      lower_limit: m.lower_limit,
+                      upper_limit: m.upper_limit,
+                      unit: m.unit,
+                      trials: {},
+                      trialStatuses: {},
+                      trialsOOC: {},
+                      hourly: {},
+                      hourlyStatuses: {},
+                      hourlyOOC: {},
+                      hasOOC: false,
+                      lastVoiceText: m.voice_raw_text,
+                    };
+                  } else {
+                    if (m.lower_limit !== undefined && m.lower_limit !== null) paramMap[code].lower_limit = m.lower_limit;
+                    if (m.upper_limit !== undefined && m.upper_limit !== null) paramMap[code].upper_limit = m.upper_limit;
+                  }
+
+                  const isOOC = (m.status === 'out_of_spec' || m.status === 'rejected' || m.status === 'ooc') ||
+                                isValOOC(m.measured_value, m.lower_limit ?? paramMap[code].lower_limit, m.upper_limit ?? paramMap[code].upper_limit);
+
+                  if (isHourlyMeas) {
+                    const slot = m.hourly_slot || 1;
+                    paramMap[code].hourly[slot] = m.measured_value;
+                    paramMap[code].hourlyStatuses[slot] = m.status;
+                    paramMap[code].hourlyOOC[slot] = isOOC;
+                  } else {
+                    const tNo = (trialNo >= 1 && trialNo <= 3) ? trialNo : 1;
+                    paramMap[code].trials[tNo] = m.measured_value;
+                    paramMap[code].trialStatuses[tNo] = m.status;
+                    paramMap[code].trialsOOC[tNo] = isOOC;
+                  }
+
+                  if (m.voice_raw_text) {
+                    paramMap[code].lastVoiceText = m.voice_raw_text;
+                  }
+                });
+
+                Object.values(paramMap).forEach((p) => {
+                  const trialKeys = Object.keys(p.trials).map(Number).sort((a, b) => b - a);
+                  const latestTrial = trialKeys[0];
+                  const isLatestTrialOOC = latestTrial ? (p.trialsOOC[latestTrial] || p.trialStatuses[latestTrial] === 'out_of_spec') : false;
+                  const isAnyHourlyOOC = Object.values(p.hourlyOOC).some(Boolean) || Object.values(p.hourlyStatuses).some((st) => st === 'out_of_spec');
+                  p.hasOOC = isLatestTrialOOC || isAnyHourlyOOC;
+                });
+
+                const groupedParams = Object.values(paramMap);
+                const opName = doc.template_name || (doc.template_version ? `Operation ${doc.template_version}` : '-');
+                return (
+                  <div key={doc.session_id}>
             <div>
               {/* Active Operator Banner */}
               <div
@@ -364,17 +389,17 @@ export default function MachineDetailPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div>
                     <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Operator: {activeSessionDoc.operator_name || `Operator #${activeSessionDoc.operator_id}`}
+                      Operator: {doc.operator_name || `Operator #${doc.operator_id}`}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                      Part: <strong>{activeSessionDoc.part_number}</strong> ({activeSessionDoc.part_name || ''}) · Shift {activeSessionDoc.shift} · {activeSessionDoc.inspection_type === 'first_piece' ? '1st Piece Cum In-Process' : (activeSessionDoc.inspection_type?.replace('_', ' ') || 'Inspection')}
+                      Part: <strong>{doc.part_number}</strong> ({doc.part_name || ''}) · Operation: <strong>{opName}</strong> · Shift {doc.shift} · {doc.inspection_type === 'first_piece' ? '1st Piece Cum In-Process' : (doc.inspection_type?.replace('_', ' ') || 'Inspection')}
                     </div>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <Badge type={activeSessionDoc.status} />
+                  <Badge type={doc.status} />
                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginTop: 4 }}>
-                    Progress: {activeSessionDoc.progress ?? 0}%
+                    Progress: {doc.progress ?? 0}%
                   </div>
                 </div>
               </div>
@@ -401,7 +426,9 @@ export default function MachineDetailPage() {
                       </td>
                       <td style={{ width: '73%', padding: '4px 10px', borderRight: '1.5px solid #000000', textAlign: 'center' }}>
                         <div style={{ fontSize: 14, fontWeight: 'bold', letterSpacing: '0.5px', color: '#000000' }}>{companyName.toUpperCase()}</div>
-                        <div style={{ fontSize: 11, fontWeight: 'bold', marginTop: 1, color: '#000000' }}>1ST PIECE CUM IN-PROCESS INSPECTION REPORT</div>
+                        <div style={{ fontSize: 12, fontWeight: 'bold', marginTop: 3, color: '#000000' }}>
+                          {opName.toUpperCase()} - {doc.inspection_type === 'hourly' ? 'HOURLY IN-PROCESS INSPECTION REPORT' : '1ST PIECE CUM IN-PROCESS INSPECTION REPORT'}
+                        </div>
                       </td>
                       <td style={{ width: '15%', padding: '4px 6px', textAlign: 'right', fontSize: 8.5, color: '#000000' }}>
                         <div><strong>DOC REF:</strong> {companyCode}/PRD/F02</div>
@@ -412,11 +439,13 @@ export default function MachineDetailPage() {
                     <tr style={{ background: '#f8fafc' }}>
                       <td style={{ padding: '3px 6px', borderRight: '1px solid #000000' }}>
                         <span style={{ fontSize: 8, color: '#555555' }}>PART NO:</span>{' '}
-                        <strong style={{ fontSize: 10, color: '#000000', fontFamily: 'Consolas, monospace' }}>{activeSessionDoc.part_number}</strong>
+                        <strong style={{ fontSize: 10, color: '#000000', fontFamily: 'Consolas, monospace' }}>{doc.part_number}</strong>
                       </td>
                       <td style={{ padding: '3px 6px', borderRight: '1px solid #000000' }}>
                         <span style={{ fontSize: 8, color: '#555555' }}>OPERATOR:</span>{' '}
-                        <strong style={{ fontSize: 10, color: '#000000' }}>{activeSessionDoc.operator_name || `Operator #${activeSessionDoc.operator_id}`}</strong>
+                        <strong style={{ fontSize: 10, color: '#000000' }}>{doc.operator_name || `Operator #${doc.operator_id}`}</strong>
+                        <span style={{ fontSize: 8, color: '#555555', marginLeft: 16 }}>OPERATION:</span>{' '}
+                        <strong style={{ fontSize: 10, color: '#000000' }}>{opName}</strong>
                       </td>
                       <td style={{ padding: '3px 6px' }}>
                         <span style={{ fontSize: 8, color: '#555555' }}>MACHINE:</span>{' '}
@@ -546,10 +575,14 @@ export default function MachineDetailPage() {
                 </table>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        );
+      })}
+    </div>
+  )}
+</div>
 
-        {/* MACHINE INSPECTION HISTORY TABLE */}
+{/* MACHINE INSPECTION HISTORY TABLE */}
         <div className="card">
           <div className="section-header" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="section-title" style={{ margin: 0 }}>
@@ -588,9 +621,10 @@ export default function MachineDetailPage() {
                 </thead>
                 <tbody>
                   {historySessions.map((s) => {
-                    const opLabel = s.template_name?.trim() ||
+                    const opLabel = s.template_name?.trim() || 
+                      (s.template_version ? `Operation ${s.template_version}` : 
                       ({ first_piece: '1st Piece Inspection', hourly: 'Hourly In-Process', final: 'Final Check', setup_approval: 'Setup Approval' }[s.inspection_type]
-                        ?? s.inspection_type?.replace('_', ' ') ?? '-');
+                        ?? s.inspection_type?.replace('_', ' ') ?? '-'));
                     return (
                       <tr key={s.session_id}>
                         <td>

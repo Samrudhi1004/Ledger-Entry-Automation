@@ -1075,6 +1075,8 @@ class InspectionService:
         doc['part_number'] = session_obj.part.part_number if session_obj.part else None
         doc['part_name'] = session_obj.part.part_name if session_obj.part else None
         doc['machine_code'] = session_obj.machine.machine_code if session_obj.machine else None
+        doc['template_name'] = session_obj.template.name if session_obj.template else ''
+        doc['template_version'] = session_obj.template.version if session_obj.template else 1
 
         # Add user names
         if session_obj.finalized_by:
@@ -1150,10 +1152,11 @@ class InspectionService:
             session_date = django_tz.localtime(session_obj.started_at).date() if session_obj.started_at else None
             session_shift = session_obj.shift
 
-            # Get all first piece sessions for same machine/part/date/shift
+            # Get all first piece sessions for same machine/part/template/date/shift
             fp_kwargs = {
                 'machine': session_obj.machine,
                 'part': session_obj.part,
+                'template': session_obj.template,
                 'inspection_type': 'first_piece',
             }
             if session_date:
@@ -1229,10 +1232,11 @@ class InspectionService:
                         'hourly_slot':           0,
                     }
 
-            # Get all hourly sessions for same machine/part/date/shift
+            # Get all hourly sessions for same machine/part/template/date/shift
             hourly_kwargs = {
                 'machine': session_obj.machine,
                 'part': session_obj.part,
+                'template': session_obj.template,
                 'inspection_type': 'hourly',
             }
             if session_date:
@@ -1267,6 +1271,8 @@ class InspectionService:
                 'part_name':         session.part.part_name,
                 'operator_id':       session.operator_id,
                 'operator_name':     operator_name,
+                'template_name':     session.template.name if session.template else '',
+                'template_version':  session.template.version if session.template else 1,
                 'parameter_code':    parameter.parameter_code,
                 'parameter_name':    parameter.parameter_name,
                 'nominal':           float(parameter.nominal_value),
@@ -1302,6 +1308,8 @@ class InspectionService:
                 'part_name':         session.part.part_name,
                 'operator_id':       session.operator_id,
                 'operator_name':     operator_name,
+                'template_name':     session.template.name if session.template else '',
+                'template_version':  session.template.version if session.template else 1,
                 'parameter_code':    process_parameter.parameter_code,
                 'parameter_name':    process_parameter.parameter_name,
                 'nominal':           float(process_parameter.nominal_value) if process_parameter.nominal_value is not None else None,

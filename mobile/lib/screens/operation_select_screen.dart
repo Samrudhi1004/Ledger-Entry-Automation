@@ -128,22 +128,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
   }
 
   String _getOpTitle(int version) {
-    switch (version) {
-      case 10:
-        return 'Op 10 — 1st Side Finish Turning (CNC)';
-      case 20:
-        return 'Op 20 — 2nd Side Finish Turning (CNC)';
-      case 30:
-        return 'Op 30 — Drilling (VMC)';
-      case 40:
-        return 'Op 40 — Balancing';
-      case 50:
-        return 'Op 50 — Powder Coating';
-      case 60:
-        return 'Op 60 — Final Inspection';
-      default:
-        return 'Op $version — Custom Operation';
-    }
+    return 'Operation $version';
   }
 
   Future<void> _startFpiTrial(Map<String, dynamic> template, int trialNumber) async {

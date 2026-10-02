@@ -112,21 +112,18 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     safe_fac_code = _xml_escape(fac_code)
 
     # Determine operation/process number dynamically
-    op_no = "10"
+    op_name = "-"
     if session and hasattr(session, 'template') and session.template:
-        if getattr(session.template, 'version', None):
-            op_no = str(session.template.version)
-        elif getattr(session.template, 'name', None):
-            import re
-            m = re.search(r'Op\s*(\d+)', session.template.name, re.IGNORECASE)
-            if m:
-                op_no = m.group(1)
+        if getattr(session.template, 'name', None):
+            op_name = session.template.name.strip()
+        elif getattr(session.template, 'version', None):
+            op_name = f"OP-{session.template.version}"
 
     # 1. TOP HEADER (MMPL | Title | Doc Ref)
     header_data = [
         [
             Paragraph(safe_fac_code, mmpl_style),
-            [Paragraph(safe_fac_name.upper(), title_style), Paragraph(f"1ST PIECE CUM IN-PROCESS INSPECTION REPORT : PROCESS NO. {op_no}", subtitle_style)],
+            [Paragraph(safe_fac_name.upper(), title_style), Paragraph(f"1ST PIECE CUM IN-PROCESS INSPECTION REPORT : OPERATION: {op_name}", subtitle_style)],
             Paragraph(f"DOC REF: {safe_fac_code}/PRD/F02<br/>REV: 02 (15.8.2013)<br/>PAGE 1 OF 1", doc_ref_style)
         ]
     ]
@@ -146,7 +143,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     # 2. META INFO (Process, Part, Operator, Machine, Date, Status)
     meta_data = [
         [
-            Paragraph(f"PROCESS NO: <font name='Helvetica-Bold'>{op_no}.</font>", cell_left),
+            Paragraph(f"OPERATION: <font name='Helvetica-Bold'>{op_name}</font>", cell_left),
             Paragraph(f"PART NAME & NO: <font name='Helvetica-Bold'>{session.part.part_number} ({session.part.part_name})</font>", cell_left),
             Paragraph(f"INSPECTOR / OPERATOR: <font name='Helvetica-Bold'>{operator_name}</font>", cell_left)
         ],
