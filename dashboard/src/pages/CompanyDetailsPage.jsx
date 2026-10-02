@@ -60,7 +60,7 @@ export default function CompanyDetailsPage() {
     setError('');
     try {
       const [compRes, plantRes] = await Promise.all([
-        getCompanyDetails().catch((err) => { console.error('getCompanyDetails failed:', err); return null; }),
+        getCompanyDetails().catch((err) => { console.error('getCompanyDetails failed:', err); throw err; }),
         getCompanyPlants().catch(() => null),
       ]);
 
