@@ -120,14 +120,9 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
         return getattr(obj, 'template_id', None)
 
     def get_template_name(self, obj):
-        # Use prefetched template first
+        # Use prefetched template
         if obj.template and obj.template.name and obj.template.name.strip():
             return obj.template.name.strip()
-        # Use annotated value from SessionListView queryset (no extra DB hit)
-        val = getattr(obj, 'template_name', None)
-        if val and str(val).strip():
-            return str(val).strip()
-        # Do NOT fire a new DB query here : return None instead
         return None
 
     def get_template_version(self, obj):

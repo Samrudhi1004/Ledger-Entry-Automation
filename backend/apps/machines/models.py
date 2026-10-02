@@ -3,6 +3,7 @@ Models for Factory → Plant → Machine hierarchy.
 """
 
 from django.db import models
+from cloudinary.models import CloudinaryField
 
 
 class Factory(models.Model):
@@ -16,7 +17,7 @@ class Factory(models.Model):
     address       = models.TextField(blank=True, default='')
     gstin         = models.CharField(max_length=30, blank=True, default='')
     logo_url      = models.CharField(max_length=500, blank=True, default='')
-    logo          = models.ImageField(upload_to='company_logos/', blank=True, null=True)
+    logo          = CloudinaryField('logo', folder='company_logos', blank=True, null=True)
     industry_type = models.CharField(max_length=100, blank=True, default='Precision Component Manufacturing')
     shift_hours   = models.IntegerField(default=8)
     total_shifts_per_day = models.IntegerField(default=3)

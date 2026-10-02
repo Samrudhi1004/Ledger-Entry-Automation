@@ -1,51 +1,119 @@
 import 'package:flutter/material.dart';
+import '../models/operation_session.dart';
 import '../services/api_service.dart';
 import '../services/persistence_service.dart';
 
 class InspectionProvider with ChangeNotifier {
+  // ── Machine / Part context (shared across all operations) ─────────────────
   Map<String, dynamic>? selectedMachine;
   Map<String, dynamic>? selectedPart;
-  Map<String, dynamic>? selectedTemplate;
-  List<dynamic> parameters = [];
-  int currentParamIndex = 0;
 
-  String? sessionId;
-  int trialNumber = 1;
-  String shift = 'I';
-  String inspectionType = ''; // set by startSession(); empty until a session is active
-  String? parentSessionId;
+  // ── Per-operation filing cabinet ──────────────────────────────────────────
+  // Key: "${templateId}_${inspectionType}"  e.g. "12_hourly", "7_first_piece"
+  Map<String, OperationSession> _sessions = {};
+  String? _activeOperationKey;
+
+  // ── Shared / global state ─────────────────────────────────────────────────
   List<dynamic> activeRejections = [];
   Map<String, dynamic>? activeRejectionNotice;
-  Map<String, Map<String, dynamic>> recordedResults = {};
-  Map<String, Map<String, dynamic>> pendingBatchValues = {};
   bool isLoading = false;
   String? errorMessage;
   int shiftHours = 8;
   int get totalHourlySlots => shiftHours;
+  String shift = 'I';
 
+  // First-piece trial tracking (shared, not per-operation)
+  Map<int, String> trialStatuses = {1: 'pending', 2: 'locked', 3: 'locked'};
+  Map<int, List<String>> trialFailedCodes = {};
+  Map<int, String> trialSessionIds = {};
+
+  String? currentUserId;
+
+  // ── Backward-compatible getters → always point to the active operation ────
+  OperationSession? get _active =>
+      _activeOperationKey != null ? _sessions[_activeOperationKey] : null;
+
+  String? get sessionId => _active?.sessionId;
+  Map<String, dynamic>? get selectedTemplate => _active?.template;
+  List<dynamic> get parameters => _active?.parameters ?? [];
+  Map<String, Map<String, dynamic>> get recordedResults =>
+      _active?.recordedResults ?? {};
+  Map<String, Map<String, dynamic>> get pendingBatchValues =>
+      _active?.pendingBatchValues ?? {};
+  int get currentParamIndex => _active?.currentParamIndex ?? 0;
+  String get inspectionType => _active?.inspectionType ?? '';
+  int get hourlySlot => _active?.hourlySlot ?? 1;
+  Set<int> get completedHourlySlots => _active?.completedHourlySlots ?? {};
+  int get trialNumber => _active?.trialNumber ?? 1;
+  String? get parentSessionId => _active?.parentSessionId;
+
+  // ── Setters for backward-compat (older callers may assign directly) ────────
+  set sessionId(String? v) { _active?.sessionId = v; }
+  set selectedTemplate(Map<String, dynamic>? v) { _active?.template = v; }
+  set parameters(List<dynamic> v) { if (_active != null) _active!.parameters = v; }
+  set recordedResults(Map<String, Map<String, dynamic>> v) {
+    if (_active != null) _active!.recordedResults = v;
+  }
+  set pendingBatchValues(Map<String, Map<String, dynamic>> v) {
+    if (_active != null) _active!.pendingBatchValues = v;
+  }
+  set currentParamIndex(int v) { if (_active != null) _active!.currentParamIndex = v; }
+  set inspectionType(String v) { if (_active != null) _active!.inspectionType = v; }
+  set hourlySlot(int v) { if (_active != null) _active!.hourlySlot = v; }
+  set completedHourlySlots(Set<int> v) {
+    if (_active != null) _active!.completedHourlySlots = v;
+  }
+  set trialNumber(int v) { if (_active != null) _active!.trialNumber = v; }
+  set parentSessionId(String? v) { if (_active != null) _active!.parentSessionId = v; }
+
+  // ── Active operation key helper ───────────────────────────────────────────
+  /// Call this before loadParameters() when the user taps an operation card.
+  /// Creates the drawer if it doesn't exist yet; switches pointer if it does.
+  void switchActiveOperation(String operationKey) {
+    if (!_sessions.containsKey(operationKey)) {
+      _sessions[operationKey] = OperationSession(operationKey: operationKey);
+    }
+    _activeOperationKey = operationKey;
+    notifyListeners();
+  }
+
+  /// Convenience: build the key from template map + inspectionType string.
+    bool isSessionActiveFor(Map<String, dynamic> template, String inspType) {
+    final key = operationKey(template, inspType);
+    return _sessions[key]?.sessionId != null;
+  }
+  
+  bool isSessionActiveForOperationKey(String key) {
+    return _sessions[key]?.sessionId != null;
+  }
+
+static String operationKey(Map<String, dynamic> template, String inspType) {
+    final tid = template['id'] ?? template['version'] ?? '0';
+    return '${tid}_$inspType';
+  }
+
+  // ── Machine selection (clears ALL session data) ───────────────────────────
   void selectMachine(Map<String, dynamic> machine) {
     selectedMachine = machine;
     selectedPart = null;
-    selectedTemplate = null;
-    parameters = [];
-    currentParamIndex = 0;
-    trialNumber = 1;
-    parentSessionId = null;
-    recordedResults.clear();
+    _sessions.clear();
+    _activeOperationKey = null;
     saveCurrentState();
     notifyListeners();
   }
 
+  // ── Part selection ────────────────────────────────────────────────────────
+  void selectPart(Map<String, dynamic> part) {
+    selectedPart = part;
+    saveCurrentState();
+    notifyListeners();
+  }
+
+  // ── Reset helpers ─────────────────────────────────────────────────────────
+  /// Called when operator goes back to machine-select or a new shift starts.
   void resetForNextOperation() {
-    selectedPart = null;
-    selectedTemplate = null;
-    parameters = [];
-    currentParamIndex = 0;
-    sessionId = null;
-    trialNumber = 1;
-    parentSessionId = null;
-    recordedResults.clear();
-    pendingBatchValues.clear();
+    _sessions.clear();
+    _activeOperationKey = null;
     activeRejectionNotice = null;
     isLoading = false;
     errorMessage = null;
@@ -53,25 +121,15 @@ class InspectionProvider with ChangeNotifier {
   }
 
   Future<void> resetSessionState() async {
-    sessionId = null;
-    parentSessionId = null;
-    trialNumber = 1;
-    hourlySlot = 1;
-    inspectionType = ''; // reset to empty; will be set by next startSession()
-    parameters = [];
-    currentParamIndex = 0;
-    recordedResults.clear();
-    pendingBatchValues.clear();
-    completedHourlySlots.clear();
+    _sessions.clear();
+    _activeOperationKey = null;
     activeRejectionNotice = null;
+    shiftHours = 8;
     await PersistenceService.clearState();
     notifyListeners();
   }
 
-  Map<int, String> trialStatuses = {1: 'pending', 2: 'locked', 3: 'locked'};
-  Map<int, List<String>> trialFailedCodes = {};
-  Map<int, String> trialSessionIds = {};
-
+  // ── Trial tracking ────────────────────────────────────────────────────────
   void recordTrialResult(int trial, bool isPassed, List<String> failedCodes) {
     if (isPassed) {
       trialStatuses[trial] = 'passed';
@@ -94,78 +152,64 @@ class InspectionProvider with ChangeNotifier {
 
   void logout() {
     selectedMachine = null;
-    currentUserId = null; // prevent future saves after logout
+    currentUserId = null;
     resetForNextOperation();
     trialStatuses = {1: 'pending', 2: 'locked', 3: 'locked'};
     trialFailedCodes.clear();
     trialSessionIds.clear();
-    PersistenceService.clearState(); // wipe saved session from disk on explicit logout
+    PersistenceService.clearState();
   }
 
-  void selectPart(Map<String, dynamic> part) {
-    selectedPart = part;
-    selectedTemplate = null;
-    parameters = [];
-    saveCurrentState();
-    notifyListeners();
-  }
-
-  String? currentUserId;
-
-  void restoreFromLocalState(Map<String, dynamic> state, String userId) {
-    currentUserId = userId;
-    sessionId = state['session_id'];
-    selectedMachine = state['machine'];
-    selectedPart = state['part'];
-    selectedTemplate = state['template'];
-    inspectionType = state['inspection_type'] ?? '';
-    trialNumber = state['trial_number'] ?? 1;
-    hourlySlot = state['hourly_slot'] ?? 1;
-    completedHourlySlots = Set<int>.from(state['completed_slots'] ?? []);
-    parameters = state['parameters'] ?? [];
-    
-    if (state['recorded_results'] != null) {
-      final Map<String, dynamic> results = state['recorded_results'];
-      recordedResults.clear();
-      for (final entry in results.entries) {
-        recordedResults[entry.key] = Map<String, dynamic>.from(entry.value);
-      }
-    }
-    
-    // Automatically determine where the user left off
-    currentParamIndex = 0;
-    if (parameters.isNotEmpty) {
-      for (int i = 0; i < parameters.length; i++) {
-        final code = parameters[i]['parameter_code']?.toString();
-        if (code != null && !recordedResults.containsKey(code)) {
-          currentParamIndex = i;
-          break;
-        }
-      }
-    }
-    notifyListeners();
-  }
-
+  // ── Persistence ───────────────────────────────────────────────────────────
   Future<void> saveCurrentState() async {
     if (currentUserId == null) {
-      debugPrint('[InspectionProvider] WARNING: saveCurrentState() called but currentUserId is null — state NOT saved! Ensure provider.currentUserId is set at login/splash.');
+      debugPrint('[InspectionProvider] WARNING: saveCurrentState() called but currentUserId is null — state NOT saved!');
       return;
     }
     await PersistenceService.saveState(
       userId: currentUserId!,
-      sessionId: sessionId,
       machine: selectedMachine,
       part: selectedPart,
-      template: selectedTemplate,
-      inspectionType: inspectionType,
-      trialNumber: trialNumber,
-      hourlySlot: hourlySlot,
-      completedHourlySlots: completedHourlySlots,
-      parameters: parameters,
-      recordedResults: recordedResults,
+      sessions: _sessions,
+      activeOperationKey: _activeOperationKey,
+      shiftHours: shiftHours,
     );
   }
 
+  /// Restore from a locally-persisted state (called at app start / splash).
+  void restoreFromLocalState(Map<String, dynamic> state, String userId) {
+    currentUserId = userId;
+    selectedMachine = state['machine'];
+    selectedPart = state['part'];
+    shiftHours = (state['shift_hours'] as int?) ?? 8;
+    _activeOperationKey = state['active_operation_key'] as String?;
+
+    _sessions.clear();
+    final rawSessions = state['sessions'] as Map<String, dynamic>?;
+    if (rawSessions != null) {
+      for (final entry in rawSessions.entries) {
+        _sessions[entry.key] =
+            OperationSession.fromJson(Map<String, dynamic>.from(entry.value as Map));
+      }
+    }
+
+    // Auto-advance currentParamIndex within active session.
+    final active = _active;
+    if (active != null && active.parameters.isNotEmpty) {
+      active.currentParamIndex = 0;
+      for (int i = 0; i < active.parameters.length; i++) {
+        final code = active.parameters[i]['parameter_code']?.toString();
+        if (code != null && !active.recordedResults.containsKey(code)) {
+          active.currentParamIndex = i;
+          break;
+        }
+      }
+    }
+
+    notifyListeners();
+  }
+
+  // ── Rejections ────────────────────────────────────────────────────────────
   Future<void> fetchPendingRejections() async {
     try {
       final list = await ApiService.getRejections();
@@ -176,13 +220,25 @@ class InspectionProvider with ChangeNotifier {
     }
   }
 
+  // ── Load Parameters ───────────────────────────────────────────────────────
+  /// Loads parameters for the CURRENTLY ACTIVE operation session.
+  /// Call switchActiveOperation() first to ensure the right drawer is open.
   Future<void> loadParameters(
     Map<String, dynamic> template, {
     List<dynamic>? targetRejectedCodes,
     bool isFirstPiece = false,
     String? categoryFilter,
   }) async {
-    selectedTemplate = template;
+    // Ensure we have an active operation slot for this template.
+    final inspType = isFirstPiece ? 'first_piece' : 'hourly';
+    final key = operationKey(template, inspType);
+    if (_activeOperationKey != key) {
+      switchActiveOperation(key);
+    }
+    final op = _sessions[key]!;
+    op.template = template;
+    op.inspectionType = inspType;
+
     isLoading = true;
     notifyListeners();
 
@@ -198,7 +254,6 @@ class InspectionProvider with ChangeNotifier {
       final prodParams = await ApiService.getParameters(template['id']);
       allCombined = List.from(prodParams);
     } else {
-      // Default / 'all': Process parameters FIRST, then product parameters for First Piece Inspection
       final prodParams = await ApiService.getParameters(template['id']);
       final procParams = await ApiService.getProcessParameters(template['id']);
       for (var pp in procParams) {
@@ -208,13 +263,21 @@ class InspectionProvider with ChangeNotifier {
     }
 
     if (targetRejectedCodes != null && targetRejectedCodes.isNotEmpty) {
-      final filtered = allCombined.where((p) => targetRejectedCodes.contains(p['parameter_code'])).toList();
-      parameters = filtered.isNotEmpty ? filtered : allCombined;
+      final filtered = allCombined
+          .where((p) => targetRejectedCodes.contains(p['parameter_code']))
+          .toList();
+      op.parameters = filtered.isNotEmpty ? filtered : allCombined;
     } else {
-      parameters = allCombined;
+      op.parameters = allCombined;
     }
-    currentParamIndex = 0;
-    recordedResults.clear();
+
+        // Only reset state if we aren't resuming an active session for this operation
+    if (op.sessionId == null) {
+      op.currentParamIndex = 0;
+      op.recordedResults.clear();
+      op.pendingBatchValues.clear();
+    }
+
     isLoading = false;
     notifyListeners();
   }
@@ -224,7 +287,12 @@ class InspectionProvider with ChangeNotifier {
     required int trial,
     List<String>? targetFailedCodes,
   }) async {
-    selectedTemplate = template;
+    final key = operationKey(template, 'first_piece');
+    if (_activeOperationKey != key) switchActiveOperation(key);
+    final op = _sessions[key]!;
+    op.template = template;
+    op.inspectionType = 'first_piece';
+
     isLoading = true;
     notifyListeners();
 
@@ -236,14 +304,12 @@ class InspectionProvider with ChangeNotifier {
     final allParams = [...procParams, ...prodParams];
     List<dynamic> targetCodes = [];
 
-    // 1. Direct failed codes passed from batch submit / rejection modal
     if (targetFailedCodes != null && targetFailedCodes.isNotEmpty) {
       targetCodes = List.from(targetFailedCodes);
     }
 
-    // 2. Local recordedResults check for any out_of_spec parameters
-    if (targetCodes.isEmpty && recordedResults.isNotEmpty) {
-      for (var entry in recordedResults.entries) {
+    if (targetCodes.isEmpty && op.recordedResults.isNotEmpty) {
+      for (var entry in op.recordedResults.entries) {
         final res = entry.value;
         if (res['status'] == 'out_of_spec' || res['status'] == 'error') {
           targetCodes.add(entry.key);
@@ -251,12 +317,10 @@ class InspectionProvider with ChangeNotifier {
       }
     }
 
-    // 3. Stored trialFailedCodes check
     if (targetCodes.isEmpty && trialFailedCodes.containsKey(trial - 1)) {
       targetCodes = List.from(trialFailedCodes[trial - 1]!);
     }
 
-    // 4. Remote checks from activeRejections or previous session doc
     if (targetCodes.isEmpty) {
       await fetchPendingRejections();
       if (activeRejections.isNotEmpty) {
@@ -267,7 +331,8 @@ class InspectionProvider with ChangeNotifier {
     if (targetCodes.isEmpty && selectedMachine != null) {
       final setupInfo = await ApiService.checkSetupApproved(selectedMachine!['id']);
       if (setupInfo['session_id'] != null) {
-        final sessionDoc = await ApiService.getSessionDetail(setupInfo['session_id']);
+        final sessionDoc =
+            await ApiService.getSessionDetail(setupInfo['session_id']);
         if (sessionDoc != null) {
           final rejList = sessionDoc['rejected_parameters'] as List?;
           if (rejList != null && rejList.isNotEmpty) {
@@ -275,7 +340,9 @@ class InspectionProvider with ChangeNotifier {
           } else if (sessionDoc['measurements'] != null) {
             final measurements = sessionDoc['measurements'] as List;
             final prevTrial = trial - 1;
-            final prevTrialMeasurements = measurements.where((m) => (m['trial_number'] ?? 1) == prevTrial).toList();
+            final prevTrialMeasurements = measurements
+                .where((m) => (m['trial_number'] ?? 1) == prevTrial)
+                .toList();
             final oocCodes = prevTrialMeasurements
                 .where((m) => m['status'] == 'out_of_spec')
                 .map((m) => m['parameter_code'])
@@ -290,147 +357,49 @@ class InspectionProvider with ChangeNotifier {
     }
 
     if (targetCodes.isNotEmpty) {
-      final filtered = allParams.where((p) => targetCodes.contains(p['parameter_code'])).toList();
-      parameters = filtered.isNotEmpty ? filtered : allParams;
+      final filtered = allParams
+          .where((p) => targetCodes.contains(p['parameter_code']))
+          .toList();
+      op.parameters = filtered.isNotEmpty ? filtered : allParams;
     } else {
-      parameters = allParams;
+      op.parameters = allParams;
     }
 
-    currentParamIndex = 0;
-    recordedResults.clear();
-    pendingBatchValues.clear();
+        if (op.sessionId == null) {
+      op.currentParamIndex = 0;
+      op.recordedResults.clear();
+      op.pendingBatchValues.clear();
+    }
     isLoading = false;
+
     notifyListeners();
   }
 
-  int hourlySlot = 1;
-  Set<int> completedHourlySlots = {};
-
+  // ── Hourly slot helpers ───────────────────────────────────────────────────
   void setHourlySlot(int slot) {
-    hourlySlot = slot;
-    inspectionType = 'hourly';
+    if (_active != null) {
+      _active!.hourlySlot = slot;
+      _active!.inspectionType = 'hourly';
+    }
     notifyListeners();
   }
 
   void markHourlySlotCompleted(int slot) {
-    completedHourlySlots.add(slot);
-    if (hourlySlot < 8) {
-      hourlySlot = slot + 1;
+    _active?.completedHourlySlots.add(slot);
+    if ((_active?.hourlySlot ?? 0) < 8) {
+      _active?.hourlySlot = slot + 1;
     }
     notifyListeners();
   }
 
-  /// Replace the completed-slots set from authoritative server data.
-  /// Using addAll() was the root-cause of the "Slot 1/HR already completed"
-  /// false-positive: stale local slots were never evicted when the server
-  /// returned an empty list at the start of a new hourly inspection cycle.
   void syncCompletedSlots(List<int> slots) {
-    completedHourlySlots = Set<int>.from(slots); // REPLACE, not addAll
-    if (completedHourlySlots.isNotEmpty) {
-      final maxDone = completedHourlySlots.reduce((a, b) => a > b ? a : b);
-      if (maxDone >= hourlySlot && maxDone < 8) {
-        hourlySlot = maxDone + 1;
-      }
-    }
-    notifyListeners();
-  }
-
-  Future<void> restoreActiveReportState(Map<String, dynamic> setupStatus) async {
-    // Always clear stale local completed-slots BEFORE syncing from server.
-    // Without this, old slots from the previous inspection cycle survive
-    // across sessions and produce "Slot X/HR already completed" false-positives.
-    completedHourlySlots.clear();
-
-    // Resolve shift hours first so slot-range checks below are accurate.
-    if (setupStatus['shift_hours'] is int) {
-      shiftHours = setupStatus['shift_hours'];
-    } else if (setupStatus['total_hourly_slots'] is int) {
-      shiftHours = setupStatus['total_hourly_slots'];
-    }
-
-    // ── Determine whether this session is a finalised first-piece session. ──
-    // If so, the operator is ready to start hourly rounds — do NOT carry over
-    // the session_id from the first-piece session into hourly mode.
-    final String serverStatus = (setupStatus['status'] ?? '').toString();
-    final String serverType = (setupStatus['inspection_type'] ?? '').toString();
-    final bool isFinalizedFirstPiece =
-        serverType == 'first_piece' &&
-        (serverStatus == 'finalized_passed' ||
-            serverStatus == 'finalized_failed' ||
-            serverStatus == 'completed');
-
-    if (isFinalizedFirstPiece) {
-      // 1ST PC is done. Reset hourly state so the operator starts at Slot 1.
-      sessionId = null;
-      hourlySlot = 1;
-      completedHourlySlots = {};
-      // Still restore part/machine context so the UI knows what part to inspect.
-      if (selectedPart == null && setupStatus['part_number'] != null) {
-        selectedPart = {
-          'id': setupStatus['part_id'],
-          'part_number': setupStatus['part_number'],
-          'part_name': setupStatus['part_name'] ?? setupStatus['part_number'],
-        };
-      }
-      if (selectedMachine == null && setupStatus['machine_id'] != null) {
-        selectedMachine = {'id': setupStatus['machine_id']};
-      }
-      notifyListeners();
-      return;
-    }
-
-    // ── Active or in-progress session — restore normally. ──
-    if (setupStatus['session_id'] != null) {
-      sessionId = setupStatus['session_id'].toString();
-
-      if (selectedPart == null && setupStatus['part_number'] != null) {
-        selectedPart = {
-          'id': setupStatus['part_id'],
-          'part_number': setupStatus['part_number'],
-          'part_name': setupStatus['part_name'] ?? setupStatus['part_number'],
-        };
-      }
-
-      if (selectedMachine == null && setupStatus['machine_id'] != null) {
-        selectedMachine = {
-          'id': setupStatus['machine_id'],
-        };
-      }
-
-      // Sync completed slots from server (syncCompletedSlots now REPLACES the set).
-      if (setupStatus['completed_hourly_slots'] is List) {
-        final List<int> slots = List<int>.from(setupStatus['completed_hourly_slots']);
-        syncCompletedSlots(slots);
-      }
-
-      if (setupStatus['next_unlocked_slot'] is int) {
-        final int next = setupStatus['next_unlocked_slot'];
-        if (next > 0 && next <= shiftHours) {
-          hourlySlot = next;
-        }
-      }
-
-      try {
-        final doc = await ApiService.getSessionDetail(sessionId!);
-        if (doc != null) {
-          if (doc['shift_hours'] is int) {
-            shiftHours = doc['shift_hours'];
-          } else if (doc['total_hourly_slots'] is int) {
-            shiftHours = doc['total_hourly_slots'];
-          }
-
-          if (doc['measurements'] is List) {
-            recordedResults.clear();
-            for (var m in doc['measurements']) {
-              final code = m['parameter_code'];
-              if (code != null) {
-                recordedResults[code.toString()] = m;
-              }
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('Error restoring recorded measurements: $e');
+    if (_active == null) return;
+    _active!.completedHourlySlots = Set<int>.from(slots);
+    if (_active!.completedHourlySlots.isNotEmpty) {
+      final maxDone =
+          _active!.completedHourlySlots.reduce((a, b) => a > b ? a : b);
+      if (maxDone >= _active!.hourlySlot && maxDone < 8) {
+        _active!.hourlySlot = maxDone + 1;
       }
     }
     notifyListeners();
@@ -441,6 +410,95 @@ class InspectionProvider with ChangeNotifier {
     return completedHourlySlots.contains(slot - 1);
   }
 
+  // ── Restore active report state from server ───────────────────────────────
+  Future<void> restoreActiveReportState(
+      Map<String, dynamic> setupStatus) async {
+    if (setupStatus['shift_hours'] is int) {
+      shiftHours = setupStatus['shift_hours'];
+    } else if (setupStatus['total_hourly_slots'] is int) {
+      shiftHours = setupStatus['total_hourly_slots'];
+    }
+
+    final String serverStatus = (setupStatus['status'] ?? '').toString();
+    final String serverType = (setupStatus['inspection_type'] ?? '').toString();
+    final bool isFinalizedFirstPiece = serverType == 'first_piece' &&
+        (serverStatus == 'finalized_passed' ||
+            serverStatus == 'finalized_failed' ||
+            serverStatus == 'completed');
+
+    if (selectedPart == null && setupStatus['part_number'] != null) {
+      selectedPart = {
+        'id': setupStatus['part_id'],
+        'part_number': setupStatus['part_number'],
+        'part_name': setupStatus['part_name'] ?? setupStatus['part_number'],
+      };
+    }
+    if (selectedMachine == null && setupStatus['machine_id'] != null) {
+      selectedMachine = {'id': setupStatus['machine_id']};
+    }
+
+    if (isFinalizedFirstPiece) {
+      // First piece done — clear any stale first_piece drawers so hourly
+      // starts fresh, but keep the machine/part context.
+      _sessions.removeWhere((k, _) => k.endsWith('_first_piece'));
+      if (_activeOperationKey?.endsWith('_first_piece') == true) {
+        _activeOperationKey = null;
+      }
+      notifyListeners();
+      return;
+    }
+
+    // Restore per-operation slot data from operations[] array.
+    final List<dynamic> ops = setupStatus['operations'] ?? [];
+    for (final op in ops) {
+      final tid = op['template_id'];
+      if (tid == null) continue;
+      final key = '${tid}_hourly';
+      if (!_sessions.containsKey(key)) {
+        _sessions[key] = OperationSession(operationKey: key, inspectionType: 'hourly');
+      }
+      final opSess = _sessions[key]!;
+      final completedList = List<int>.from(op['completed_slots'] ?? []);
+      opSess.completedHourlySlots = Set<int>.from(completedList);
+      final nextSlot = (op['next_unlocked_slot'] as int?) ?? 1;
+      opSess.hourlySlot = nextSlot;
+
+      // Restore active session id for this op if available.
+      if (op['active_session_id'] != null) {
+        opSess.sessionId = op['active_session_id'].toString();
+      }
+    }
+
+    // If there is only one active operation, make it the active key.
+    if (_activeOperationKey == null && _sessions.length == 1) {
+      _activeOperationKey = _sessions.keys.first;
+    }
+
+    // Restore recorded measurements for the globally reported session.
+    final String? globalSessionId = setupStatus['session_id']?.toString();
+    if (globalSessionId != null && _active != null) {
+      try {
+        final doc = await ApiService.getSessionDetail(globalSessionId);
+        if (doc != null) {
+          if (doc['measurements'] is List) {
+            _active!.recordedResults.clear();
+            for (var m in doc['measurements'] as List) {
+              final code = m['parameter_code'];
+              if (code != null) {
+                _active!.recordedResults[code.toString()] = m;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error restoring recorded measurements: $e');
+      }
+    }
+
+    notifyListeners();
+  }
+
+  // ── Start Session ─────────────────────────────────────────────────────────
   Future<bool> startSession({
     String shift = 'I',
     String inspectionType = 'first_piece',
@@ -450,18 +508,24 @@ class InspectionProvider with ChangeNotifier {
   }) async {
     selectedPart ??= {'part_number': 'FBT00222', 'part_name': 'POLY V PULLEY'};
     selectedMachine ??= {'id': 1, 'machine_code': 'CNC-01', 'name': 'CNC Turning Center'};
-    selectedTemplate ??= {'id': 1, 'name': 'Op 10 — Inspection', 'version': 10};
+
+    // Ensure there's an active operation slot.
+    if (_activeOperationKey == null) {
+      final fallbackKey = '1_$inspectionType';
+      switchActiveOperation(fallbackKey);
+    }
+    final op = _active!;
 
     isLoading = true;
-    trialNumber = inspectionType == 'hourly' ? 0 : trial;
-    this.hourlySlot = inspectionType == 'first_piece' ? 0 : hourlySlot;
-    this.inspectionType = inspectionType;
+    op.trialNumber = inspectionType == 'hourly' ? 0 : trial;
+    op.hourlySlot = inspectionType == 'first_piece' ? 0 : hourlySlot;
+    op.inspectionType = inspectionType;
+    op.parentSessionId = parentId;
     this.shift = shift;
-    parentSessionId = parentId;
     notifyListeners();
 
     final mId = int.tryParse('${selectedMachine!['id']}') ?? 1;
-    final tId = int.tryParse('${selectedTemplate!['id']}') ?? 1;
+    final tId = int.tryParse('${op.template?['id'] ?? 1}') ?? 1;
     final partNo = (selectedPart!['part_number'] ?? 'FBT00222').toString();
 
     final result = await ApiService.startSession(
@@ -476,10 +540,21 @@ class InspectionProvider with ChangeNotifier {
     );
 
     isLoading = false;
-    if (result != null && (result.containsKey('session_id') || result.containsKey('id'))) {
-      sessionId = result['session_id'] ?? result['id'];
+    if (result != null &&
+        (result.containsKey('session_id') || result.containsKey('id'))) {
+      final newSessionId = result['session_id'] ?? result['id'];
+      
+      // If the session ID is different, we are starting a completely new session.
+      // Clear out any old measurements that were stored locally.
+      if (op.sessionId != newSessionId) {
+        op.recordedResults.clear();
+        op.pendingBatchValues.clear();
+        op.currentParamIndex = 0;
+      }
+      
+      op.sessionId = newSessionId;
       if (inspectionType == 'first_piece' && trial >= 1) {
-        trialSessionIds[trial] = sessionId!;
+        trialSessionIds[trial] = op.sessionId!;
       }
       saveCurrentState();
       notifyListeners();
@@ -491,70 +566,113 @@ class InspectionProvider with ChangeNotifier {
     }
   }
 
+  // ── Parameter navigation ──────────────────────────────────────────────────
   Map<String, dynamic>? get currentParameter {
-    if (parameters.isEmpty || currentParamIndex >= parameters.length) {
-      return null;
-    }
-    return parameters[currentParamIndex];
+    final op = _active;
+    if (op == null || op.parameters.isEmpty ||
+        op.currentParamIndex >= op.parameters.length) return null;
+    return op.parameters[op.currentParamIndex];
   }
 
+  void nextParameter() {
+    if (_active != null &&
+        _active!.currentParamIndex < _active!.parameters.length - 1) {
+      _active!.currentParamIndex++;
+      notifyListeners();
+    }
+  }
+
+  void previousParameter() {
+    if (_active != null && _active!.currentParamIndex > 0) {
+      _active!.currentParamIndex--;
+      notifyListeners();
+    }
+  }
+
+  void advanceToNext() => nextParameter();
+  void goToPrev() => previousParameter();
+  void jumpToParam(int index) => goToParameter(index);
+
+  void goToParameter(int index) {
+    if (_active != null &&
+        index >= 0 && index < _active!.parameters.length) {
+      _active!.currentParamIndex = index;
+      notifyListeners();
+    }
+  }
+
+  // ── Measurement helpers ───────────────────────────────────────────────────
+  bool isParamFilled(String code) => recordedResults.containsKey(code);
+  String? getParamStatus(String code) => recordedResults[code]?['status'];
+  dynamic getParamReading(String code) => recordedResults[code]?['value'];
+  int get filledCount => recordedResults.length;
+  int get remainingCount => parameters.length - recordedResults.length;
+
+  // ── Submit single measurement ─────────────────────────────────────────────
   Future<Map<String, dynamic>?> submitMeasurement({
     required double value,
     required String voiceRawText,
     String method = 'voice',
   }) async {
     final param = currentParameter;
-    if (param == null || sessionId == null) return null;
+    final op = _active;
+    if (param == null || op == null || op.sessionId == null) return null;
 
     isLoading = true;
     notifyListeners();
 
     final result = await ApiService.recordMeasurement(
-      sessionId: sessionId!,
+      sessionId: op.sessionId!,
       parameterCode: param['parameter_code'],
       value: value,
       voiceRawText: voiceRawText,
       method: method,
-      hourlySlot: inspectionType == 'first_piece' ? 0 : hourlySlot,
-      inspectionType: inspectionType,
+      hourlySlot: op.inspectionType == 'first_piece' ? 0 : op.hourlySlot,
+      inspectionType: op.inspectionType,
     );
 
     isLoading = false;
     if (result != null) {
       final resultMap = Map<String, dynamic>.from(result);
       if (!resultMap.containsKey('trial_number')) {
-        resultMap['trial_number'] = trialNumber;
+        resultMap['trial_number'] = op.trialNumber;
       }
-      recordedResults[param['parameter_code']] = resultMap;
-      setPendingValue(param['parameter_code'], value, voiceRawText, method: method);
+      op.recordedResults[param['parameter_code']] = resultMap;
+      setPendingValue(param['parameter_code'], value, voiceRawText,
+          method: method);
       saveCurrentState();
       notifyListeners();
     }
     return result;
   }
 
-  void setPendingValue(String code, double value, String voiceRawText, {String method = 'voice'}) {
-    pendingBatchValues[code] = {
+  void setPendingValue(String code, double value, String voiceRawText,
+      {String method = 'voice'}) {
+    final op = _active;
+    if (op == null) return;
+    op.pendingBatchValues[code] = {
       'parameter_code': code,
       'measured_value': value,
       'voice_raw_text': voiceRawText,
       'method': method,
-      'inspection_type': inspectionType,
-      'hourly_slot': hourlySlot,
-      'trial_number': trialNumber,
+      'inspection_type': op.inspectionType,
+      'hourly_slot': op.hourlySlot,
+      'trial_number': op.trialNumber,
     };
     notifyListeners();
   }
 
   void clearPendingValues() {
-    pendingBatchValues.clear();
+    _active?.pendingBatchValues.clear();
     notifyListeners();
   }
 
+  // ── Batch submit ──────────────────────────────────────────────────────────
   Future<Map<String, dynamic>?> submitBatchMeasurements() async {
-    debugPrint('[PROVIDER] submitBatchMeasurements() called. sessionId=$sessionId');
+    final op = _active;
+    debugPrint('[PROVIDER] submitBatchMeasurements() called. sessionId=${op?.sessionId}');
 
-    if (sessionId == null) {
+    if (op == null || op.sessionId == null) {
       debugPrint('[PROVIDER] ERROR: sessionId is null — aborting batch submit.');
       return null;
     }
@@ -562,16 +680,16 @@ class InspectionProvider with ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
-    var measurementsList = pendingBatchValues.values.map((item) => {
-      ...item,
-      'inspection_type': item['inspection_type'] ?? inspectionType,
-      'hourly_slot': item['hourly_slot'] ?? hourlySlot,
-      'trial_number': item['trial_number'] ?? trialNumber,
-    }).toList();
+    var measurementsList = op.pendingBatchValues.values.map((item) => {
+          ...item,
+          'inspection_type': item['inspection_type'] ?? op.inspectionType,
+          'hourly_slot': item['hourly_slot'] ?? op.hourlySlot,
+          'trial_number': item['trial_number'] ?? op.trialNumber,
+        }).toList();
 
-    if (measurementsList.isEmpty && recordedResults.isNotEmpty) {
+    if (measurementsList.isEmpty && op.recordedResults.isNotEmpty) {
       debugPrint('[PROVIDER] pendingBatchValues empty, constructing from recordedResults...');
-      for (var entry in recordedResults.entries) {
+      for (var entry in op.recordedResults.entries) {
         final code = entry.key;
         final data = entry.value;
         final rawVal = data['measured_value'] ?? data['value'];
@@ -584,9 +702,9 @@ class InspectionProvider with ChangeNotifier {
             'measured_value': doubleVal,
             'voice_raw_text': data['voice_raw_text'] ?? '',
             'method': data['method'] ?? 'voice',
-            'inspection_type': inspectionType,
-            'hourly_slot': hourlySlot,
-            'trial_number': trialNumber,
+            'inspection_type': op.inspectionType,
+            'hourly_slot': op.hourlySlot,
+            'trial_number': op.trialNumber,
           });
         }
       }
@@ -597,21 +715,20 @@ class InspectionProvider with ChangeNotifier {
 
     try {
       final result = await ApiService.batchMeasure(
-        sessionId: sessionId!,
+        sessionId: op.sessionId!,
         measurements: measurementsList,
       );
       debugPrint('[PROVIDER] batchMeasure API response: $result');
 
-      // Populate recordedResults so the summary screen shows correct values
       if (result != null && result['results'] is List) {
         for (var r in (result['results'] as List)) {
           final code = r['parameter_code'];
           if (code != null) {
-            recordedResults[code.toString()] = r;
+            op.recordedResults[code.toString()] = r;
             debugPrint('[PROVIDER] recordedResult saved: $code → status=${r['status']}');
           }
         }
-        saveCurrentState(); // Persist recorded results
+        saveCurrentState();
       }
       return result;
     } catch (e, stack) {
@@ -619,99 +736,59 @@ class InspectionProvider with ChangeNotifier {
       debugPrint('[PROVIDER] Stack trace: $stack');
       return null;
     } finally {
-      // ← CRITICAL: always reset isLoading so the UI doesn't stay in loading state
       isLoading = false;
       notifyListeners();
       debugPrint('[PROVIDER] isLoading reset to false.');
     }
   }
 
-
-  void nextParameter() {
-    if (currentParamIndex < parameters.length - 1) {
-      currentParamIndex++;
-      notifyListeners();
-    }
-  }
-
-  void previousParameter() {
-    if (currentParamIndex > 0) {
-      currentParamIndex--;
-      notifyListeners();
-    }
-  }
-
-  void advanceToNext() => nextParameter();
-  void goToPrev() => previousParameter();
-  void jumpToParam(int index) => goToParameter(index);
-
-  void goToParameter(int index) {
-    if (index >= 0 && index < parameters.length) {
-      currentParamIndex = index;
-      notifyListeners();
-    }
-  }
-
-  bool isParamFilled(String code) => recordedResults.containsKey(code);
-
-  String? getParamStatus(String code) => recordedResults[code]?['status'];
-
-  dynamic getParamReading(String code) => recordedResults[code]?['value'];
-
-  int get filledCount => recordedResults.length;
-
-  int get remainingCount => parameters.length - recordedResults.length;
-
+  // ── Complete session ──────────────────────────────────────────────────────
   Future<bool> completeSession() async {
-    if (sessionId == null) return false;
+    final op = _active;
+    if (op == null || op.sessionId == null) return false;
 
     isLoading = true;
     notifyListeners();
 
-    final currentSlot = hourlySlot;
-    final success = await ApiService.completeSession(sessionId!);
+    final currentSlot = op.hourlySlot;
+    final success = await ApiService.completeSession(op.sessionId!);
     if (success) {
-      // Session fully submitted — clear local saved state so it doesn't
-      // appear as a resume-able session on next app open.
-      await PersistenceService.clearState();
-      sessionId = null;
-      parentSessionId = null;
-      if (inspectionType == 'hourly') {
-        if (!completedHourlySlots.contains(currentSlot)) {
-          completedHourlySlots.add(currentSlot);
-        }
-        if (hourlySlot < 8) {
-          hourlySlot = hourlySlot + 1;
+      // Clear only this operation's session ID — other ops remain intact.
+      op.sessionId = null;
+      op.parentSessionId = null;
+      op.recordedResults.clear();
+      op.pendingBatchValues.clear();
+      if (op.inspectionType == 'hourly') {
+        op.completedHourlySlots.add(currentSlot);
+        if (op.hourlySlot < 8) {
+          op.hourlySlot = op.hourlySlot + 1;
         }
       }
+      await saveCurrentState();
     }
     isLoading = false;
     notifyListeners();
     return success;
   }
 
+  // ── Finalize first piece ──────────────────────────────────────────────────
   Future<Map<String, dynamic>?> finalizeFirstPieceSession() async {
-    if (sessionId == null) return null;
+    final op = _active;
+    if (op == null || op.sessionId == null) return null;
 
     isLoading = true;
     notifyListeners();
 
-    final result = await ApiService.finalizeFirstPiece(sessionId!);
+    final result = await ApiService.finalizeFirstPiece(op.sessionId!);
     if (result != null) {
-      // Session finalized — clear local saved state so it doesn't
-      // appear as a resume-able session on next app open.
-      await PersistenceService.clearState();
-      sessionId = null;
-      parentSessionId = null;
-      completedHourlySlots.add(hourlySlot);
-      if (hourlySlot < 8) {
-        hourlySlot = hourlySlot + 1;
-      }
+      op.sessionId = null;
+      op.parentSessionId = null;
+      op.recordedResults.clear();
+      op.pendingBatchValues.clear();
+      await saveCurrentState();
     }
     isLoading = false;
     notifyListeners();
     return result;
   }
 }
-
-
