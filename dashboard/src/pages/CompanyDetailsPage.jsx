@@ -60,13 +60,18 @@ export default function CompanyDetailsPage() {
     setError('');
     try {
       const [compRes, plantRes] = await Promise.all([
-        getCompanyDetails().catch(() => null),
+        getCompanyDetails().catch((err) => { console.error('getCompanyDetails failed:', err); throw err; }),
         getCompanyPlants().catch(() => null),
       ]);
 
-      const compData = compRes?.data?.results || compRes?.data;
-      if (compData && (Array.isArray(compData) ? compData.length > 0 : true)) {
-        const primary = Array.isArray(compData) ? compData[0] : compData;
+      const compData = compRes?.data?.results ?? compRes?.data;
+      const dataArray = Array.isArray(compData) ? compData : (compData ? [compData] : []);
+
+      if (dataArray.length === 0) {
+        // No factory record exists in the DB yet or the API failed
+        setError('No factory record found. Please create a factory record first or contact your administrator.');
+      } else {
+        const primary = dataArray[0];
         setFactoryId(primary.id);
 
         const shiftHrs = primary.shift_hours || 8;
@@ -95,13 +100,13 @@ export default function CompanyDetailsPage() {
         });
       }
 
-      const plantData = plantRes?.data?.results || plantRes?.data;
+      const plantData = plantRes?.data?.results ?? plantRes?.data;
       if (plantData) {
         setPlants(Array.isArray(plantData) ? plantData : []);
       }
     } catch (err) {
       console.error('Failed to load company details', err);
-      setError('Failed to fetch company details. Using default parameters.');
+      setError('Failed to fetch company details. Please refresh or contact your administrator.');
     } finally {
       setLoading(false);
     }
