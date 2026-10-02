@@ -7,7 +7,7 @@ import { can } from '../utils/access';
 import { useCompany } from '../context/CompanyContext';
 import {
   getCompanyDetails, updateCompanyDetails, getCompanyPlants,
-  uploadCompanyLogo, removeCompanyLogo
+  uploadCompanyLogo, removeCompanyLogo, createCompanyDetails
 } from '../api/company';
 import {
   Building2, AlertCircle, CheckCircle2, User, Clock, ShieldCheck, Lock, Save, Loader2,
@@ -187,11 +187,6 @@ export default function CompanyDetailsPage() {
     e.preventDefault();
     if (!isAdmin) return;
 
-    if (!factoryId) {
-      setError('Cannot update company details: Factory record ID not found.');
-      return;
-    }
-
     setIsSaving(true);
     setError('');
     setSuccessMsg('');
@@ -221,10 +216,21 @@ export default function CompanyDetailsPage() {
         available_working_minutes: availMins,
       };
 
-      const res = await updateCompanyDetails(factoryId, payload);
+      let res;
+      if (!factoryId) {
+        // Create new factory
+        res = await createCompanyDetails(payload);
+        if (res?.data?.id) {
+          setFactoryId(res.data.id);
+        }
+      } else {
+        // Update existing factory
+        res = await updateCompanyDetails(factoryId, payload);
+      }
+      
       if (res?.data) {
         if (refreshCompany) refreshCompany();
-        setSuccessMsg('Company & Shift details saved successfully!');
+        setSuccessMsg(factoryId ? 'Company & Shift details saved successfully!' : 'Company record created successfully!');
         setTimeout(() => setSuccessMsg(''), 4500);
       }
     } catch (err) {
