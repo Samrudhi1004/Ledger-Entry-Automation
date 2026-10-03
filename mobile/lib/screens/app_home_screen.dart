@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../providers/messaging_provider.dart';
+import '../providers/company_provider.dart';
 import '../services/api_service.dart';
 import '../services/persistence_service.dart';
 import 'account_screen.dart';
@@ -551,6 +552,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
     final provider = Provider.of<InspectionProvider>(context);
+    final company = Provider.of<CompanyProvider>(context);
 
     final name = auth.fullName ?? auth.username ?? 'Operator';
     final firstName = name.split(' ').first;
@@ -631,6 +633,19 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                 ),
                 Row(
                   children: [
+                    if (company.logoUrl.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        height: 36,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            company.logoUrl,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                          ),
+                        ),
+                      ),
                     IconButton(
                       icon: const Icon(Icons.bug_report_outlined, color: Color(0xFFEF4444), size: 26),
                       tooltip: 'Report Issue',
