@@ -126,19 +126,35 @@ class FactoryUploadLogoView(APIView):
                     public_id=f"factory_{factory.id}_{uuid.uuid4().hex[:8]}"
                 )
                 if upload_res and 'secure_url' in upload_res:
-                    factory.logo_url = upload_res['secure_url']
-                    factory.save()
+                    secure_url = upload_res['secure_url']
+                    # Use .update() to safely bypass any bugged CloudinaryField pre_save
+                    Factory.objects.filter(pk=factory.pk).update(
+                        logo_url=secure_url,
+                        logo=upload_res.get('public_id', '')
+                    )
+                    factory.logo_url = secure_url
                     uploaded_to_cloudinary = True
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Cloudinary upload failed: {e}")
 
         # 2. Local media storage fallback
         if not uploaded_to_cloudinary:
-            factory.logo = file_obj
-            factory.save()
-            absolute_url = request.build_absolute_uri(factory.logo.url)
-            factory.logo_url = absolute_url
-            Factory.objects.filter(pk=factory.pk).update(logo_url=absolute_url)
+            try:
+                factory.logo = file_obj
+                factory.save()
+                absolute_url = request.build_absolute_uri(factory.logo.url)
+                factory.logo_url = absolute_url
+                Factory.objects.filter(pk=factory.pk).update(logo_url=absolute_url)
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Fallback local upload failed: {e}")
+                return Response(
+                    {'detail': 'Failed to upload logo. Ensure Cloudinary variables are configured.'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
         return Response({
             'success': True,
