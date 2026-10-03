@@ -9,9 +9,13 @@ import 'group_creation_screen.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/messaging_provider.dart';
+import '../../providers/notification_provider.dart';
 
 class MessagesScreen extends StatefulWidget {
-  const MessagesScreen({Key? key}) : super(key: key);
+  final String? initialConversationId;
+
+  const MessagesScreen({Key? key, this.initialConversationId})
+    : super(key: key);
 
   @override
   State<MessagesScreen> createState() => _MessagesScreenState();
@@ -22,11 +26,15 @@ class _MessagesScreenState extends State<MessagesScreen> {
   List<dynamic> _conversations = [];
   bool _loading = true;
   Timer? _refreshTimer;
+  bool _initialConversationOpened = false;
 
   @override
   void initState() {
     super.initState();
-    _messagingService = Provider.of<MessagingProvider>(context, listen: false).globalService;
+    _messagingService = Provider.of<MessagingProvider>(
+      context,
+      listen: false,
+    ).globalService;
     _loadConversations();
     // Refresh every 10 seconds for near-live unread badge updates
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -44,11 +52,55 @@ class _MessagesScreenState extends State<MessagesScreen> {
     setState(() => _loading = true);
     final conversations = await _messagingService.fetchConversations();
     if (mounted) {
+      unawaited(
+        Provider.of<NotificationProvider>(
+          context,
+          listen: false,
+        ).loadMessageNotifications(),
+      );
+    }
+    if (mounted) {
       setState(() {
         _conversations = conversations;
         _loading = false;
       });
+      await _openInitialConversation();
     }
+  }
+
+  Future<void> _openInitialConversation() async {
+    final targetId = widget.initialConversationId;
+    if (_initialConversationOpened || targetId == null || !mounted) return;
+
+    Map<String, dynamic>? conversation;
+    for (final item in _conversations) {
+      if (item is Map && item['id']?.toString() == targetId) {
+        conversation = Map<String, dynamic>.from(item);
+        break;
+      }
+    }
+    if (conversation == null) return;
+    final selectedConversation = conversation;
+
+    _initialConversationOpened = true;
+    final currentUserId =
+        int.tryParse(
+          Provider.of<AuthProvider>(context, listen: false).userId ?? '0',
+        ) ??
+        0;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          conversationId: targetId,
+          conversationName: _getConversationName(
+            selectedConversation,
+            currentUserId,
+          ),
+        ),
+      ),
+    );
+    if (mounted) _loadConversations();
   }
 
   /// Silent refresh — no loading spinner, just updates data in background.
@@ -56,11 +108,22 @@ class _MessagesScreenState extends State<MessagesScreen> {
     if (!mounted) return;
     final conversations = await _messagingService.fetchConversations();
     if (mounted) {
+      unawaited(
+        Provider.of<NotificationProvider>(
+          context,
+          listen: false,
+        ).loadMessageNotifications(),
+      );
+    }
+    if (mounted) {
       setState(() => _conversations = conversations);
     }
   }
 
-  String _getConversationName(Map<String, dynamic> conversation, int currentUserId) {
+  String _getConversationName(
+    Map<String, dynamic> conversation,
+    int currentUserId,
+  ) {
     if (conversation['type'] == 'group') {
       return conversation['name'] ?? 'Unnamed Group';
     }
@@ -78,7 +141,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
         : '$firstName $lastName'.trim();
   }
 
-  String _getLastMessagePreview(Map<String, dynamic>? lastMessage, int currentUserId) {
+  String _getLastMessagePreview(
+    Map<String, dynamic>? lastMessage,
+    int currentUserId,
+  ) {
     if (lastMessage == null) return 'No messages yet';
 
     final sender = lastMessage['sender'] as Map<String, dynamic>? ?? {};
@@ -94,7 +160,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
     if (messageType == 'file') return '$senderName: [File]';
     if (messageType == 'meeting') return '$senderName: 📅 Meeting';
 
-    final preview = content.length > 50 ? '${content.substring(0, 50)}...' : content;
+    final preview = content.length > 50
+        ? '${content.substring(0, 50)}...'
+        : content;
     return '$senderName: $preview';
   }
 
@@ -123,7 +191,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
   Widget build(BuildContext context) {
     // Fix: Fall back to 0 (not 1) so we never accidentally treat messages from
     // real user ID 1 as the current user's own when the session has no persisted userId.
-    final currentUserId = int.tryParse(Provider.of<AuthProvider>(context, listen: false).userId ?? '0') ?? 0;
+    final currentUserId =
+        int.tryParse(
+          Provider.of<AuthProvider>(context, listen: false).userId ?? '0',
+        ) ??
+        0;
 
     return Scaffold(
       appBar: AppBar(
@@ -149,116 +221,146 @@ class _MessagesScreenState extends State<MessagesScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _conversations.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No conversations yet',
-                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Start a new chat to get started',
-                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.chat_bubble_outline,
+                    size: 64,
+                    color: Colors.grey[400],
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadConversations,
-                  child: ListView.builder(
-                    itemCount: _conversations.length,
-                    itemBuilder: (context, index) {
-                      final conversation = _conversations[index] as Map<String, dynamic>;
-                      final conversationId = conversation['id'] ?? '';
-                      final unreadCount = conversation['unread_count'] ?? 0;
-                      final lastMessage = conversation['last_message'] as Map<String, dynamic>?;
+                  const SizedBox(height: 16),
+                  Text(
+                    'No conversations yet',
+                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Start a new chat to get started',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadConversations,
+              child: ListView.builder(
+                itemCount: _conversations.length,
+                itemBuilder: (context, index) {
+                  final conversation =
+                      _conversations[index] as Map<String, dynamic>;
+                  final conversationId = conversation['id'] ?? '';
+                  final unreadCount = conversation['unread_count'] ?? 0;
+                  final lastMessage =
+                      conversation['last_message'] as Map<String, dynamic>?;
 
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.blue,
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.blue,
+                      child: Text(
+                        _getConversationName(
+                          conversation,
+                          currentUserId,
+                        )[0].toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      _getConversationName(conversation, currentUserId),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Row(
+                      children: [
+                        if (lastMessage != null &&
+                            (lastMessage['sender']?['id'] as int? ?? 0) ==
+                                currentUserId) ...[
+                          Icon(
+                            Icons.done_all,
+                            size: 14,
+                            color:
+                                (lastMessage['read_by'] as List?)?.isNotEmpty ==
+                                    true
+                                ? Colors.blue
+                                : Colors.grey,
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Expanded(
                           child: Text(
-                            _getConversationName(conversation, currentUserId)[0].toUpperCase(),
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            _getLastMessagePreview(lastMessage, currentUserId),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: unreadCount > 0
+                                  ? Colors.black87
+                                  : Colors.grey[600],
+                              fontWeight: unreadCount > 0
+                                  ? FontWeight.w500
+                                  : FontWeight.normal,
+                            ),
                           ),
                         ),
-                        title: Text(
-                          _getConversationName(conversation, currentUserId),
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                      ],
+                    ),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          _formatTime(conversation['updated_at']),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: unreadCount > 0
+                                ? Colors.blue
+                                : Colors.grey[600],
+                          ),
                         ),
-                        subtitle: Row(
-                          children: [
-                            if (lastMessage != null && (lastMessage['sender']?['id'] as int? ?? 0) == currentUserId) ...[
-                              Icon(
-                                Icons.done_all,
-                                size: 14,
-                                color: (lastMessage['read_by'] as List?)?.isNotEmpty == true ? Colors.blue : Colors.grey,
-                              ),
-                              const SizedBox(width: 4),
-                            ],
-                            Expanded(
-                              child: Text(
-                                _getLastMessagePreview(lastMessage, currentUserId),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: unreadCount > 0 ? Colors.black87 : Colors.grey[600],
-                                  fontWeight: unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
-                                ),
-                              ),
+                        if (unreadCount > 0) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
                             ),
-                          ],
-                        ),
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              _formatTime(conversation['updated_at']),
-                              style: TextStyle(
+                            decoration: BoxDecoration(
+                              color: Colors.blue,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              unreadCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
                                 fontSize: 12,
-                                color: unreadCount > 0 ? Colors.blue : Colors.grey[600],
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                            if (unreadCount > 0) ...[
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  unreadCount.toString(),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
+                          ),
+                        ],
+                      ],
+                    ),
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChatScreen(
+                            conversationId: conversationId,
+                            conversationName: _getConversationName(
+                              conversation,
+                              currentUserId,
+                            ),
+                          ),
                         ),
-                        onTap: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ChatScreen(
-                                conversationId: conversationId,
-                                conversationName: _getConversationName(conversation, currentUserId),
-                              ),
-                            ),
-                          );
-                          _loadConversations();
-                        },
                       );
+                      _loadConversations();
                     },
-                  ),
-                ),
+                  );
+                },
+              ),
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           showModalBottomSheet(
@@ -306,7 +408,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   ListTile(
                     leading: const Icon(Icons.video_call),
                     title: const Text('Create Meet'),
-                    subtitle: const Text('Invite org members to a Jitsi meeting'),
+                    subtitle: const Text(
+                      'Invite org members to a Jitsi meeting',
+                    ),
                     onTap: () async {
                       Navigator.pop(context); // close bottom sheet
                       final result = await Navigator.push(
