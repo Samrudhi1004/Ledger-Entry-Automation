@@ -959,6 +959,15 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
 
     final notificationState = Provider.of<NotificationProvider>(context);
     final unreadNotifCount = notificationState.unreadCount;
+    final unreadMessagesCount = notificationState.items
+        .where(
+          (item) =>
+              item.category == NotificationCategory.message && !item.isRead,
+        )
+        .fold<int>(0, (total, item) {
+          final count = item.metadata['unread_count'];
+          return total + (count is int ? count : 1);
+        });
 
     Widget homeTabContent = RefreshIndicator(
       color: const Color(0xFF4F46E5),
@@ -1444,7 +1453,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
           index: _currentIndex,
           children: [
             homeTabContent,
-            const MessagesScreen(),
+            _currentIndex == 1
+                ? const MessagesScreen()
+                : const SizedBox.shrink(),
             const AccountScreen(),
           ],
         ),
@@ -1520,12 +1531,47 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.chat_bubble_outline_rounded,
-                        color: _currentIndex == 1
-                            ? const Color(0xFF4F46E5)
-                            : const Color(0xFF94A3B8),
-                        size: 22,
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Icon(
+                            Icons.chat_bubble_outline_rounded,
+                            color: _currentIndex == 1
+                                ? const Color(0xFF4F46E5)
+                                : const Color(0xFF94A3B8),
+                            size: 22,
+                          ),
+                          if (unreadMessagesCount > 0)
+                            Positioned(
+                              top: -7,
+                              right: -9,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 2,
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFEF4444),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text(
+                                  unreadMessagesCount > 99
+                                      ? '99+'
+                                      : '$unreadMessagesCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(width: 4),
                       Text(
