@@ -325,9 +325,26 @@ export default function OEEReportPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {reportData.data.map((row, idx) => (
+                    {reportData.data.map((row, idx, arr) => {
+                      const isFirstOfDay = idx === 0 || arr[idx - 1].date !== row.date;
+                      const shiftsForDay = arr.filter(r => r.date === row.date).length;
+                      
+                      return (
                       <tr key={idx} style={{ borderBottom: '1px solid #E5E7EB', background: idx % 2 === 0 ? 'white' : '#F9FAFB' }}>
-                        <td style={{ padding: '10px 16px', color: '#111827' }}>{row.date}</td>
+                        {isFirstOfDay && (
+                          <td 
+                            rowSpan={shiftsForDay} 
+                            style={{ 
+                              padding: '10px 16px', 
+                              color: '#111827', 
+                              verticalAlign: 'middle',
+                              borderRight: '1px solid #E5E7EB',
+                              background: '#ffffff'
+                            }}
+                          >
+                            {row.date}
+                          </td>
+                        )}
                         <td style={{ padding: '10px 16px', color: '#4B5563' }}>{row.shift}</td>
                         <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB' }}>{row.available_time}</td>
                         <td style={{ padding: '10px 16px', textAlign: 'right' }}>{row.planned_downtime}</td>
@@ -348,7 +365,8 @@ export default function OEEReportPage() {
                         <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB', fontWeight: 500 }}>{row.quality_rate}%</td>
                         <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB', fontWeight: 700, color: '#1D4ED8', background: '#EFF6FF' }}>{row.oee}%</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

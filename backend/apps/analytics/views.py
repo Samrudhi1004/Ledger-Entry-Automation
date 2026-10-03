@@ -413,84 +413,110 @@ class OEEDataAPIView(APIView):
             if (t.part_id, None) not in template_map:
                 template_map[(t.part_id, None)] = t
 
-        data = []
-        for report in reports:
-            dt = getattr(report, 'downtime_report', None)
+        reports_dict = {}
+        for r in reports:
+            reports_dict[(r.date.day, r.shift)] = r
             
-            # 1. Available Time (A) & Planned Downtime (B)
-            available_time = 480
-            planned_downtime = 60
-            if machine and machine.plant:
-                if hasattr(machine.plant, 'factory') and machine.plant.factory and machine.plant.factory.shift_hours:
-                    fac = machine.plant.factory
-                    available_time = fac.shift_hours * 60
-                    planned_downtime = fac.lunch_break_minutes + fac.tea_break_minutes
-                elif machine.plant.shift_duration_hours:
-                    available_time = machine.plant.shift_duration_hours * 60
-                    planned_downtime = machine.plant.total_break_mins or 0
+        num_days = calendar.monthrange(year, month)[1]
 
-            # Net Available (C)
-            net_available = available_time - planned_downtime
+        default_available = 480
+        total_shifts_per_day = 3
+        if machine and machine.plant:
+            if hasattr(machine.plant, 'factory') and machine.plant.factory:
+                fac = machine.plant.factory
+                if fac.shift_hours:
+                    default_available = fac.shift_hours * 60
+                if fac.total_shifts_per_day:
+                    total_shifts_per_day = fac.total_shifts_per_day
+            elif machine.plant.shift_duration_hours:
+                default_available = machine.plant.shift_duration_hours * 60
+                if machine.plant.shift_duration_hours > 0:
+                    total_shifts_per_day = 24 // machine.plant.shift_duration_hours
+
+        dynamic_shifts_list = ['I', 'II', 'III', 'IV'][:total_shifts_per_day]
+
+        data = []
+        import uuid
+        from datetime import date
+        for day in range(1, num_days + 1):
+            date_obj = date(year, month, day)
+            date_str = date_obj.strftime("%Y-%m-%d")
             
-            # Downtimes
-            st = dt.setting if dt and dt.setting else 0
-            nl = dt.no_load if dt and dt.no_load else 0
-            no = dt.no_operator if dt and dt.no_operator else 0
-            mm = dt.um if dt and dt.um else 0
-            ow = dt.inspection_wait if dt and dt.inspection_wait else 0
-            pf = dt.power_off if dt and dt.power_off else 0
-            
-            # Down Time Losses (D)
-            downtime_losses = dt.total_downtime if dt and dt.total_downtime else (st + nl + no + mm + ow + pf)
-            
-            # Operating Time (E)
-            operating_time = net_available - downtime_losses
-            
-            # Availability (F)
-            availability = operating_time / net_available if net_available > 0 else 0
-            
-            # Total Qty (G)
-            total_qty = report.jobs_completed or 0
-            
-            # Cycle Time (H)
-            cycle_time = 0.0
-            if report.part_id:
-                template = template_map.get((report.part_id, report.operation)) or template_map.get((report.part_id, None))
-                if template and getattr(template, 'cycle_time_mins', 0) > 0:
-                    cycle_time = template.cycle_time_mins
-                    
-            # Performance Efficiency (I)
-            performance = (total_qty * cycle_time) / operating_time if operating_time > 0 else 0
-            
-            # Rejection (J)
-            rejection = report.incorrect_jobs or 0
-            
-            # Rate of Quality (K)
-            quality_rate = (total_qty - rejection) / total_qty if total_qty > 0 else 0
-            
-            # OEE (L)
-            oee = availability * performance * quality_rate
-            
-            data.append({
-                "id": report.id,
-                "shift": report.shift,
-                "date": report.date.strftime("%Y-%m-%d"),
-                "available_time": available_time,
-                "planned_downtime": planned_downtime,
-                "net_available": net_available,
-                "downtime_losses": downtime_losses,
-                "downtimes": {
-                    "st": st, "nl": nl, "no": no, "mm": mm, "ow": ow, "pf": pf
-                },
-                "operating_time": operating_time,
-                "availability": round(availability * 100, 2),
-                "total_qty": total_qty,
-                "cycle_time": round(cycle_time, 5),
-                "performance": round(performance * 100, 2),
-                "rejection": rejection,
-                "quality_rate": round(quality_rate * 100, 2),
-                "oee": round(oee * 100, 2)
-            })
+            for shift_val in dynamic_shifts_list:
+                report = reports_dict.get((day, shift_val))
+                
+                available_time = default_available
+                planned_downtime = 0
+                cycle_time = 0.0
+                
+                if report:
+                    planned_downtime = 60
+                    if machine and machine.plant:
+                        if hasattr(machine.plant, 'factory') and machine.plant.factory and machine.plant.factory.shift_hours:
+                            fac = machine.plant.factory
+                            planned_downtime = fac.lunch_break_minutes + fac.tea_break_minutes
+                        elif machine.plant.shift_duration_hours:
+                            planned_downtime = machine.plant.total_break_mins or 0
+                            
+                    if report.part_id:
+                        template = template_map.get((report.part_id, report.operation)) or template_map.get((report.part_id, None))
+                        if template and getattr(template, 'cycle_time_mins', 0) > 0:
+                            cycle_time = template.cycle_time_mins
+                else:
+                    planned_downtime = 60
+                    if machine and machine.plant:
+                        if hasattr(machine.plant, 'factory') and machine.plant.factory and machine.plant.factory.shift_hours:
+                            fac = machine.plant.factory
+                            planned_downtime = fac.lunch_break_minutes + fac.tea_break_minutes
+                        elif machine.plant.shift_duration_hours:
+                            planned_downtime = machine.plant.total_break_mins or 0
+                
+                net_available = available_time - planned_downtime
+                
+                if report:
+                    dt = getattr(report, 'downtime_report', None)
+                    st = dt.setting if dt and dt.setting else 0
+                    nl = dt.no_load if dt and dt.no_load else 0
+                    no = dt.no_operator if dt and dt.no_operator else 0
+                    mm = dt.um if dt and dt.um else 0
+                    ow = dt.inspection_wait if dt and dt.inspection_wait else 0
+                    pf = dt.power_off if dt and dt.power_off else 0
+                    hidden = (dt.tool_change or 0) + (dt.rework or 0) + (dt.tool_problem or 0) if dt else 0
+                    downtime_losses = dt.total_downtime if dt and dt.total_downtime else (st + nl + no + mm + ow + pf + hidden)
+                    total_qty = report.jobs_completed or 0
+                    rejection = report.incorrect_jobs or 0
+                else:
+                    st = nl = no = mm = ow = pf = downtime_losses = 0
+                    total_qty = 0
+                    rejection = 0
+                
+                operating_time = net_available - downtime_losses
+                
+                availability = operating_time / net_available if net_available > 0 else 0
+                performance = (total_qty * cycle_time) / operating_time if operating_time > 0 else 0
+                quality_rate = (total_qty - rejection) / total_qty if total_qty > 0 else 0
+                oee = availability * performance * quality_rate
+                
+                data.append({
+                    "id": report.id if report else str(uuid.uuid4()),
+                    "shift": shift_val,
+                    "date": date_str,
+                    "available_time": available_time,
+                    "planned_downtime": planned_downtime,
+                    "net_available": net_available,
+                    "downtime_losses": downtime_losses,
+                    "downtimes": {
+                        "st": st, "nl": nl, "no": no, "mm": mm, "ow": ow, "pf": pf
+                    },
+                    "operating_time": operating_time,
+                    "availability": round(availability * 100, 2),
+                    "total_qty": total_qty,
+                    "cycle_time": round(cycle_time, 5),
+                    "performance": round(performance * 100, 2),
+                    "rejection": rejection,
+                    "quality_rate": round(quality_rate * 100, 2),
+                    "oee": round(oee * 100, 2)
+                })
 
         return Response({
             "machine": machine_code,
