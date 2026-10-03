@@ -137,104 +137,121 @@ def generate_monthly_oee_excel(machine_code: str, year: int, month: int) -> Byte
     current_row = 7
     last_date = None
 
-    for report in reports:
-        dt = getattr(report, 'downtime_report', None)
-        
-        # Calculate available and planned downtime
-        available_time = 480
-        planned_downtime = 60
-        if machine and machine.plant:
-            if hasattr(machine.plant, 'factory') and machine.plant.factory and machine.plant.factory.shift_hours:
-                fac = machine.plant.factory
-                available_time = fac.shift_hours * 60
-                planned_downtime = fac.lunch_break_minutes + fac.tea_break_minutes
-            elif machine.plant.shift_duration_hours:
-                available_time = machine.plant.shift_duration_hours * 60
-                planned_downtime = machine.plant.total_break_mins or 0
+    reports_dict = {}
+    for r in reports:
+        reports_dict[(r.date.day, r.shift)] = r
 
-        # Cycle Time
-        cycle_time = 0.0
-        if report.part_id:
-            template = template_map.get((report.part_id, report.operation)) or template_map.get((report.part_id, None))
-            if template and getattr(template, 'cycle_time_mins', 0) > 0:
-                cycle_time = template.cycle_time_mins
+    num_days = calendar.monthrange(year, month)[1]
 
-        # A: SR NO / Shift
-        set_cell(current_row, 1, report.shift)
-        
-        # B: DATE
-        date_val = report.date.strftime("%Y-%m-%d") if report.date != last_date else ""
-        set_cell(current_row, 2, date_val)
-        last_date = report.date
+    default_available = 480
+    total_shifts_per_day = 3
+    if machine and machine.plant:
+        if hasattr(machine.plant, 'factory') and machine.plant.factory:
+            fac = machine.plant.factory
+            if fac.shift_hours:
+                default_available = fac.shift_hours * 60
+            if fac.total_shifts_per_day:
+                total_shifts_per_day = fac.total_shifts_per_day
+        elif machine.plant.shift_duration_hours:
+            default_available = machine.plant.shift_duration_hours * 60
+            if machine.plant.shift_duration_hours > 0:
+                total_shifts_per_day = 24 // machine.plant.shift_duration_hours
 
-        # C: Available Time (A)
-        set_cell(current_row, 3, available_time)
+    dynamic_shifts_list = ['I', 'II', 'III', 'IV'][:total_shifts_per_day]
+
+    for day in range(1, num_days + 1):
+        date_obj = date(year, month, day)
+        date_str = f"{day}-{date_obj.strftime('%b-%y')}"
         
-        # D: Planned Downtime (B)
-        set_cell(current_row, 4, planned_downtime)
+        start_row_for_day = current_row
         
-        # E: Net Available (C) -> Formula: C - D  (Which is A - B in excel headers)
-        ws.cell(row=current_row, column=5).value = f"=C{current_row}-D{current_row}"
-        ws.cell(row=current_row, column=5).alignment = center_align
-        ws.cell(row=current_row, column=5).border = thin_border
-        
-        # F: Down Time Losses (D) -> Sum of G to L + hidden fields
-        hidden_downtime = 0
-        if dt:
-            hidden_downtime = (dt.tool_change or 0) + (dt.rework or 0) + (dt.tool_problem or 0)
+        for shift_val in dynamic_shifts_list:
+            report = reports_dict.get((day, shift_val))
             
-        ws.cell(row=current_row, column=6).value = f"=SUM(G{current_row}:L{current_row}) + {hidden_downtime}"
-        ws.cell(row=current_row, column=6).alignment = center_align
-        ws.cell(row=current_row, column=6).border = thin_border
-        
-        # Downtime reasons (G to L)
-        set_cell(current_row, 7, dt.setting if dt and dt.setting else "")        # ST
-        set_cell(current_row, 8, dt.no_load if dt and dt.no_load else "")        # NL
-        set_cell(current_row, 9, dt.no_operator if dt and dt.no_operator else "")# NO
-        set_cell(current_row, 10, dt.um if dt and dt.um else "")                 # MM (um)
-        set_cell(current_row, 11, dt.inspection_wait if dt and dt.inspection_wait else "") # OW
-        set_cell(current_row, 12, dt.power_off if dt and dt.power_off else "")   # PF
-        
-        # M: Operating Time (E) -> Formula: C - D (E - F in excel cols)
-        ws.cell(row=current_row, column=13).value = f"=E{current_row}-F{current_row}"
-        ws.cell(row=current_row, column=13).alignment = center_align
-        ws.cell(row=current_row, column=13).border = thin_border
-        
-        # N: Availability (F) -> Formula: E / C (M / E in excel cols)
-        ws.cell(row=current_row, column=14).value = f"=IF(E{current_row}>0, M{current_row}/E{current_row}, 0)"
-        ws.cell(row=current_row, column=14).alignment = center_align
-        ws.cell(row=current_row, column=14).border = thin_border
-        ws.cell(row=current_row, column=14).number_format = '0.00%'
-        
-        # O: Total Qty (G)
-        set_cell(current_row, 15, report.jobs_completed or 0)
-        
-        # P: Theo Cycle Time (H)
-        set_cell(current_row, 16, round(cycle_time, 5))
-        
-        # Q: Performance (I) -> Formula: (G*H)/E  ((O*P)/M in excel cols)
-        ws.cell(row=current_row, column=17).value = f"=IF(M{current_row}>0, (O{current_row}*P{current_row})/M{current_row}, 0)"
-        ws.cell(row=current_row, column=17).alignment = center_align
-        ws.cell(row=current_row, column=17).border = thin_border
-        ws.cell(row=current_row, column=17).number_format = '0.00%'
-        
-        # R: Rejection (J)
-        set_cell(current_row, 18, report.incorrect_jobs or 0)
-        
-        # S: Rate of Quality (K) -> Formula: (G-J)/G ((O-R)/O in excel cols)
-        ws.cell(row=current_row, column=19).value = f"=IF(O{current_row}>0, (O{current_row}-R{current_row})/O{current_row}, 0)"
-        ws.cell(row=current_row, column=19).alignment = center_align
-        ws.cell(row=current_row, column=19).border = thin_border
-        ws.cell(row=current_row, column=19).number_format = '0.00%'
-        
-        # T: O.E.E (L) -> Formula: F*I*K*100 (N*Q*S in percentage format)
-        # Note: If we use percentage format, we don't need * 100
-        ws.cell(row=current_row, column=20).value = f"=N{current_row}*Q{current_row}*S{current_row}"
-        ws.cell(row=current_row, column=20).alignment = center_align
-        ws.cell(row=current_row, column=20).border = thin_border
-        ws.cell(row=current_row, column=20).number_format = '0.00%'
+            set_cell(current_row, 1, shift_val)
+            set_cell(current_row, 2, date_str)
+            
+            available_time = default_available
+            planned_downtime = 0
+            cycle_time = 0.0
+            
+            if report:
+                planned_downtime = 60
+                if machine and machine.plant:
+                    if hasattr(machine.plant, 'factory') and machine.plant.factory and machine.plant.factory.shift_hours:
+                        fac = machine.plant.factory
+                        planned_downtime = fac.lunch_break_minutes + fac.tea_break_minutes
+                    elif machine.plant.shift_duration_hours:
+                        planned_downtime = machine.plant.total_break_mins or 0
+                
+                if report.part_id:
+                    template = template_map.get((report.part_id, report.operation)) or template_map.get((report.part_id, None))
+                    if template and getattr(template, 'cycle_time_mins', 0) > 0:
+                        cycle_time = template.cycle_time_mins
+            else:
+                planned_downtime = 60
+                if machine and machine.plant:
+                    if hasattr(machine.plant, 'factory') and machine.plant.factory and machine.plant.factory.shift_hours:
+                        fac = machine.plant.factory
+                        planned_downtime = fac.lunch_break_minutes + fac.tea_break_minutes
+                    elif machine.plant.shift_duration_hours:
+                        planned_downtime = machine.plant.total_break_mins or 0
 
-        current_row += 1
+            set_cell(current_row, 3, available_time)
+            set_cell(current_row, 4, planned_downtime)
+            
+            ws.cell(row=current_row, column=5).value = f"=C{current_row}-D{current_row}"
+            ws.cell(row=current_row, column=5).alignment = center_align
+            ws.cell(row=current_row, column=5).border = thin_border
+            
+            dt = getattr(report, 'downtime_report', None) if report else None
+            hidden_downtime = 0
+            if dt:
+                hidden_downtime = (dt.tool_change or 0) + (dt.rework or 0) + (dt.tool_problem or 0)
+                
+            ws.cell(row=current_row, column=6).value = f"=SUM(G{current_row}:L{current_row}) + {hidden_downtime}"
+            ws.cell(row=current_row, column=6).alignment = center_align
+            ws.cell(row=current_row, column=6).border = thin_border
+            
+            set_cell(current_row, 7, dt.setting if dt and dt.setting else 0)
+            set_cell(current_row, 8, dt.no_load if dt and dt.no_load else 0)
+            set_cell(current_row, 9, dt.no_operator if dt and dt.no_operator else 0)
+            set_cell(current_row, 10, dt.um if dt and dt.um else 0)
+            set_cell(current_row, 11, dt.inspection_wait if dt and dt.inspection_wait else 0)
+            set_cell(current_row, 12, dt.power_off if dt and dt.power_off else 0)
+            
+            ws.cell(row=current_row, column=13).value = f"=E{current_row}-F{current_row}"
+            ws.cell(row=current_row, column=13).alignment = center_align
+            ws.cell(row=current_row, column=13).border = thin_border
+            
+            ws.cell(row=current_row, column=14).value = f"=M{current_row}/E{current_row}"
+            ws.cell(row=current_row, column=14).alignment = center_align
+            ws.cell(row=current_row, column=14).border = thin_border
+            ws.cell(row=current_row, column=14).number_format = '0.00'
+            
+            set_cell(current_row, 15, report.jobs_completed if report else 0)
+            set_cell(current_row, 16, round(cycle_time, 5))
+            
+            ws.cell(row=current_row, column=17).value = f"=(O{current_row}*P{current_row})/M{current_row}"
+            ws.cell(row=current_row, column=17).alignment = center_align
+            ws.cell(row=current_row, column=17).border = thin_border
+            ws.cell(row=current_row, column=17).number_format = '0.00'
+            
+            set_cell(current_row, 18, report.incorrect_jobs if report else 0)
+            
+            ws.cell(row=current_row, column=19).value = f"=(O{current_row}-R{current_row})/O{current_row}"
+            ws.cell(row=current_row, column=19).alignment = center_align
+            ws.cell(row=current_row, column=19).border = thin_border
+            ws.cell(row=current_row, column=19).number_format = '0.00'
+            
+            ws.cell(row=current_row, column=20).value = f"=N{current_row}*Q{current_row}*S{current_row}*100"
+            ws.cell(row=current_row, column=20).alignment = center_align
+            ws.cell(row=current_row, column=20).border = thin_border
+            ws.cell(row=current_row, column=20).number_format = '0.00'
+            
+            current_row += 1
+
+        ws.merge_cells(start_row=start_row_for_day, start_column=2, end_row=start_row_for_day + (len(dynamic_shifts_list) - 1), end_column=2)
 
     # Freeze panes below headers
     ws.freeze_panes = 'A7'
