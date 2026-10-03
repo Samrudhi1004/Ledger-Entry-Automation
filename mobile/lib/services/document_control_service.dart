@@ -45,37 +45,45 @@ class Document {
   });
 
   factory Document.fromJson(Map<String, dynamic> json) => Document(
-        id: json['id'] as String,
-        documentNumber: json['document_number'] as String? ?? '',
-        title: json['title'] as String? ?? '',
-        description: json['description'] as String? ?? '',
-        status: json['status'] as String? ?? 'draft',
-        revision: json['revision'] as String? ?? '0',
-        docLevel: json['doc_level'] as String? ?? 'L2',
-        cloudinaryUrl: (json['delivery_url'] as String?) ?? (json['cloudinary_url'] as String?),
-        fileName: json['file_name'] as String?,
-        fileSize: json['file_size'] as int?,
-        uploadedByName: json['uploaded_by_name'] as String?,
-        approvedByName: json['approved_by_name'] as String?,
-        effectiveDate: json['effective_date'] as String?,
-        revisionDate: json['revision_date'] as String?,
-        createdAt: json['created_at'] as String? ?? '',
-      );
+    id: json['id'] as String,
+    documentNumber: json['document_number'] as String? ?? '',
+    title: json['title'] as String? ?? '',
+    description: json['description'] as String? ?? '',
+    status: json['status'] as String? ?? 'draft',
+    revision: json['revision'] as String? ?? '0',
+    docLevel: json['doc_level'] as String? ?? 'L2',
+    cloudinaryUrl:
+        (json['delivery_url'] as String?) ??
+        (json['cloudinary_url'] as String?),
+    fileName: json['file_name'] as String?,
+    fileSize: json['file_size'] as int?,
+    uploadedByName: json['uploaded_by_name'] as String?,
+    approvedByName: json['approved_by_name'] as String?,
+    effectiveDate: json['effective_date'] as String?,
+    revisionDate: json['revision_date'] as String?,
+    createdAt: json['created_at'] as String? ?? '',
+  );
 
   String get fileSizeDisplay {
     if (fileSize == null) return 'N/A';
     if (fileSize! < 1024) return '$fileSize B';
-    if (fileSize! < 1024 * 1024) return '${(fileSize! / 1024).toStringAsFixed(1)} KB';
+    if (fileSize! < 1024 * 1024)
+      return '${(fileSize! / 1024).toStringAsFixed(1)} KB';
     return '${(fileSize! / 1024 / 1024).toStringAsFixed(2)} MB';
   }
 
   String get docLevelLabel {
     switch (docLevel) {
-      case 'L1': return 'L1 Quality Manual';
-      case 'L2': return 'L2 Procedures';
-      case 'L3': return 'L3 Work Instructions';
-      case 'L4': return 'L4 Forms & Formats';
-      default: return 'L2 Procedures';
+      case 'L1':
+        return 'L1 Quality Manual';
+      case 'L2':
+        return 'L2 Procedures';
+      case 'L3':
+        return 'L3 Work Instructions';
+      case 'L4':
+        return 'L4 Forms & Formats';
+      default:
+        return 'L2 Procedures';
     }
   }
 }
@@ -148,7 +156,8 @@ class DocumentChangeRequest {
         status: json['status'] as String? ?? 'submitted',
         statusDisplay: json['status_display'] as String? ?? 'Submitted',
         changeType: json['change_type'] as String? ?? 'modification',
-        changeTypeDisplay: json['change_type_display'] as String? ?? 'Modification',
+        changeTypeDisplay:
+            json['change_type_display'] as String? ?? 'Modification',
         reasonForChange: json['reason_for_change'] as String? ?? '',
         natureOfChange: json['nature_of_change'] as String? ?? '',
         existingRevision: json['existing_revision'] as String? ?? 'Rev A',
@@ -215,11 +224,11 @@ class DCRUser {
   });
 
   factory DCRUser.fromJson(Map<String, dynamic> json) => DCRUser(
-        id: json['id'] as int,
-        username: json['username'] as String? ?? '',
-        fullName: json['full_name'] as String? ?? '',
-        role: json['role'] as String? ?? '',
-      );
+    id: json['id'] as int,
+    username: json['username'] as String? ?? '',
+    fullName: json['full_name'] as String? ?? '',
+    role: json['role'] as String? ?? '',
+  );
 }
 
 class DocumentActivity {
@@ -272,14 +281,17 @@ class DocumentControlService {
     if (status != null && status.isNotEmpty) queryParams['status'] = status;
     if (level != null && level.isNotEmpty) queryParams['level'] = level;
 
-    final uri = Uri.parse('$_baseUrl/documents/')
-        .replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+    final uri = Uri.parse(
+      '$_baseUrl/documents/',
+    ).replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
 
     final response = await http.get(uri, headers: await _headers());
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       final list = data is List ? data : (data['results'] ?? []) as List;
-      return list.map((e) => Document.fromJson(e as Map<String, dynamic>)).toList();
+      return list
+          .map((e) => Document.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     throw Exception('Failed to load documents: ${response.statusCode}');
   }
@@ -289,7 +301,9 @@ class DocumentControlService {
     final uri = Uri.parse('$_baseUrl/documents/$id/');
     final response = await http.get(uri, headers: await _headers());
     if (response.statusCode == 200) {
-      return Document.fromJson(json.decode(response.body) as Map<String, dynamic>);
+      return Document.fromJson(
+        json.decode(response.body) as Map<String, dynamic>,
+      );
     }
     throw Exception('Failed to load document: ${response.statusCode}');
   }
@@ -300,7 +314,9 @@ class DocumentControlService {
     final response = await http.get(uri, headers: await _headers());
     if (response.statusCode == 200) {
       final list = json.decode(response.body) as List;
-      return list.map((e) => DocumentActivity.fromJson(e as Map<String, dynamic>)).toList();
+      return list
+          .map((e) => DocumentActivity.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     throw Exception('Failed to load history: ${response.statusCode}');
   }
@@ -316,7 +332,9 @@ class DocumentControlService {
       if (response.statusCode == 200) {
         Directory dir;
         try {
-          dir = (await getDownloadsDirectory()) ?? (await getApplicationDocumentsDirectory());
+          dir =
+              (await getDownloadsDirectory()) ??
+              (await getApplicationDocumentsDirectory());
         } catch (_) {
           dir = await getApplicationDocumentsDirectory();
         }
@@ -336,7 +354,6 @@ class DocumentControlService {
     return null;
   }
 
-
   // ── Document Change Requests (Form DKI/MR/F/05) ────────────────────────────
 
   /// Fetch list of change requests.
@@ -350,8 +367,9 @@ class DocumentControlService {
     if (tab != null && tab.isNotEmpty) queryParams['tab'] = tab;
     if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
-    final uri = Uri.parse('$_baseUrl/change-requests/')
-        .replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+    final uri = Uri.parse(
+      '$_baseUrl/change-requests/',
+    ).replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
 
     final response = await http.get(uri, headers: await _headers());
     if (response.statusCode == 200) {
@@ -370,7 +388,8 @@ class DocumentControlService {
     final response = await http.get(uri, headers: await _headers());
     if (response.statusCode == 200) {
       return DocumentChangeRequest.fromJson(
-          json.decode(response.body) as Map<String, dynamic>);
+        json.decode(response.body) as Map<String, dynamic>,
+      );
     }
     throw Exception('Failed to load DCR: ${response.statusCode}');
   }
@@ -381,11 +400,10 @@ class DocumentControlService {
     final response = await http.get(uri, headers: await _headers());
     if (response.statusCode == 200) {
       final data = json.decode(response.body) as List<dynamic>;
-      final allUsers = data.map((e) => DCRUser.fromJson(e as Map<String, dynamic>)).toList();
-      return {
-        'reviewers': allUsers,
-        'approvers': allUsers,
-      };
+      final allUsers = data
+          .map((e) => DCRUser.fromJson(e as Map<String, dynamic>))
+          .toList();
+      return {'reviewers': allUsers, 'approvers': allUsers};
     }
     throw Exception('Failed to load assignable users: ${response.statusCode}');
   }
@@ -428,10 +446,13 @@ class DocumentControlService {
     );
     if (response.statusCode == 201) {
       return DocumentChangeRequest.fromJson(
-          json.decode(response.body) as Map<String, dynamic>);
+        json.decode(response.body) as Map<String, dynamic>,
+      );
     }
     final err = json.decode(response.body);
-    throw Exception(err['error'] ?? 'Failed to submit DCR: ${response.statusCode}');
+    throw Exception(
+      err['error'] ?? 'Failed to submit DCR: ${response.statusCode}',
+    );
   }
 
   /// Submit review (CFT Reviewer action).
@@ -456,7 +477,9 @@ class DocumentControlService {
     );
     if (response.statusCode != 200) {
       final err = json.decode(response.body);
-      throw Exception(err['error'] ?? 'Review action failed: ${response.statusCode}');
+      throw Exception(
+        err['error'] ?? 'Review action failed: ${response.statusCode}',
+      );
     }
   }
 
@@ -482,7 +505,9 @@ class DocumentControlService {
     );
     if (response.statusCode != 200) {
       final err = json.decode(response.body);
-      throw Exception(err['error'] ?? 'Approval action failed: ${response.statusCode}');
+      throw Exception(
+        err['error'] ?? 'Approval action failed: ${response.statusCode}',
+      );
     }
   }
 
@@ -517,6 +542,12 @@ class DocumentControlService {
   /// Mark single notification as read.
   Future<void> markNotificationAsRead(int id) async {
     final uri = Uri.parse('$_baseUrl/notifications/$id/mark_read/');
+    await http.post(uri, headers: await _headers());
+  }
+
+  /// Mark a single notification as unread.
+  Future<void> markNotificationAsUnread(int id) async {
+    final uri = Uri.parse('$_baseUrl/notifications/$id/mark_unread/');
     await http.post(uri, headers: await _headers());
   }
 

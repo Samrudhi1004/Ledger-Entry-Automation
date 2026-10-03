@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
-import '../providers/messaging_provider.dart';
+import '../providers/notification_provider.dart';
+import '../models/notification_item.dart';
 import '../services/api_service.dart';
 import '../services/persistence_service.dart';
 import 'account_screen.dart';
@@ -27,9 +28,7 @@ class AppHomeScreen extends StatefulWidget {
 
 class _AppHomeScreenState extends State<AppHomeScreen> {
   int _currentIndex = 0;
-  List<Map<String, dynamic>> _supervisorNotifications = [];
   List<dynamic> _teamMembers = [];
-  int _unreadMessagesCount = 0;
 
   @override
   void initState() {
@@ -38,8 +37,16 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   }
 
   Future<void> _loadDashboardData() async {
+    final notificationProvider = Provider.of<NotificationProvider>(
+      context,
+      listen: false,
+    );
+    final inspectionProvider = Provider.of<InspectionProvider>(
+      context,
+      listen: false,
+    );
     try {
-      final provider = Provider.of<InspectionProvider>(context, listen: false);
+      final provider = inspectionProvider;
       final machineId = provider.selectedMachine?['id'];
 
       // 1. Fetch pending supervisor rejections
@@ -52,7 +59,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
         final res = await ApiService.checkSetupApproved(machineId);
         approved = res['is_setup_approved'] == true;
         msg = res['message'] ?? '';
-        final hasReport = res['has_today_report'] == true || res['session_id'] != null;
+        final hasReport =
+            res['has_today_report'] == true || res['session_id'] != null;
         if (hasReport) {
           await provider.restoreActiveReportState(res);
         } else {
@@ -67,7 +75,10 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
       for (var rej in provider.activeRejections) {
         final currentTrial = rej['trial_number'] ?? 1;
         final nextTrial = currentTrial + 1;
-        final remark = rej['rejection_reason'] ?? rej['supervisor_remark'] ?? 'Targeted parameter correction requested.';
+        final remark =
+            rej['rejection_reason'] ??
+            rej['supervisor_remark'] ??
+            'Targeted parameter correction requested.';
         final List<dynamic> params = rej['rejected_parameters'] ?? [];
 
         notifs.add({
@@ -76,7 +87,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
           'title': '🚨 Supervisor Rejection & Retrial Notice',
           'subtitle': 'Supervisor requested corrective trial #$nextTrial',
           'message': 'Remark: "$remark"',
-          'details': params.isNotEmpty ? 'Targeted Params: ${params.join(", ")}' : 'All parameters require re-verification.',
+          'details': params.isNotEmpty
+              ? 'Targeted Params: ${params.join(", ")}'
+              : 'All parameters require re-verification.',
           'time': 'Just now',
           'is_read': false,
           'raw_rej': rej,
@@ -91,13 +104,13 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
           'type': 'approval',
           'title': '✓ 1st Piece Setup Authorized',
           'subtitle': 'Supervisor / Quality Inspector',
-          'message': msg.isNotEmpty ? msg : 'First Piece inspection finalized and PASSED. Hourly in-process inspections unlocked.',
+          'message': msg.isNotEmpty
+              ? msg
+              : 'First Piece inspection finalized and PASSED. Hourly in-process inspections unlocked.',
           'time': 'Active Shift',
           'is_read': false,
         });
       }
-
-
 
       // Fetch dynamic station team operators from backend (100% dynamic from backend API)
       List<dynamic> operatorsOnly = _teamMembers;
@@ -111,36 +124,27 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
 
       if (mounted) {
         setState(() {
-          _supervisorNotifications = notifs;
           _teamMembers = operatorsOnly;
         });
+
+        notificationProvider.replaceCategory(
+          NotificationCategory.supervisor,
+          notifs.map(_toNotificationItem).toList(),
+        );
       }
     } catch (_) {
       // Handle error silently
     }
-
-    // Fetch unread messages independently
-    try {
-      final msgProvider = Provider.of<MessagingProvider>(context, listen: false);
-      final convs = await msgProvider.globalService.fetchConversations();
-      
-      // Preserve old count on failure (when fetch returns empty but we know we had unread messages)
-      if (convs.isNotEmpty || _unreadMessagesCount == 0) {
-        int unreadMsgs = 0;
-        for (var c in convs) {
-          unreadMsgs += (c['unread_count'] as int? ?? 0);
-        }
-        if (mounted) {
-          setState(() {
-            _unreadMessagesCount = unreadMsgs;
-          });
-        }
-      }
-    } catch (_) {}
   }
 
   void _showNotificationsModal(BuildContext context) {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
+    final notificationProvider = Provider.of<NotificationProvider>(
+      context,
+      listen: false,
+    );
+    var searchQuery = '';
+    var selectedFilter = 'all';
 
     showModalBottomSheet(
       context: context,
@@ -152,7 +156,26 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final unreadCount = _supervisorNotifications.where((n) => n['is_read'] == false).length;
+            final liveNotificationProvider = Provider.of<NotificationProvider>(
+              context,
+            );
+            final allNotifications = liveNotificationProvider.items;
+            final unreadCount = liveNotificationProvider.unreadCount;
+            final readCount = allNotifications.length - unreadCount;
+            final normalizedQuery = searchQuery.trim().toLowerCase();
+            final notifications = allNotifications.where((item) {
+              final matchesFilter =
+                  selectedFilter == 'all' ||
+                  (selectedFilter == 'unread' && !item.isRead) ||
+                  (selectedFilter == 'read' && item.isRead);
+              if (!matchesFilter) return false;
+              if (normalizedQuery.isEmpty) return true;
+              return item.title.toLowerCase().contains(normalizedQuery) ||
+                  item.message.toLowerCase().contains(normalizedQuery) ||
+                  (item.dcrNumber ?? '').toLowerCase().contains(
+                    normalizedQuery,
+                  );
+            }).toList();
 
             return Container(
               padding: const EdgeInsets.all(20),
@@ -164,167 +187,369 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
+                      Wrap(
+                        spacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                              color: const Color(
+                                0xFF0284C7,
+                              ).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(Icons.notifications_active_rounded, color: Color(0xFF0284C7), size: 22),
+                            child: const Icon(
+                              Icons.notifications_active_rounded,
+                              color: Color(0xFF0284C7),
+                              size: 22,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Supervisor Notifications',
-                                style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16),
+                                'Global Notifications',
+                                style: TextStyle(
+                                  color: Color(0xFF0F172A),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
                               ),
                               Text(
-                                '$unreadCount Unread Alert${unreadCount == 1 ? '' : 's'} from Supervisor',
-                                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                                '$unreadCount Unread Notification${unreadCount == 1 ? '' : 's'}',
+                                style: const TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 12,
+                                ),
                               ),
                             ],
                           ),
                         ],
                       ),
+                      if (unreadCount > 0)
+                        TextButton(
+                          onPressed: () async {
+                            await notificationProvider.markAllAsRead();
+                            setModalState(() {});
+                          },
+                          child: const Text(
+                            'Mark all read',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF0284C7),
+                            ),
+                          ),
+                        ),
                       IconButton(
-                        icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Color(0xFF94A3B8),
+                        ),
                         onPressed: () => Navigator.pop(ctx),
                       ),
                     ],
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+                  TextField(
+                    onChanged: (value) {
+                      setModalState(() => searchQuery = value);
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Search notifications',
+                      prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                      suffixIcon: searchQuery.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.clear_rounded, size: 18),
+                              onPressed: () => setModalState(() {
+                                searchQuery = '';
+                              }),
+                            ),
+                      filled: true,
+                      fillColor: const Color(0xFFF1F5F9),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _notificationFilterChip(
+                          label: 'All (${allNotifications.length})',
+                          value: 'all',
+                          selected: selectedFilter,
+                          onSelected: (value) =>
+                              setModalState(() => selectedFilter = value),
+                        ),
+                        const SizedBox(width: 8),
+                        _notificationFilterChip(
+                          label: 'Unread ($unreadCount)',
+                          value: 'unread',
+                          selected: selectedFilter,
+                          onSelected: (value) =>
+                              setModalState(() => selectedFilter = value),
+                        ),
+                        const SizedBox(width: 8),
+                        _notificationFilterChip(
+                          label: 'Read ($readCount)',
+                          value: 'read',
+                          selected: selectedFilter,
+                          onSelected: (value) =>
+                              setModalState(() => selectedFilter = value),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   const Divider(color: Color(0xFF1E293B)),
                   const SizedBox(height: 10),
 
                   // Notifications List
                   Expanded(
-                    child: _supervisorNotifications.isEmpty
+                    child: notifications.isEmpty
                         ? const Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.notifications_none_rounded, color: Color(0xFF64748B), size: 48),
+                                Icon(
+                                  Icons.notifications_none_rounded,
+                                  color: Color(0xFF64748B),
+                                  size: 48,
+                                ),
                                 SizedBox(height: 12),
-                                Text('No supervisor notifications yet', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14)),
+                                Text(
+                                  'No notifications yet',
+                                  style: TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 14,
+                                  ),
+                                ),
                               ],
                             ),
                           )
                         : ListView.builder(
-                            itemCount: _supervisorNotifications.length,
+                            itemCount: notifications.length,
                             itemBuilder: (context, index) {
-                              final item = _supervisorNotifications[index];
-                              final isRead = item['is_read'] == true;
-                              final type = item['type'];
+                              final item = notifications[index];
+                              final isRead = item.isRead;
+                              final type = item.category;
+                              final rawRejection = item.metadata['raw_rej'];
+                              final nextTrial = item.metadata['next_trial'];
 
                               Color cardBorder = const Color(0xFF1E293B);
                               Color iconColor = const Color(0xFF38BDF8);
-                              if (type == 'rejection') {
+                              if (type == NotificationCategory.supervisor &&
+                                  rawRejection != null) {
                                 cardBorder = const Color(0xFFEF4444);
                                 iconColor = const Color(0xFFEF4444);
-                              } else if (type == 'approval') {
+                              } else if (type ==
+                                  NotificationCategory.supervisor) {
                                 cardBorder = const Color(0xFF10B981);
                                 iconColor = const Color(0xFF10B981);
+                              } else if (type == NotificationCategory.dcr ||
+                                  type == NotificationCategory.document) {
+                                cardBorder = const Color(0xFF0284C7);
+                                iconColor = const Color(0xFF0284C7);
                               }
 
                               return Container(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: isRead ? const Color(0xFF161F32) : const Color(0xFF1E293B),
+                                  color: isRead
+                                      ? const Color(0xFF161F32)
+                                      : const Color(0xFF1E293B),
                                   borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: cardBorder, width: isRead ? 1 : 1.5),
+                                  border: Border.all(
+                                    color: cardBorder,
+                                    width: isRead ? 1 : 1.5,
+                                  ),
                                 ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            item['title'] ?? 'Notification',
-                                            style: TextStyle(
-                                              color: isRead ? Colors.white70 : Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
+                                child: InkWell(
+                                  onTap: () async {
+                                    await _openNotification(
+                                      ctx,
+                                      item,
+                                      notificationProvider,
+                                    );
+                                    if (mounted) setModalState(() {});
+                                  },
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              item.title,
+                                              style: TextStyle(
+                                                color: isRead
+                                                    ? Colors.white70
+                                                    : Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                        Text(
-                                          item['time'] ?? '',
-                                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      item['subtitle'] ?? '',
-                                      style: TextStyle(color: iconColor, fontSize: 12, fontWeight: FontWeight.w600),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      item['message'] ?? '',
-                                      style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 12.5),
-                                    ),
-                                    if (item['details'] != null) ...[
+                                          Text(
+                                            _notificationTime(item),
+                                            style: const TextStyle(
+                                              color: Color(0xFF64748B),
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                          PopupMenuButton<String>(
+                                            icon: const Icon(
+                                              Icons.more_vert_rounded,
+                                              color: Color(0xFF94A3B8),
+                                              size: 18,
+                                            ),
+                                            padding: EdgeInsets.zero,
+                                            onSelected: (value) async {
+                                              if (value == 'read') {
+                                                await notificationProvider
+                                                    .markAsRead(item);
+                                              } else if (value == 'unread') {
+                                                await notificationProvider
+                                                    .markAsUnread(item);
+                                              }
+                                              setModalState(() {});
+                                            },
+                                            itemBuilder: (context) => [
+                                              PopupMenuItem<String>(
+                                                value: isRead
+                                                    ? 'unread'
+                                                    : 'read',
+                                                child: Text(
+                                                  isRead
+                                                      ? 'Mark unread'
+                                                      : 'Mark read',
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        item['details'],
-                                        style: const TextStyle(color: Color(0xFFFDE68A), fontSize: 11.5, fontWeight: FontWeight.bold),
+                                        _notificationCategoryLabel(item),
+                                        style: TextStyle(
+                                          color: iconColor,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
-                                    ],
-
-                                    // Action Button for Rejection Notification
-                                    if (type == 'rejection' && item['raw_rej'] != null) ...[
-                                      const SizedBox(height: 12),
-                                      ElevatedButton.icon(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFFEF4444),
-                                          foregroundColor: Colors.white,
-                                          minimumSize: const Size(double.infinity, 38),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        item.message,
+                                        style: const TextStyle(
+                                          color: Color(0xFFCBD5E1),
+                                          fontSize: 12.5,
                                         ),
-                                        icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18),
-                                        label: Text(
-                                          'START CORRECTIVE TRIAL (1ST PC #${item['next_trial']})',
-                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                      ),
+                                      if (item.metadata['details'] != null) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          item.metadata['details'].toString(),
+                                          style: const TextStyle(
+                                            color: Color(0xFFFDE68A),
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
-                                        onPressed: () async {
-                                          Navigator.pop(ctx);
-                                          final rej = item['raw_rej'];
-                                          final nextTrial = item['next_trial'];
-                                          final List<dynamic> rejectedParams = rej['rejected_parameters'] ?? [];
-                                          final partNo = provider.selectedPart?['part_number'] ?? 'FBT00222';
-                                          final templates = await ApiService.getTemplatesByPart(partNo);
+                                      ],
 
-                                          if (templates.isNotEmpty) {
-                                            final targetTemplate = templates.first;
-                                            await provider.loadParameters(
-                                              targetTemplate,
-                                              targetRejectedCodes: rejectedParams,
-                                            );
-                                            final parentId = rej['session_id'] ?? rej['id'];
-                                            final started = await provider.startSession(
-                                              trial: nextTrial,
-                                              parentId: parentId,
-                                              inspectionType: 'first_piece',
-                                            );
-                                            if (started && context.mounted) {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+                                      // Action Button for Rejection Notification
+                                      if (type ==
+                                              NotificationCategory.supervisor &&
+                                          rawRejection != null) ...[
+                                        const SizedBox(height: 12),
+                                        ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFFEF4444,
+                                            ),
+                                            foregroundColor: Colors.white,
+                                            minimumSize: const Size(
+                                              double.infinity,
+                                              38,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                          icon: const Icon(
+                                            Icons.play_arrow_rounded,
+                                            color: Colors.white,
+                                            size: 18,
+                                          ),
+                                          label: Text(
+                                            'START CORRECTIVE TRIAL (1ST PC #$nextTrial)',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          onPressed: () async {
+                                            Navigator.pop(ctx);
+                                            final rej = rawRejection;
+                                            final List<dynamic> rejectedParams =
+                                                rej['rejected_parameters'] ??
+                                                [];
+                                            final partNo =
+                                                provider
+                                                    .selectedPart?['part_number'] ??
+                                                'FBT00222';
+                                            final templates =
+                                                await ApiService.getTemplatesByPart(
+                                                  partNo,
+                                                );
+
+                                            if (templates.isNotEmpty) {
+                                              final targetTemplate =
+                                                  templates.first;
+                                              await provider.loadParameters(
+                                                targetTemplate,
+                                                targetRejectedCodes:
+                                                    rejectedParams,
                                               );
+                                              final parentId =
+                                                  rej['session_id'] ??
+                                                  rej['id'];
+                                              final started = await provider
+                                                  .startSession(
+                                                    trial: nextTrial,
+                                                    parentId: parentId,
+                                                    inspectionType:
+                                                        'first_piece',
+                                                  );
+                                              if (started && context.mounted) {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        const InspectionVoiceScreen(),
+                                                  ),
+                                                );
+                                              }
                                             }
-                                          }
-                                        },
-                                      ),
+                                          },
+                                        ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
                               );
                             },
@@ -338,8 +563,110 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
       },
     );
   }
+
+  Widget _notificationFilterChip({
+    required String label,
+    required String value,
+    required String selected,
+    required ValueChanged<String> onSelected,
+  }) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected == value,
+      onSelected: (_) => onSelected(value),
+      selectedColor: const Color(0xFF0284C7),
+      backgroundColor: const Color(0xFFF1F5F9),
+      labelStyle: TextStyle(
+        color: selected == value ? Colors.white : const Color(0xFF475569),
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+      side: BorderSide.none,
+      showCheckmark: false,
+    );
+  }
+
+  Future<void> _openNotification(
+    BuildContext modalContext,
+    NotificationItem item,
+    NotificationProvider notificationProvider,
+  ) async {
+    await notificationProvider.markAsRead(item);
+    if (!mounted) return;
+
+    if (item.category != NotificationCategory.message &&
+        item.category != NotificationCategory.dcr &&
+        item.category != NotificationCategory.document) {
+      return;
+    }
+
+    Navigator.of(modalContext).pop();
+    if (item.category == NotificationCategory.message &&
+        item.conversationId != null) {
+      Navigator.of(
+        context,
+      ).pushNamed('/messages', arguments: item.conversationId);
+    } else {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const DocumentControlScreen()));
+    }
+  }
+
+  NotificationItem _toNotificationItem(Map<String, dynamic> notification) {
+    final type = notification['type']?.toString();
+    final rawRejection = notification['raw_rej'];
+    return NotificationItem(
+      id: notification['id'].toString(),
+      category: NotificationCategory.supervisor,
+      title: notification['title']?.toString() ?? 'Global notification',
+      message: notification['message']?.toString() ?? '',
+      createdAt: DateTime.now(),
+      isRead: notification['is_read'] == true,
+      action: type,
+      metadata: {
+        if (notification['subtitle'] != null)
+          'subtitle': notification['subtitle'],
+        if (notification['details'] != null) 'details': notification['details'],
+        if (rawRejection != null) 'raw_rej': rawRejection,
+        if (notification['next_trial'] != null)
+          'next_trial': notification['next_trial'],
+      },
+    );
+  }
+
+  String _notificationCategoryLabel(NotificationItem item) {
+    final subtitle = item.metadata['subtitle']?.toString();
+    if (subtitle != null && subtitle.isNotEmpty) return subtitle;
+    switch (item.category) {
+      case NotificationCategory.message:
+        return 'New message';
+      case NotificationCategory.dcr:
+        return item.dcrNumber ?? 'Document change request';
+      case NotificationCategory.document:
+        return 'Document control';
+      case NotificationCategory.supervisor:
+        return 'Global notification';
+      case NotificationCategory.system:
+        return 'System notification';
+    }
+  }
+
+  String _notificationTime(NotificationItem item) {
+    final createdAt = item.createdAt;
+    if (createdAt == null) return '';
+    final difference = DateTime.now().difference(createdAt);
+    if (difference.inMinutes < 1) return 'Just now';
+    if (difference.inHours < 1) return '${difference.inMinutes}m ago';
+    if (difference.inDays < 1) return '${difference.inHours}h ago';
+    return '${difference.inDays}d ago';
+  }
+
   String _getInitials(Map<String, dynamic> user) {
-    final name = (user['full_name'] ?? user['first_name'] ?? user['username'] ?? 'U').toString().trim();
+    final name =
+        (user['full_name'] ?? user['first_name'] ?? user['username'] ?? 'U')
+            .toString()
+            .trim();
     if (name.isEmpty) return 'U';
     final parts = name.split(' ').where((p) => p.isNotEmpty).toList();
     if (parts.length >= 2) {
@@ -349,7 +676,10 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   }
 
   String _getShortName(Map<String, dynamic> user) {
-    final name = (user['full_name'] ?? user['first_name'] ?? user['username'] ?? 'User').toString().trim();
+    final name =
+        (user['full_name'] ?? user['first_name'] ?? user['username'] ?? 'User')
+            .toString()
+            .trim();
     if (name.isEmpty) return 'User';
     final parts = name.split(' ').where((p) => p.isNotEmpty).toList();
     if (parts.length >= 2) {
@@ -361,7 +691,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   Color _getRoleColor(String? role) {
     final r = (role ?? '').toLowerCase();
     if (r == 'operator') return const Color(0xFF059669);
-    if (r == 'inspector' || r == 'quality_engineer') return const Color(0xFF4F46E5);
+    if (r == 'inspector' || r == 'quality_engineer')
+      return const Color(0xFF4F46E5);
     if (r == 'supervisor' || r == 'admin') return const Color(0xFFD97706);
     return const Color(0xFF0284C7);
   }
@@ -369,7 +700,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   Color _getRoleBg(String? role) {
     final r = (role ?? '').toLowerCase();
     if (r == 'operator') return const Color(0xFFA7F3D0);
-    if (r == 'inspector' || r == 'quality_engineer') return const Color(0xFFE0E7FF);
+    if (r == 'inspector' || r == 'quality_engineer')
+      return const Color(0xFFE0E7FF);
     if (r == 'supervisor' || r == 'admin') return const Color(0xFFFED7AA);
     return const Color(0xFFBAE6FD);
   }
@@ -385,7 +717,11 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   }
 
   void _showTeamMemberModal(BuildContext context, Map<String, dynamic> member) {
-    final fullName = member['full_name'] ?? member['first_name'] ?? member['username'] ?? 'Station Operator';
+    final fullName =
+        member['full_name'] ??
+        member['first_name'] ??
+        member['username'] ??
+        'Station Operator';
     final username = member['username'] ?? 'operator';
     final empId = member['employee_id'] ?? 'EMP-OP-01';
     final roleStr = member['role'] ?? 'operator';
@@ -429,7 +765,11 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
               const SizedBox(height: 12),
               Text(
                 fullName,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -441,31 +781,56 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: roleColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: roleColor.withValues(alpha: 0.4)),
+                      border: Border.all(
+                        color: roleColor.withValues(alpha: 0.4),
+                      ),
                     ),
                     child: Text(
                       roleTitle,
-                      style: TextStyle(color: roleColor, fontSize: 11, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: roleColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF10B981).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                      border: Border.all(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                      ),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.wifi_tethering_rounded, color: Color(0xFF10B981), size: 12),
+                        Icon(
+                          Icons.wifi_tethering_rounded,
+                          color: Color(0xFF10B981),
+                          size: 12,
+                        ),
                         SizedBox(width: 4),
-                        Text('CONNECTED', style: TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold)),
+                        Text(
+                          'CONNECTED',
+                          style: TextStyle(
+                            color: Color(0xFF10B981),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -477,10 +842,15 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                   backgroundColor: roleColor,
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 44),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 icon: const Icon(Icons.check_circle_rounded, size: 18),
-                label: const Text('STATION OPERATOR VERIFIED', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                label: const Text(
+                  'STATION OPERATOR VERIFIED',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
                 onPressed: () => Navigator.pop(ctx),
               ),
             ],
@@ -509,10 +879,17 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                 children: [
                   const Text(
                     'Connect Operator to Station',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Color(0xFF94A3B8),
+                    ),
                     onPressed: () => Navigator.pop(ctx),
                   ),
                 ],
@@ -528,15 +905,22 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                   backgroundColor: const Color(0xFF4F46E5),
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 46),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 icon: const Icon(Icons.swap_horiz_rounded),
-                label: const Text('SWITCH ACTIVE STATION', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                label: const Text(
+                  'SWITCH ACTIVE STATION',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
                 onPressed: () {
                   Navigator.pop(ctx);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const MachineSelectScreen(),
+                    ),
                   );
                 },
               ),
@@ -557,18 +941,32 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
     final roleTitle = auth.isInspector
         ? 'Quality Inspector'
         : (auth.isQualityEngineer
-            ? 'Quality Engineer'
-            : (auth.isOperator ? 'Machine Operator' : 'Supervisor'));
+              ? 'Quality Engineer'
+              : (auth.isOperator ? 'Machine Operator' : 'Supervisor'));
 
     final selectedPart = provider.selectedPart;
     final partNumber = selectedPart?['part_number'] ?? 'FBT00222';
 
-    final hasActiveSession = provider.sessionId != null || provider.recordedResults.isNotEmpty;
+    final hasActiveSession =
+        provider.sessionId != null || provider.recordedResults.isNotEmpty;
     final recordedCount = provider.recordedResults.length;
     final totalParams = provider.parameters.length;
-    final sessionPart = provider.selectedPart?['part_number'] ?? provider.selectedPart?['part_name'] ?? partNumber;
+    final sessionPart =
+        provider.selectedPart?['part_number'] ??
+        provider.selectedPart?['part_name'] ??
+        partNumber;
 
-    final unreadNotifCount = _supervisorNotifications.where((n) => n['is_read'] == false).length;
+    final notificationState = Provider.of<NotificationProvider>(context);
+    final unreadNotifCount = notificationState.unreadCount;
+    final unreadMessagesCount = notificationState.items
+        .where(
+          (item) =>
+              item.category == NotificationCategory.message && !item.isRead,
+        )
+        .fold<int>(0, (total, item) {
+          final count = item.metadata['unread_count'];
+          return total + (count is int ? count : 1);
+        });
 
     Widget homeTabContent = RefreshIndicator(
       color: const Color(0xFF4F46E5),
@@ -584,120 +982,165 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Hi $firstName,',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Color(0xFF64748B),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      roleTitle,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF10B981),
-                            shape: BoxShape.circle,
-                          ),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hi $firstName,',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w500,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Active Part: $partNumber',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF64748B),
-                          ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        roleTitle,
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.5,
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF10B981),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Active Part: $partNumber',
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.bug_report_outlined, color: Color(0xFFEF4444), size: 26),
-                      tooltip: 'Report Issue',
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const BugReportScreen()),
-                        );
-                      },
-                    ),
-                    Stack(
-                      clipBehavior: Clip.none,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Align(
+                    alignment: Alignment.topRight,
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 0,
+                      runSpacing: 0,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.chat_outlined, color: Color(0xFF4F46E5), size: 24),
-                          tooltip: 'Messages',
-                          onPressed: () => Navigator.pushNamed(context, '/messages').then((_) => _loadDashboardData()),
-                        ),
-                        if (_unreadMessagesCount > 0)
-                          Positioned(
-                            top: 0,
-                            right: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFEF4444),
-                                shape: BoxShape.circle,
-                              ),
-                              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                              child: Text(
-                                '$_unreadMessagesCount',
-                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
+                          icon: const Icon(
+                            Icons.bug_report_outlined,
+                            color: Color(0xFFEF4444),
+                            size: 26,
                           ),
+                          tooltip: 'Report Issue',
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const BugReportScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.chat_outlined,
+                                color: Color(0xFF4F46E5),
+                                size: 24,
+                              ),
+                              tooltip: 'Messages',
+                              onPressed: () => Navigator.pushNamed(
+                                context,
+                                '/messages',
+                              ).then((_) => _loadDashboardData()),
+                            ),
+                            if (unreadMessagesCount > 0)
+                              Positioned(
+                                top: 0,
+                                right: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFEF4444),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 16,
+                                    minHeight: 16,
+                                  ),
+                                  child: Text(
+                                    '$unreadMessagesCount',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.notifications_none_rounded,
+                                color: Color(0xFF0F172A),
+                                size: 26,
+                              ),
+                              tooltip: 'Notifications',
+                              onPressed: () => _showNotificationsModal(context),
+                            ),
+                            if (unreadNotifCount > 0)
+                              Positioned(
+                                top: 0,
+                                right: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFEF4444),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 16,
+                                    minHeight: 16,
+                                  ),
+                                  child: Text(
+                                    '$unreadNotifCount',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ],
                     ),
-                    Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.notifications_none_rounded, color: Color(0xFF0F172A), size: 26),
-                          tooltip: 'Notifications',
-                          onPressed: () => _showNotificationsModal(context),
-                        ),
-                        if (unreadNotifCount > 0)
-                          Positioned(
-                            top: 0,
-                            right: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFEF4444),
-                                shape: BoxShape.circle,
-                              ),
-                              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                              child: Text(
-                                '$unreadNotifCount',
-                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -723,13 +1166,16 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
               crossAxisCount: 2,
               crossAxisSpacing: 14,
               mainAxisSpacing: 14,
-              childAspectRatio: 1.05,
+              childAspectRatio: MediaQuery.sizeOf(context).width < 380
+                  ? 0.82
+                  : 1.05,
               children: auth.isOperator
                   ? [
                       // Operator Card 1: Machine (with 1 to 8 hr entry)
                       _buildSoftPastelCard(
                         title: 'Machine',
-                        description: 'Select machine & 1 to 8 hr in-process inspection entry',
+                        description:
+                            'Select machine & 1 to 8 hr in-process inspection entry',
                         icon: Icons.precision_manufacturing_rounded,
                         bgColor: const Color(0xFFF0F3FF),
                         borderColor: const Color(0xFFE0E7FF),
@@ -737,7 +1183,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const MachineSelectScreen(),
+                            ),
                           );
                         },
                       ),
@@ -748,17 +1196,26 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         description: hasActiveSession
                             ? 'Resume $sessionPart ($recordedCount of ${totalParams > 0 ? totalParams : "—"} params)'
                             : 'Resume active inspection data entry for operation',
-                        icon: hasActiveSession ? Icons.play_circle_fill_rounded : Icons.play_circle_outline_rounded,
-                        bgColor: hasActiveSession ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
-                        borderColor: hasActiveSession ? const Color(0xFFA7F3D0) : const Color(0xFFE2E8F0),
-                        iconColor: hasActiveSession ? const Color(0xFF059669) : const Color(0xFF64748B),
+                        icon: hasActiveSession
+                            ? Icons.play_circle_fill_rounded
+                            : Icons.play_circle_outline_rounded,
+                        bgColor: hasActiveSession
+                            ? const Color(0xFFECFDF5)
+                            : const Color(0xFFF8FAFC),
+                        borderColor: hasActiveSession
+                            ? const Color(0xFFA7F3D0)
+                            : const Color(0xFFE2E8F0),
+                        iconColor: hasActiveSession
+                            ? const Color(0xFF059669)
+                            : const Color(0xFF64748B),
                         onTap: () => _resumeActiveSessionDirectly(context),
                       ),
 
                       // Operator Card 3: Daily Production Report (Form F19)
                       _buildSoftPastelCard(
                         title: 'Daily Production Report',
-                        description: 'End of shift output, target & breakdown log (Form F19)',
+                        description:
+                            'End of shift output, target & breakdown log (Form F19)',
                         icon: Icons.bar_chart_rounded,
                         bgColor: const Color(0xFFFFF7ED),
                         borderColor: const Color(0xFFFFEDD5),
@@ -766,7 +1223,10 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  const DailyProductionReportScreen(),
+                            ),
                           );
                         },
                       ),
@@ -774,7 +1234,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                       // Operator Card 4: JH-Inspection (Autonomous Maintenance Checklist)
                       _buildSoftPastelCard(
                         title: 'JH-Inspection',
-                        description: 'Autonomous Maintenance & machine shift checklist (Form QF/MF-08)',
+                        description:
+                            'Autonomous Maintenance & machine shift checklist (Form QF/MF-08)',
                         icon: Icons.fact_check_rounded,
                         bgColor: const Color(0xFFF0FDF4),
                         borderColor: const Color(0xFFBBF7D0),
@@ -782,7 +1243,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const JhInspectionScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const JhInspectionScreen(),
+                            ),
                           );
                         },
                       ),
@@ -790,7 +1253,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                       // Operator Card 5: Document Control
                       _buildSoftPastelCard(
                         title: 'Document Control',
-                        description: 'View & download approved SOPs, work instructions and quality documents',
+                        description:
+                            'View & download approved SOPs, work instructions and quality documents',
                         icon: Icons.folder_open_rounded,
                         bgColor: const Color(0xFFF5F3FF),
                         borderColor: const Color(0xFFEDE9FE),
@@ -798,7 +1262,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const DocumentControlScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const DocumentControlScreen(),
+                            ),
                           );
                         },
                       ),
@@ -815,7 +1281,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const MachineSelectScreen(),
+                            ),
                           );
                         },
                       ),
@@ -823,7 +1291,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                       // Inspector / Supervisor Card 2: Live Daily Report (Form F02 Live Sheet)
                       _buildSoftPastelCard(
                         title: 'Live Daily Report',
-                        description: 'View real-time Form F02 report filling (1PC & In-Process)',
+                        description:
+                            'View real-time Form F02 report filling (1PC & In-Process)',
                         icon: Icons.article_rounded,
                         bgColor: const Color(0xFFEFF6FF),
                         borderColor: const Color(0xFFBFDBFE),
@@ -831,7 +1300,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const ReportSheetScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const ReportSheetScreen(),
+                            ),
                           );
                         },
                       ),
@@ -839,7 +1310,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                       // Inspector / Supervisor Card 3: Setup Approval Report
                       _buildSoftPastelCard(
                         title: 'Setup Approval Report',
-                        description: 'View official first piece setup approval report (Form F02)',
+                        description:
+                            'View official first piece setup approval report (Form F02)',
                         icon: Icons.assignment_turned_in_rounded,
                         bgColor: const Color(0xFFFAF5FF),
                         borderColor: const Color(0xFFE9D5FF),
@@ -847,7 +1319,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const SetupApprovalReportScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const SetupApprovalReportScreen(),
+                            ),
                           );
                         },
                       ),
@@ -858,17 +1332,26 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         description: hasActiveSession
                             ? 'Resume $sessionPart ($recordedCount of ${totalParams > 0 ? totalParams : "—"} params)'
                             : 'Resume active inspection data entry for operation',
-                        icon: hasActiveSession ? Icons.play_circle_fill_rounded : Icons.play_circle_outline_rounded,
-                        bgColor: hasActiveSession ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
-                        borderColor: hasActiveSession ? const Color(0xFFA7F3D0) : const Color(0xFFE2E8F0),
-                        iconColor: hasActiveSession ? const Color(0xFF059669) : const Color(0xFF64748B),
+                        icon: hasActiveSession
+                            ? Icons.play_circle_fill_rounded
+                            : Icons.play_circle_outline_rounded,
+                        bgColor: hasActiveSession
+                            ? const Color(0xFFECFDF5)
+                            : const Color(0xFFF8FAFC),
+                        borderColor: hasActiveSession
+                            ? const Color(0xFFA7F3D0)
+                            : const Color(0xFFE2E8F0),
+                        iconColor: hasActiveSession
+                            ? const Color(0xFF059669)
+                            : const Color(0xFF64748B),
                         onTap: () => _resumeActiveSessionDirectly(context),
                       ),
 
                       // Inspector / Supervisor Card 5: Document Control
                       _buildSoftPastelCard(
                         title: 'Document Control',
-                        description: 'View & download approved SOPs, work instructions and quality documents',
+                        description:
+                            'View & download approved SOPs, work instructions and quality documents',
                         icon: Icons.folder_open_rounded,
                         bgColor: const Color(0xFFF5F3FF),
                         borderColor: const Color(0xFFEDE9FE),
@@ -876,7 +1359,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const DocumentControlScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const DocumentControlScreen(),
+                            ),
                           );
                         },
                       ),
@@ -899,7 +1384,10 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF10B981).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
@@ -986,7 +1474,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
               color: Colors.black.withValues(alpha: 0.08),
               blurRadius: 20,
               offset: const Offset(0, 6),
-            )
+            ),
           ],
         ),
         child: Row(
@@ -998,21 +1486,30 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                 onTap: () => setState(() => _currentIndex = 0),
                 borderRadius: BorderRadius.circular(20),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 8,
+                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
                         Icons.home_rounded,
-                        color: _currentIndex == 0 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                        color: _currentIndex == 0
+                            ? const Color(0xFF4F46E5)
+                            : const Color(0xFF94A3B8),
                         size: 22,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         'Home',
                         style: TextStyle(
-                          color: _currentIndex == 0 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
-                          fontWeight: _currentIndex == 0 ? FontWeight.bold : FontWeight.w600,
+                          color: _currentIndex == 0
+                              ? const Color(0xFF4F46E5)
+                              : const Color(0xFF94A3B8),
+                          fontWeight: _currentIndex == 0
+                              ? FontWeight.bold
+                              : FontWeight.w600,
                           fontSize: 13,
                         ),
                       ),
@@ -1028,21 +1525,30 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                 onTap: () => setState(() => _currentIndex = 1),
                 borderRadius: BorderRadius.circular(20),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 8,
+                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
                         Icons.task_alt_rounded,
-                        color: _currentIndex == 1 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                        color: _currentIndex == 1
+                            ? const Color(0xFF4F46E5)
+                            : const Color(0xFF94A3B8),
                         size: 22,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         'Tasks',
                         style: TextStyle(
-                          color: _currentIndex == 1 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
-                          fontWeight: _currentIndex == 1 ? FontWeight.bold : FontWeight.w600,
+                          color: _currentIndex == 1
+                              ? const Color(0xFF4F46E5)
+                              : const Color(0xFF94A3B8),
+                          fontWeight: _currentIndex == 1
+                              ? FontWeight.bold
+                              : FontWeight.w600,
                           fontSize: 13,
                         ),
                       ),
@@ -1058,21 +1564,30 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                 onTap: () => setState(() => _currentIndex = 2),
                 borderRadius: BorderRadius.circular(20),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 8,
+                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
                         Icons.person_rounded,
-                        color: _currentIndex == 2 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
+                        color: _currentIndex == 2
+                            ? const Color(0xFF4F46E5)
+                            : const Color(0xFF94A3B8),
                         size: 22,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         'About',
                         style: TextStyle(
-                          color: _currentIndex == 2 ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
-                          fontWeight: _currentIndex == 2 ? FontWeight.bold : FontWeight.w600,
+                          color: _currentIndex == 2
+                              ? const Color(0xFF4F46E5)
+                              : const Color(0xFF94A3B8),
+                          fontWeight: _currentIndex == 2
+                              ? FontWeight.bold
+                              : FontWeight.w600,
                           fontSize: 13,
                         ),
                       ),
@@ -1123,7 +1638,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         color: iconColor.withValues(alpha: 0.15),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
-                      )
+                      ),
                     ],
                   ),
                   child: Icon(icon, color: iconColor, size: 22),
@@ -1182,12 +1697,20 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                 shape: BoxShape.circle,
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
-              child: const Icon(Icons.add_rounded, color: Color(0xFF64748B), size: 24),
+              child: const Icon(
+                Icons.add_rounded,
+                color: Color(0xFF64748B),
+                size: 24,
+              ),
             ),
             const SizedBox(height: 6),
             Text(
               label,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF64748B),
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),
@@ -1209,7 +1732,11 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
               child: Center(
                 child: Text(
                   initials ?? 'U',
-                  style: TextStyle(color: roleColor, fontWeight: FontWeight.bold, fontSize: 15),
+                  style: TextStyle(
+                    color: roleColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
                 ),
               ),
             ),
@@ -1231,13 +1758,21 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
         const SizedBox(height: 6),
         Text(
           name,
-          style: const TextStyle(fontSize: 11, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            fontSize: 11,
+            color: Color(0xFF0F172A),
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildBottomNavItem({required IconData icon, required bool isSelected, required VoidCallback onTap}) {
+  Widget _buildBottomNavItem({
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1322,22 +1857,32 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
     }
   }
 
-  void _showResumeSessionDialog(BuildContext context, Map<String, dynamic> state, String userId) {
+  void _showResumeSessionDialog(
+    BuildContext context,
+    Map<String, dynamic> state,
+    String userId,
+  ) {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
 
     final machine = state['machine'];
-    final machineName = (machine?['name'] ?? machine?['machine_code'] ?? 'BAL-01').toString();
+    final machineName =
+        (machine?['name'] ?? machine?['machine_code'] ?? 'BAL-01').toString();
 
     final part = state['part'];
-    final partName = (part?['part_name'] ?? part?['part_number'] ?? 'Poly V pulley').toString();
+    final partName =
+        (part?['part_name'] ?? part?['part_number'] ?? 'Poly V pulley')
+            .toString();
 
     final type = state['inspection_type'] ?? 'hourly';
     final slot = state['hourly_slot'] ?? 1;
     final trial = state['trial_number'] ?? 1;
-    final inspText = type == 'first_piece' ? '1ST PC #$trial' : 'Hourly — Slot $slot/HR';
+    final inspText = type == 'first_piece'
+        ? '1ST PC #$trial'
+        : 'Hourly — Slot $slot/HR';
 
     final params = state['parameters'] as List<dynamic>? ?? [];
-    final recordedMap = state['recorded_results'] as Map<String, dynamic>? ?? {};
+    final recordedMap =
+        state['recorded_results'] as Map<String, dynamic>? ?? {};
     final recordedCount = recordedMap.length;
     final totalCount = params.isNotEmpty ? params.length : 4;
 
@@ -1361,12 +1906,20 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                     color: const Color(0xFF2563EB).withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.history_rounded, color: Color(0xFF38BDF8), size: 24),
+                  child: const Icon(
+                    Icons.history_rounded,
+                    color: Color(0xFF38BDF8),
+                    size: 24,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 const Text(
                   'Resume Session?',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
                 ),
               ],
             ),
@@ -1381,18 +1934,33 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildDialogRow(Icons.precision_manufacturing_rounded, 'Machine:', machineName),
+            _buildDialogRow(
+              Icons.precision_manufacturing_rounded,
+              'Machine:',
+              machineName,
+            ),
             const SizedBox(height: 8),
             _buildDialogRow(Icons.category_rounded, 'Part:', partName),
             const SizedBox(height: 8),
             _buildDialogRow(Icons.assignment_rounded, 'Inspection:', inspText),
             const SizedBox(height: 8),
-            _buildDialogRow(Icons.bar_chart_rounded, 'Progress:', '$recordedCount / $totalCount Parameters'),
+            _buildDialogRow(
+              Icons.bar_chart_rounded,
+              'Progress:',
+              '$recordedCount / $totalCount Parameters',
+            ),
             const SizedBox(height: 8),
-            _buildDialogRow(Icons.access_time_rounded, 'Saved:', 'In local session'),
+            _buildDialogRow(
+              Icons.access_time_rounded,
+              'Saved:',
+              'In local session',
+            ),
           ],
         ),
-        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        actionsPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
         actions: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1405,13 +1973,19 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                   if (context.mounted) {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const OperationSelectScreen(),
+                      ),
                     );
                   }
                 },
                 child: const Text(
                   'START FRESH',
-                  style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 13),
+                  style: TextStyle(
+                    color: Color(0xFFEF4444),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
               ),
               ElevatedButton.icon(
@@ -1420,14 +1994,21 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                   provider.restoreFromLocalState(state, userId);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const InspectionVoiceScreen(),
+                    ),
                   );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2563EB),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   elevation: 0,
                 ),
                 icon: const Icon(Icons.play_arrow_rounded, size: 18),
@@ -1448,11 +2029,18 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
       children: [
         Icon(icon, color: const Color(0xFF38BDF8), size: 16),
         const SizedBox(width: 8),
-        Text('$label ', style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
+        Text(
+          '$label ',
+          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+        ),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
         ),
