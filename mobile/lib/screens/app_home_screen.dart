@@ -17,6 +17,7 @@ import 'inspection_voice_screen.dart';
 import 'setup_approval_report_screen.dart';
 import 'report_sheet_screen.dart';
 import 'tasks_screen.dart';
+import 'messaging/messages_screen.dart';
 import 'jh_inspection_screen.dart';
 import 'document_control_screen.dart';
 import 'bug_report_screen.dart';
@@ -1078,48 +1079,6 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                           children: [
                             IconButton(
                               icon: const Icon(
-                                Icons.chat_outlined,
-                                color: Color(0xFF4F46E5),
-                                size: 24,
-                              ),
-                              tooltip: 'Messages',
-                              onPressed: () => Navigator.pushNamed(
-                                context,
-                                '/messages',
-                              ).then((_) => _loadDashboardData()),
-                            ),
-                            if (unreadMessagesCount > 0)
-                              Positioned(
-                                top: 0,
-                                right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFEF4444),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  constraints: const BoxConstraints(
-                                    minWidth: 16,
-                                    minHeight: 16,
-                                  ),
-                                  child: Text(
-                                    '$unreadMessagesCount',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            IconButton(
-                              icon: const Icon(
                                 Icons.notifications_none_rounded,
                                 color: Color(0xFF0F172A),
                                 size: 26,
@@ -1284,6 +1243,25 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                           );
                         },
                       ),
+
+                      // Operator Card 6: Task Manager
+                      _buildSoftPastelCard(
+                        title: 'Task Manager',
+                        description:
+                            'Review assigned tasks, accept work and mark tasks complete',
+                        icon: Icons.task_alt_rounded,
+                        bgColor: const Color(0xFFEFF6FF),
+                        borderColor: const Color(0xFFBFDBFE),
+                        iconColor: const Color(0xFF2563EB),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const TasksScreen(),
+                            ),
+                          );
+                        },
+                      ),
                     ]
                   : [
                       // Inspector / Supervisor Card 1: Machine
@@ -1381,6 +1359,25 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                           );
                         },
                       ),
+
+                      // Inspector / Supervisor Card 6: Task Manager
+                      _buildSoftPastelCard(
+                        title: 'Task Manager',
+                        description:
+                            'Review assigned tasks, accept work and mark tasks complete',
+                        icon: Icons.task_alt_rounded,
+                        bgColor: const Color(0xFFEFF6FF),
+                        borderColor: const Color(0xFFBFDBFE),
+                        iconColor: const Color(0xFF2563EB),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const TasksScreen(),
+                            ),
+                          );
+                        },
+                      ),
                     ],
             ),
 
@@ -1472,7 +1469,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
           index: _currentIndex,
           children: [
             homeTabContent,
-            const TasksScreen(),
+            _currentIndex == 1
+                ? const MessagesScreen()
+                : const SizedBox.shrink(),
             const AccountScreen(),
           ],
         ),
@@ -1535,7 +1534,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
               ),
             ),
 
-            // Tab 2: Tasks
+            // Tab 2: Messages
             Expanded(
               child: InkWell(
                 onTap: () => setState(() => _currentIndex = 1),
@@ -1548,16 +1547,51 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.task_alt_rounded,
-                        color: _currentIndex == 1
-                            ? const Color(0xFF4F46E5)
-                            : const Color(0xFF94A3B8),
-                        size: 22,
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Icon(
+                            Icons.chat_bubble_outline_rounded,
+                            color: _currentIndex == 1
+                                ? const Color(0xFF4F46E5)
+                                : const Color(0xFF94A3B8),
+                            size: 22,
+                          ),
+                          if (unreadMessagesCount > 0)
+                            Positioned(
+                              top: -7,
+                              right: -9,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 2,
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFEF4444),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text(
+                                  unreadMessagesCount > 99
+                                      ? '99+'
+                                      : '$unreadMessagesCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Tasks',
+                        'Messages',
                         style: TextStyle(
                           color: _currentIndex == 1
                               ? const Color(0xFF4F46E5)
