@@ -222,11 +222,12 @@ export default function Sidebar({ pendingCount = 0 }) {
           if (module.to) {
             const isChildActive = module.items && module.items.some((item) => item.to === location.pathname);
             const isMasterParamActive = module.key === 'master_database' && location.pathname.startsWith('/parameters');
+            const isProductionActive = module.key === 'production_old' && location.pathname.startsWith('/production');
             return (
               <div key={module.key} className="sidebar-module">
                 <NavLink
                   to={module.to}
-                  className={({ isActive }) => `nav-item${isActive || isChildActive || isMasterParamActive ? ' active' : ''}`}
+                  className={({ isActive }) => `nav-item${isActive || isChildActive || isMasterParamActive || isProductionActive ? ' active' : ''}`}
                 >
                   <span className="module-icon">
                     <ModuleIcon size={16} />
