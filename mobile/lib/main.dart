@@ -7,6 +7,7 @@ import 'providers/inspection_provider.dart';
 import 'providers/task_provider.dart';
 import 'providers/company_provider.dart';
 import 'providers/messaging_provider.dart';
+import 'providers/notification_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/messaging/messages_screen.dart';
 
@@ -26,6 +27,18 @@ class VoiceInspectionApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => TaskProvider()),
         ChangeNotifierProvider(create: (_) => CompanyProvider()),
         ChangeNotifierProvider(create: (_) => MessagingProvider()),
+        ChangeNotifierProxyProvider<AuthProvider, NotificationProvider>(
+          create: (_) => NotificationProvider(),
+          update: (_, auth, notifications) {
+            final provider = notifications ?? NotificationProvider();
+            if (auth.isAuthenticated) {
+              provider.initializeForUser(userId: auth.userId);
+            } else if (!auth.isLoading) {
+              provider.resetForLogout();
+            }
+            return provider;
+          },
+        ),
       ],
       child: MaterialApp(
         title: 'Inspection Hub',
@@ -43,7 +56,10 @@ class VoiceInspectionApp extends StatelessWidget {
           useMaterial3: true,
         ),
         routes: {
-          '/messages': (context) => const MessagesScreen(),
+          '/messages': (context) => MessagesScreen(
+            initialConversationId:
+                ModalRoute.of(context)?.settings.arguments as String?,
+          ),
         },
         home: const SplashScreen(),
       ),

@@ -6,6 +6,12 @@ export const getCompanyDetails = async () => {
   return res;
 };
 
+// Create a new factory/company record
+export const createCompanyDetails = async (data) => {
+  const res = await api.post('/api/machines/factories/', data);
+  return res;
+};
+
 // Update primary factory/company details
 export const updateCompanyDetails = async (id, data) => {
   const res = await api.patch(`/api/machines/factories/${id}/`, data);

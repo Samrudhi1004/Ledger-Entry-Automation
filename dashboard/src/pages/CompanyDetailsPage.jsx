@@ -7,7 +7,7 @@ import { can } from '../utils/access';
 import { useCompany } from '../context/CompanyContext';
 import {
   getCompanyDetails, updateCompanyDetails, getCompanyPlants,
-  uploadCompanyLogo, removeCompanyLogo
+  uploadCompanyLogo, removeCompanyLogo, createCompanyDetails
 } from '../api/company';
 import {
   Building2, AlertCircle, CheckCircle2, User, Clock, ShieldCheck, Lock, Save, Loader2,
@@ -60,13 +60,18 @@ export default function CompanyDetailsPage() {
     setError('');
     try {
       const [compRes, plantRes] = await Promise.all([
-        getCompanyDetails().catch(() => null),
+        getCompanyDetails().catch((err) => { console.error('getCompanyDetails failed:', err); throw err; }),
         getCompanyPlants().catch(() => null),
       ]);
 
-      const compData = compRes?.data?.results || compRes?.data;
-      if (compData && (Array.isArray(compData) ? compData.length > 0 : true)) {
-        const primary = Array.isArray(compData) ? compData[0] : compData;
+      const compData = compRes?.data?.results ?? compRes?.data;
+      const dataArray = Array.isArray(compData) ? compData : (compData ? [compData] : []);
+
+      if (dataArray.length === 0) {
+        // No factory record exists in the DB yet or the API failed
+        setError('No factory record found. Please create a factory record first or contact your administrator.');
+      } else {
+        const primary = dataArray[0];
         setFactoryId(primary.id);
 
         const shiftHrs = primary.shift_hours || 8;
@@ -95,13 +100,13 @@ export default function CompanyDetailsPage() {
         });
       }
 
-      const plantData = plantRes?.data?.results || plantRes?.data;
+      const plantData = plantRes?.data?.results ?? plantRes?.data;
       if (plantData) {
         setPlants(Array.isArray(plantData) ? plantData : []);
       }
     } catch (err) {
       console.error('Failed to load company details', err);
-      setError('Failed to fetch company details. Using default parameters.');
+      setError('Failed to fetch company details. Please refresh or contact your administrator.');
     } finally {
       setLoading(false);
     }
@@ -182,11 +187,6 @@ export default function CompanyDetailsPage() {
     e.preventDefault();
     if (!isAdmin) return;
 
-    if (!factoryId) {
-      setError('Cannot update company details: Factory record ID not found.');
-      return;
-    }
-
     setIsSaving(true);
     setError('');
     setSuccessMsg('');
@@ -216,10 +216,21 @@ export default function CompanyDetailsPage() {
         available_working_minutes: availMins,
       };
 
-      const res = await updateCompanyDetails(factoryId, payload);
+      let res;
+      if (!factoryId) {
+        // Create new factory
+        res = await createCompanyDetails(payload);
+        if (res?.data?.id) {
+          setFactoryId(res.data.id);
+        }
+      } else {
+        // Update existing factory
+        res = await updateCompanyDetails(factoryId, payload);
+      }
+      
       if (res?.data) {
         if (refreshCompany) refreshCompany();
-        setSuccessMsg('Company & Shift details saved successfully!');
+        setSuccessMsg(factoryId ? 'Company & Shift details saved successfully!' : 'Company record created successfully!');
         setTimeout(() => setSuccessMsg(''), 4500);
       }
     } catch (err) {
