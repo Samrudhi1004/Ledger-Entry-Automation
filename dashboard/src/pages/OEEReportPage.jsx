@@ -156,7 +156,7 @@ export default function OEEReportPage() {
                 <ChevronLeft size={16} /> Back
               </button>
               <Breadcrumbs items={[
-                { label: 'Quality Analyzer', link: '/quality-analyzer' },
+                { label: 'Quality Analyzer', to: '/quality-analyzer' },
                 { label: 'OEE Report' }
               ]} />
             </div>

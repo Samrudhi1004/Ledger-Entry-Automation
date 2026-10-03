@@ -502,8 +502,8 @@ export default function CalibrationPage({ view = 'dashboard' }) {
 
   const copy = VIEW_COPY[view] || VIEW_COPY.dashboard;
   const breadcrumbItems = view === 'history'
-    ? [...(location.state?.calibrationPath ?? []), { label: copy.title }]
-    : [{ label: copy.title }];
+    ? [{ label: 'Quality Analyzer', to: '/quality-analyzer' }, ...(location.state?.calibrationPath ?? []), { label: copy.title }]
+    : [{ label: 'Quality Analyzer', to: '/quality-analyzer' }, { label: copy.title }];
   return (
     <>
       <Header title={copy.title} subtitle={copy.subtitle} />

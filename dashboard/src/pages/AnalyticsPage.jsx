@@ -140,7 +140,7 @@ export default function AnalyticsPage() {
       <Header title="First PC Inspection & In process Reports" subtitle="Historical archive of 100% completed daily inspection reports" />
 
       <div className="page-content bg-gradient-animated">
-        <Breadcrumbs items={[{ label: 'Reports', to: '/reports' }, { label: 'First PC & In-Process Reports' }]} />
+        <Breadcrumbs items={[{ label: 'Quality Analyzer', to: '/quality-analyzer' }, { label: 'First PC & In-Process Reports' }]} />
         {/* Filter Card */}
         <div className="card mb-20">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
