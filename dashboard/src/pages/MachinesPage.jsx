@@ -95,7 +95,7 @@ export default function MachinesPage() {
       />
 
       <div className="page-content bg-gradient-animated">
-        <Breadcrumbs items={[{ label: 'Machines' }]} />
+        <Breadcrumbs items={[{ label: 'Quality Analyzer', to: '/quality-analyzer' }, { label: 'Live Station Monitoring' }]} />
         {/* Machine Table with Live Status */}
         <div className="card">
           <h3 className="section-title mb-16">

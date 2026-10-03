@@ -96,7 +96,7 @@ export default function ProductionModulePage() {
                         backgroundColor: card.iconBg,
                         display: 'flex',
                         alignItems: 'center',
-                        justify: 'center',
+                        justifyContent: 'center',
                         color: card.iconColor,
                       }}
                     >
