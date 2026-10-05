@@ -10,8 +10,8 @@ from rest_framework.permissions import IsAuthenticated
 
 logger = logging.getLogger(__name__)
 
-from apps.parts.models import Part
-from apps.machines.models import Machine
+from apps.parts.models import Part  # type: ignore
+from apps.machines.models import Machine  # type: ignore
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from django.conf import settings
@@ -24,7 +24,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 # L1 FIX: Removed duplicate imports : Part and Machine already imported on lines 11-12.
-from apps.users.permissions import (
+from apps.users.permissions import (  # type: ignore
     HasAccess, IsSupervisorOrAbove, IsOperatorOrSupervisor,
 )
 from .models import (
@@ -297,7 +297,7 @@ class BatchMeasureView(APIView):
                 pass  # may already be completed; ignore
         else:
             try:
-                from apps.inspections import document_utils as doc_utils
+                from apps.inspections import document_utils as doc_utils  # type: ignore
                 if session_obj:
                     session_obj.has_ooc = True
                     session_obj.save(update_fields=['has_ooc'])
@@ -590,7 +590,15 @@ class SetupStatusView(APIView):
 
         from django.db.models import Q
         from django.utils import timezone
-        today = timezone.localdate()
+        import datetime
+        date_param = request.query_params.get('date')
+        if date_param:
+            try:
+                today = datetime.datetime.strptime(date_param, '%Y-%m-%d').date()
+            except ValueError:
+                today = timezone.localdate()
+        else:
+            today = timezone.localdate()
 
         # ── Build shared machine filter ────────────────────────────────────────────────────────
         if str(machine_id).isdigit():
@@ -887,17 +895,29 @@ class SetupApprovalView(APIView):
         template_id = request.query_params.get('template')
         machine_id  = request.query_params.get('machine')
 
-        if not template_id or not machine_id:
+        if not machine_id:
             return Response(
-                {'error': 'Both template and machine query parameters are required.'},
+                {'error': 'machine query parameter is required.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from apps.inspections.models import SetupApproval
-        setup = SetupApproval.objects.filter(
-            template_id=int(template_id),
+        from apps.inspections.models import SetupApproval  # type: ignore
+        
+        date_param = request.query_params.get('date')
+        qs = SetupApproval.objects.filter(
             machine_id=int(machine_id),
-        ).order_by('-submitted_at').first()
+        )
+        if template_id:
+            qs = qs.filter(template_id=int(template_id))
+        if date_param:
+            import datetime
+            try:
+                target_date = datetime.datetime.strptime(date_param, '%Y-%m-%d').date()
+                qs = qs.filter(submitted_at__date=target_date)
+            except ValueError:
+                pass
+        
+        setup = qs.order_by('-submitted_at').first()
 
         if not setup:
             return Response(
@@ -911,6 +931,7 @@ class SetupApprovalView(APIView):
             'template_id': setup.template_id,
             'machine_id': setup.machine_id,
             'part_number': setup.part_number,
+            'shift': setup.shift,
             'inspector_id': setup.inspector_id,
             'inspector_name': setup.inspector_name,
             'process_param_entries': setup.process_param_entries,
@@ -943,6 +964,7 @@ class SetupApprovalView(APIView):
         template_id    = request.data.get('template_id')
         machine_id     = request.data.get('machine_id')
         part_number    = request.data.get('part_number', '')
+        shift          = request.data.get('shift', '')
         entries        = request.data.get('process_param_entries', [])
         inspector_name = request.data.get('inspector_name', request.user.get_full_name())
 
@@ -961,7 +983,7 @@ class SetupApprovalView(APIView):
         now = datetime.now(tz.utc)
 
         # Upsert : update today's existing document or insert new
-        from apps.inspections.models import SetupApproval, InspectionSession
+        from apps.inspections.models import SetupApproval, InspectionSession  # type: ignore
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         existing = SetupApproval.objects.filter(
             template_id=int(template_id),
@@ -973,6 +995,8 @@ class SetupApprovalView(APIView):
             existing.process_param_entries = entries
             existing.inspector = request.user
             existing.inspector_name = inspector_name
+            if shift:
+                existing.shift = shift
             existing.submitted_at = now
             existing.status = 'submitted'
             existing.save()
@@ -983,6 +1007,7 @@ class SetupApprovalView(APIView):
                 template_id=int(template_id),
                 machine_id=int(machine_id),
                 part_number=part_number,
+                shift=shift,
                 inspector=request.user,
                 inspector_name=inspector_name,
                 process_param_entries=entries,
@@ -992,7 +1017,7 @@ class SetupApprovalView(APIView):
             updated = False
 
         # Sync process_param_entries to active sessions' document_payload for this machine
-        from apps.inspections import document_utils as doc_utils
+        from apps.inspections import document_utils as doc_utils  # type: ignore
         active_sessions = InspectionSession.objects.filter(
             machine_id=int(machine_id),
             started_at__date=now.date(),

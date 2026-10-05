@@ -481,6 +481,7 @@ class SetupApproval(models.Model):
         related_name='setup_approvals',
     )
     part_number    = models.CharField(max_length=100, blank=True)
+    shift          = models.CharField(max_length=20, null=True, blank=True)
     inspector      = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

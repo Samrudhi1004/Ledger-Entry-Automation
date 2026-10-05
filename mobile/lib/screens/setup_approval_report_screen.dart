@@ -4,6 +4,8 @@ import '../providers/auth_provider.dart';
 import '../providers/company_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../services/api_service.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:flutter/foundation.dart';
 
 /// Set Up Approval Reports Screen
 ///
@@ -22,6 +24,8 @@ class SetupApprovalReportScreen extends StatefulWidget {
 
 class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
   bool _isLoading = true;
+  bool _isDownloadingPdf = false;
+  DateTime? _selectedDate;
   String? _errorMessage;
 
   List<dynamic> _productParams = [];
@@ -76,42 +80,68 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
       // Check for active or finalized inspection session document for this machine
       // Fix 3: Use first_piece_session_id so Setup Approval Report always shows
       // 1ST PC trial data (not hourly session data which has no trial_number).
-      final setupStatus = await ApiService.checkSetupApproved(machineId);
+      final dateStr = _selectedDate != null 
+          ? "${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}" 
+          : null;
+
+      final setupStatus = await ApiService.checkSetupApproved(machineId, date: dateStr);
       final reportSessionId = setupStatus['first_piece_session_id']
           ?? setupStatus['session_id'];
 
-      if (reportSessionId != null) {
+      final setupAppDoc = await ApiService.getSetupApprovalData(templateId, machineId, date: dateStr);
+      if (setupAppDoc != null) {
+        _setupApprovalData = setupAppDoc;
+      } else if (reportSessionId != null) {
         final sessionDoc = await ApiService.getSessionDetail(reportSessionId.toString());
         if (sessionDoc != null) {
           _setupApprovalData = sessionDoc;
         }
       }
 
-      _setupApprovalData ??= await ApiService.getSetupApprovalData(templateId, machineId);
-
       if (_setupApprovalData != null && _setupApprovalData!['process_param_entries'] is List) {
         _processParamEntries = _setupApprovalData!['process_param_entries'] as List;
+      } else {
+        _processParamEntries = [];
       }
 
       _productResults = {};
 
-      // 1. Populate from backend session measurements
-      // Fix 4: Null-safe trial_number mapping — preserve all 3 trial values.
-      // Measurements with inspection_type='hourly' are ignored here (they belong
-      // to the DailyProductionReport, not the SetupApproval F02 report).
+      // 1. Populate from Setup Approval process_param_entries
+      if (_processParamEntries.isNotEmpty) {
+        for (final entry in _processParamEntries) {
+          final code = entry['parameter_code']?.toString() ?? '';
+          final name = entry['parameter_name']?.toString() ?? '';
+          if (code.isNotEmpty) _productResults.putIfAbsent(code, () => {});
+          if (name.isNotEmpty) _productResults.putIfAbsent(name, () => {});
+          
+          if (entry['trial_1'] != null && entry['trial_1'].toString().trim().isNotEmpty) {
+            final t1 = entry['trial_1'].toString();
+            if (code.isNotEmpty) _productResults[code]!['1'] = t1;
+            if (name.isNotEmpty) _productResults[name]!['1'] = t1;
+          }
+          if (entry['trial_2'] != null && entry['trial_2'].toString().trim().isNotEmpty) {
+            final t2 = entry['trial_2'].toString();
+            if (code.isNotEmpty) _productResults[code]!['2'] = t2;
+            if (name.isNotEmpty) _productResults[name]!['2'] = t2;
+          }
+          if (entry['trial_3'] != null && entry['trial_3'].toString().trim().isNotEmpty) {
+            final t3 = entry['trial_3'].toString();
+            if (code.isNotEmpty) _productResults[code]!['3'] = t3;
+            if (name.isNotEmpty) _productResults[name]!['3'] = t3;
+          }
+        }
+      }
+
+      // 2. Populate from backend session measurements (if any First Piece measurements exist and we used sessionDoc)
       final measurements = _setupApprovalData?['measurements'] as List? ?? [];
       for (final m in measurements) {
         final inspType = m['inspection_type']?.toString() ?? 'first_piece';
-        // Skip hourly measurements — they don't belong in this report
         if (inspType == 'hourly') continue;
 
         final code = m['parameter_code']?.toString() ?? '';
         final name = m['parameter_name']?.toString() ?? '';
         final rawTrial = m['trial_number'];
-        // Use trial_number as-is if valid (>0), otherwise default to '1'
-        final trial = (rawTrial != null && rawTrial != 0)
-            ? rawTrial.toString()
-            : '1';
+        final trial = (rawTrial != null && rawTrial != 0) ? rawTrial.toString() : '1';
         final val = m['voice_raw_text']?.toString() ?? (m['measured_value'] != null ? m['measured_value'].toString() : '-');
 
         if (code.isNotEmpty) {
@@ -124,7 +154,7 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
         }
       }
 
-      // 2. Layer provider.recordedResults (only if inspection_type is first_piece)
+      // 3. Layer provider.recordedResults (only if inspection_type is first_piece)
       provider.recordedResults.forEach((code, val) {
         final inspType = val['inspection_type']?.toString() ?? 'first_piece';
         if (inspType == 'hourly') return; // skip hourly in this report
@@ -143,6 +173,81 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
         _isLoading = false;
         _errorMessage = 'Failed to load Setup Approval Report: $e';
       });
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF2563EB), 
+              onPrimary: Colors.white,
+              onSurface: Color(0xFF0F172A),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() => _selectedDate = picked);
+      _loadReportData();
+    }
+  }
+
+  Future<void> _downloadPDF() async {
+    if (_setupApprovalData == null) return;
+    
+    final sessionId = _setupApprovalData!['id'] ?? _setupApprovalData!['session_id'];
+    if (sessionId == null) return;
+    
+    setState(() => _isDownloadingPdf = true);
+    
+    try {
+      final provider = Provider.of<InspectionProvider>(context, listen: false);
+      final machineCode = provider.selectedMachine?['machine_code'] ?? provider.selectedMachine?['name'] ?? 'VMC-01';
+      final partNumber = provider.selectedPart?['part_number'] ?? '1';
+      final shift = _setupApprovalData!['shift']?.toString() ?? provider.shift;
+
+      final filePath = await ApiService.downloadSessionPDF(
+        sessionId.toString(),
+        partNumber: partNumber.toString(),
+        machineCode: machineCode.toString(),
+        shift: shift.toString(),
+      );
+      
+      setState(() => _isDownloadingPdf = false);
+      if (mounted) {
+        if (filePath != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(filePath == 'web_downloaded' ? '✅ PDF downloaded successfully!' : '✅ Official PDF Report downloaded successfully! Opening...'),
+              backgroundColor: const Color(0xFF16A34A),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+          if (filePath != 'web_downloaded') {
+            OpenFilex.open(filePath);
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('❌ Failed to download PDF report. Please try again.'), backgroundColor: Colors.redAccent),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _isDownloadingPdf = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ Error downloading PDF.'), backgroundColor: Colors.redAccent),
+        );
+      }
     }
   }
 
@@ -201,6 +306,18 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month_rounded, color: Color(0xFF64748B)),
+            tooltip: 'Select Date',
+            onPressed: _pickDate,
+          ),
+          _isDownloadingPdf 
+            ? const Center(child: Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFEAB308)))))
+            : IconButton(
+                icon: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFEAB308)),
+                tooltip: 'Download PDF',
+                onPressed: _downloadPDF,
+              ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Color(0xFF16A34A)),
             onPressed: _loadReportData,
