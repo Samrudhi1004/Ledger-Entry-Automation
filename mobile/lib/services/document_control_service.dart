@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:file_saver/file_saver.dart';
 import 'api_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -330,23 +331,37 @@ class DocumentControlService {
       final uri = Uri.parse(url);
       final response = await http.get(uri);
       if (response.statusCode == 200) {
-        Directory dir;
-        try {
-          dir =
-              (await getDownloadsDirectory()) ??
-              (await getApplicationDocumentsDirectory());
-        } catch (_) {
-          dir = await getApplicationDocumentsDirectory();
+        if (kIsWeb) {
+          String name = doc.fileName ?? '${doc.documentNumber}_document.pdf';
+          String ext = name.contains('.') ? name.split('.').last : '';
+          name = name.replaceAll(RegExp(r'\.[^.]+$'), ''); // remove extension
+
+          await FileSaver.instance.saveFile(
+            name: name,
+            bytes: response.bodyBytes,
+            ext: ext,
+            mimeType: MimeType.other,
+          );
+          return 'web_downloaded';
+        } else {
+          Directory dir;
+          try {
+            dir =
+                (await getDownloadsDirectory()) ??
+                (await getApplicationDocumentsDirectory());
+          } catch (_) {
+            dir = await getApplicationDocumentsDirectory();
+          }
+
+          String name = doc.fileName ?? '${doc.documentNumber}_document.pdf';
+          name = name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+
+          final filePath = '${dir.path}/$name';
+          final file = File(filePath);
+          await file.writeAsBytes(response.bodyBytes);
+          debugPrint('[DocumentControlService] Document saved to: $filePath');
+          return filePath;
         }
-
-        String name = doc.fileName ?? '${doc.documentNumber}_document.pdf';
-        name = name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-
-        final filePath = '${dir.path}/$name';
-        final file = File(filePath);
-        await file.writeAsBytes(response.bodyBytes);
-        debugPrint('[DocumentControlService] Document saved to: $filePath');
-        return filePath;
       }
     } catch (e) {
       debugPrint('[DocumentControlService] Download error: $e');

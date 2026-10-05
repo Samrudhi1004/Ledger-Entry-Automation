@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useAuth } from '../../context/AuthContext';
-import { useCompany } from '../../context/CompanyContext';
 import NotificationBell from '../document_control/NotificationBell';
 import BugReportModal from '../common/BugReportModal';
 
@@ -19,7 +18,6 @@ export default function Header({
   const ws = useWebSocket();
   const connected = ws?.connected ?? false;
   const { user } = useAuth();
-  const { logoUrl } = useCompany();
   const [showBugReportModal, setShowBugReportModal] = useState(false);
 
   const roleLabels = {
@@ -41,17 +39,6 @@ export default function Header({
 
       <div className="header-right">
         {actions}
-
-        {logoUrl && (
-          <div style={{ display: 'flex', alignItems: 'center', marginRight: '8px' }}>
-            <img 
-              src={logoUrl} 
-              alt="Company Logo" 
-              style={{ height: '32px', width: 'auto', objectFit: 'contain', borderRadius: '4px' }}
-              onError={(e) => { e.target.style.display = 'none'; }}
-            />
-          </div>
-        )}
 
         {/* Shift selector */}
         {onShiftChange && (

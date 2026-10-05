@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_saver/file_saver.dart';
 
 class ApiService {
   // Fix: Use 10.0.2.2 on Android debug builds (emulator/physical device loopback to host).
@@ -470,8 +471,6 @@ class ApiService {
       ));
 
       if (response.statusCode == 200) {
-        final dir = await getApplicationDocumentsDirectory();
-
         // Check if server sent a filename in Content-Disposition
         String? filename;
         final disposition = response.headers['content-disposition'];
@@ -491,9 +490,20 @@ class ApiService {
           filename = 'FirstPiece_Report_${dateStr}_Shift_${cleanShift}_${cleanMc}_${cleanPart}.pdf';
         }
 
-        final file = File('${dir.path}/$filename');
-        await file.writeAsBytes(response.bodyBytes);
-        return file.path;
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: filename.replaceAll('.pdf', ''),
+            bytes: response.bodyBytes,
+            ext: 'pdf',
+            mimeType: MimeType.pdf,
+          );
+          return 'web_downloaded';
+        } else {
+          final dir = await getApplicationDocumentsDirectory();
+          final file = File('${dir.path}/$filename');
+          await file.writeAsBytes(response.bodyBytes);
+          return file.path;
+        }
       }
     } catch (e) {
       debugPrint('[API] PDF Download error: $e');

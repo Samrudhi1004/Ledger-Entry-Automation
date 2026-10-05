@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:open_filex/open_filex.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
@@ -151,11 +152,14 @@ class _ReportSheetScreenState extends State<ReportSheetScreen> {
       if (filePath != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Official PDF Report downloaded successfully!\nFile: $filePath'),
+            content: Text(filePath == 'web_downloaded' ? '✅ PDF downloaded successfully!' : '✅ Official PDF Report downloaded successfully! Opening...'),
             backgroundColor: const Color(0xFF16A34A),
-            duration: const Duration(seconds: 6),
+            duration: const Duration(seconds: 3),
           ),
         );
+        if (filePath != 'web_downloaded') {
+          OpenFilex.open(filePath);
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('❌ Failed to download PDF report. Please try again.'), backgroundColor: Colors.redAccent),
