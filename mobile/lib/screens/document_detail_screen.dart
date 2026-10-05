@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:open_filex/open_filex.dart';
 import '../providers/auth_provider.dart';
 import '../services/document_control_service.dart';
 import '../widgets/dcr_submission_sheet.dart';
@@ -119,11 +120,14 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         if (localPath != null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('✅ Document downloaded successfully!\nSaved to: $localPath'),
+              content: Text(localPath == 'web_downloaded' ? '✅ Document downloaded successfully!' : '✅ Document downloaded successfully! Opening...'),
               backgroundColor: const Color(0xFF16A34A),
-              duration: const Duration(seconds: 5),
+              duration: const Duration(seconds: 3),
             ),
           );
+          if (localPath != 'web_downloaded') {
+            OpenFilex.open(localPath);
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -154,7 +158,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
-    final canSubmitDCR = auth.hasAccess('document.dcr.create');
+    final canSubmitDCR = auth.hasAccess('document.dcr.create') && !auth.isOperator;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
