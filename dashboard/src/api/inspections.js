@@ -9,6 +9,13 @@ export const getSessionDetail = (sessionId) =>
 export const getSessions = (params = {}) =>
   api.get('/api/inspections/', { params });
 
+export const getSetupApprovalData = (templateId, machineId, dateStr) => {
+  let url = `/api/inspections/setup-approval/?machine=${machineId}`;
+  if (templateId) url += `&template=${templateId}`;
+  if (dateStr) url += `&date=${dateStr}`;
+  return api.get(url);
+};
+
 export const reviewSession = (sessionId, action, remark = '', rejectedParameters = []) =>
   api.post(`/api/inspections/${sessionId}/review/`, {
     action,

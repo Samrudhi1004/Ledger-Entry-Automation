@@ -2,330 +2,363 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import OfficialFormF02Modal from '../components/reports/OfficialFormF02Modal';
-import { getSessions, getSessionDetail, openInspectionPDF, downloadInspectionPDF } from '../api/inspections';
+import { getSetupApprovalData } from '../api/inspections';
+import api from '../api/axios';
+import { useCompany } from '../context/CompanyContext';
 import { formatDate } from '../utils/formatters';
-import { ShieldCheck, FileText, Download, Eye, Filter, RefreshCw, CheckCircle, AlertTriangle, Cpu } from 'lucide-react';
+import { Download, Calendar, Cpu, Search } from 'lucide-react';
 
 export default function SetupApprovalReportsPage() {
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { companyName, companyCode } = useCompany();
+  const [machines, setMachines] = useState([]);
+  const [selectedMachine, setSelectedMachine] = useState('');
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+
+  const [reportData, setReportData] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [downloading, setDownloading] = useState(false);
 
-  // Filters
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [selectedShift, setSelectedShift] = useState('All');
-  const [selectedMachine, setSelectedMachine] = useState('All');
-  const [selectedPart, setSelectedPart] = useState('All');
-  const [selectedStatus, setSelectedStatus] = useState('All');
+  useEffect(() => {
+    const fetchMachines = async () => {
+      try {
+        const res = await api.get('/api/machines/');
+        const mList = res.data?.results ?? res.data ?? [];
+        setMachines(mList);
+        if (mList.length > 0 && !selectedMachine) {
+          setSelectedMachine(mList[0].id);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchMachines();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Selected session for Form F02 Modal
-  const [activeModalSession, setActiveModalSession] = useState(null);
-  const [loadingSessionDetail, setLoadingSessionDetail] = useState(false);
-
-  const fetchSetupSessions = useCallback(async () => {
+  const loadReport = useCallback(async () => {
     setLoading(true);
     setError('');
+    setReportData(null);
     try {
-      const params = {
-        inspection_type: 'first_piece',
-      };
-      if (selectedShift !== 'All') params.shift = selectedShift;
-      if (selectedStatus !== 'All') params.status = selectedStatus;
-      if (selectedMachine !== 'All') params.machine = selectedMachine;
-
-      const res = await getSessions(params);
-      const loaded = res.data?.results ?? (Array.isArray(res.data) ? res.data : []);
-      setSessions(loaded);
+      // Pass null for templateId so the backend returns the latest setup approval for the machine
+      const res = await getSetupApprovalData(null, selectedMachine, selectedDate);
+      if (res.data) {
+        setReportData(res.data);
+      }
     } catch (err) {
-      console.error('Failed to load setup approval sessions:', err);
-      setError('Failed to load setup approval reports. Please try again.');
+      if (err.response?.status === 404) {
+        // No report found - handled gracefully in UI
+      } else {
+        setError('Failed to load setup approval report.');
+      }
     } finally {
       setLoading(false);
     }
-  }, [selectedShift, selectedStatus, selectedMachine]);
+  }, [selectedMachine, selectedDate]);
 
   useEffect(() => {
-    fetchSetupSessions();
-  }, [fetchSetupSessions]);
+    if (selectedMachine && selectedDate) {
+      loadReport();
+    }
+  }, [selectedMachine, selectedDate, loadReport]);
 
-  // Handle open Form F02 Modal with full session details
-  const handleOpenFormF02 = async (sessionSummary) => {
-    setLoadingSessionDetail(true);
+
+  const handleDownloadPDF = async () => {
+    if (!reportData?.session_id) return;
+    setDownloading(true);
     try {
-      const fullDoc = await getSessionDetail(sessionSummary.session_id);
-      setActiveModalSession(fullDoc.data || sessionSummary);
+      const res = await api.get(`/api/inspections/${reportData.session_id}/pdf/`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      const m = machines.find(mac => mac.id.toString() === selectedMachine.toString());
+      const mCode = m?.machine_code || 'Machine';
+      link.setAttribute('download', `Setup_Approval_${selectedDate}_${mCode}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
     } catch (err) {
-      console.warn('Could not fetch full MongoDB detail, falling back to summary:', err);
-      setActiveModalSession(sessionSummary);
+      console.error(err);
+      alert('Failed to download PDF');
     } finally {
-      setLoadingSessionDetail(false);
+      setDownloading(false);
     }
   };
 
-  // Filtered Sessions
-  const filteredSessions = sessions.filter((s) => {
-    if (startDate) {
-      const dateVal = (s.started_at || s.created_at || '').slice(0, 10);
-      if (dateVal < startDate) return false;
-    }
-    if (endDate) {
-      const dateVal = (s.started_at || s.created_at || '').slice(0, 10);
-      if (dateVal > endDate) return false;
-    }
-    if (selectedPart !== 'All' && s.part_number !== selectedPart) return false;
-    return true;
+  const paramEntries = reportData?.process_param_entries || [];
+  const productParams = paramEntries.filter(p => p.parameter_code && !p.parameter_code.startsWith('PR'));
+  const processParams = paramEntries.filter(p => p.parameter_code && p.parameter_code.startsWith('PR'));
+
+  const entriesByKey = {};
+  paramEntries.forEach(entry => {
+    const c = entry.parameter_code || '';
+    const n = entry.parameter_name || '';
+    const vals = {
+      '1': (entry.trial_1 !== null && String(entry.trial_1).trim() !== '') ? String(entry.trial_1) : '-',
+      '2': (entry.trial_2 !== null && String(entry.trial_2).trim() !== '') ? String(entry.trial_2) : '-',
+      '3': (entry.trial_3 !== null && String(entry.trial_3).trim() !== '') ? String(entry.trial_3) : '-',
+    };
+    if (c) entriesByKey[c] = vals;
+    if (n) entriesByKey[n] = vals;
   });
 
-  // Extract unique machines and parts for filter dropdowns
-  const uniqueMachines = Array.from(new Set(sessions.map((s) => s.machine_code).filter(Boolean)));
-  const uniqueParts = Array.from(new Set(sessions.map((s) => s.part_number).filter(Boolean)));
-
-  // Calculate Metrics
-  const totalApprovals = filteredSessions.length;
-  const approvedCount = filteredSessions.filter((s) => s.status === 'approved' || s.status === 'finalized_passed' || s.is_setup_approved).length;
-  const passRate = totalApprovals > 0 ? Math.round((approvedCount / totalApprovals) * 100) : 100;
-  const totalProcessParams = filteredSessions.reduce((acc, s) => acc + (s.process_parameter_summary?.length || 0), 0);
+  const mCode = reportData?.machine_code || machines.find(m => m.id.toString() === selectedMachine.toString())?.machine_code || '';
+  const pNum = reportData?.part_number || '';
+  const pName = reportData?.part_name || '';
+  const shift = reportData?.shift || 'I';
+  const insp = reportData?.operator_name || 'Inspector';
+  const status = reportData?.status ? reportData.status.toUpperCase().replace('_', ' ') : 'APPROVED';
 
   return (
     <>
       <Header
-        title="Set Up Approval Reports"
-        subtitle="Historical archive of official Form F02 Setup Approvals featuring Section 1 Product & Section 2 Process parameters"
+        title="Set Up Approval Report"
+        subtitle="Live F02 Setup Approval view based on inspector data entry"
       />
 
-      <div className="page-content bg-gradient-animated" style={{ padding: '24px', background: '#F1F5F9', minHeight: '100vh' }}>
-        <Breadcrumbs items={[{ label: 'Quality Analyzer', to: '/quality-analyzer' }, { label: 'Setup Approval Reports' }]} />
+      <div className="page-content" style={{ padding: '24px', background: '#F1F5F9', minHeight: '100vh' }}>
+        <Breadcrumbs items={[
+          { label: 'Quality Analyzer', to: '/quality-analyzer' },
+          { label: 'Set Up Approval Report' }
+        ]} />
 
-        {/* FILTER BAR */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '18px 24px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-            <Filter size={16} color="#0284C7" />
-            <span style={{ fontSize: 13, fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filter Setup Reports</span>
+        {/* Filters & Actions Bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#FFFFFF', padding: '16px 20px', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Select Date</label>
+              <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #CBD5E1', borderRadius: '6px', overflow: 'hidden', padding: '0 12px' }}>
+                <Calendar size={14} color="#64748B" style={{ marginRight: 8 }} />
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={e => setSelectedDate(e.target.value)}
+                  style={{ border: 'none', outline: 'none', padding: '8px 0', fontSize: 13, fontWeight: 600, color: '#1E293B', background: 'transparent' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Select Machine</label>
+              <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #CBD5E1', borderRadius: '6px', overflow: 'hidden', padding: '0 12px', background: '#FFFFFF' }}>
+                <Cpu size={14} color="#64748B" style={{ marginRight: 8 }} />
+                <select
+                  value={selectedMachine}
+                  onChange={e => setSelectedMachine(e.target.value)}
+                  style={{ border: 'none', outline: 'none', padding: '9px 0', fontSize: 13, fontWeight: 600, color: '#1E293B', background: 'transparent', minWidth: '160px' }}
+                >
+                  <option value="" disabled>Select Machine...</option>
+                  {machines.map(m => (
+                    <option key={m.id} value={m.id}>{m.machine_code} {m.name ? `- ${m.name}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', alignItems: 'center' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>From Date</label>
-              <input
-                type="date"
-                className="form-input"
-                style={{ width: '100%', fontSize: 12, padding: '7px 10px' }}
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>To Date</label>
-              <input
-                type="date"
-                className="form-input"
-                style={{ width: '100%', fontSize: 12, padding: '7px 10px' }}
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>Shift</label>
-              <select
-                className="form-select"
-                style={{ width: '100%', fontSize: 12, padding: '7px 10px' }}
-                value={selectedShift}
-                onChange={(e) => setSelectedShift(e.target.value)}
-              >
-                <option value="All">All Shifts</option>
-                <option value="I">Shift I</option>
-                <option value="II">Shift II</option>
-                <option value="III">Shift III</option>
-                <option value="A">Shift A (Legacy)</option>
-                <option value="B">Shift B (Legacy)</option>
-                <option value="C">Shift C (Legacy)</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>Machine</label>
-              <select
-                className="form-select"
-                style={{ width: '100%', fontSize: 12, padding: '7px 10px' }}
-                value={selectedMachine}
-                onChange={(e) => setSelectedMachine(e.target.value)}
-              >
-                <option value="All">All Machines</option>
-                {uniqueMachines.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>Part Number</label>
-              <select
-                className="form-select"
-                style={{ width: '100%', fontSize: 12, padding: '7px 10px' }}
-                value={selectedPart}
-                onChange={(e) => setSelectedPart(e.target.value)}
-              >
-                <option value="All">All Parts</option>
-                {uniqueParts.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>Status</label>
-              <select
-                className="form-select"
-                style={{ width: '100%', fontSize: 12, padding: '7px 10px' }}
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-              >
-                <option value="All">All Statuses</option>
-                <option value="approved">Approved</option>
-                <option value="finalized_passed">Finalized Passed</option>
-                <option value="rejected">Rejected</option>
-              </select>
-            </div>
+          <div>
+            <button
+              onClick={handleDownloadPDF}
+              disabled={!reportData || downloading}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: '8px',
+                background: reportData ? '#FEF08A' : '#F1F5F9',
+                color: reportData ? '#A16207' : '#94A3B8',
+                fontWeight: 700, fontSize: 13, border: 'none', cursor: reportData && !downloading ? 'pointer' : 'not-allowed',
+                boxShadow: reportData ? '0 1px 2px rgba(0,0,0,0.05)' : 'none', transition: 'all 0.2s'
+              }}
+            >
+              <Download size={16} />
+              <span>{downloading ? 'Exporting...' : 'EXPORT PDF'}</span>
+            </button>
           </div>
         </div>
 
-        {/* SETUP APPROVAL REPORTS TABLE */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-          
-          <div style={{ padding: '16px 24px', background: '#FAFBFC', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <FileText size={18} color="#4F46E5" />
-              <span>Official Setup Approval Records (Form F02 Archive)</span>
-              <span style={{ background: '#EEF2FF', color: '#4338CA', padding: '2px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>
-                {filteredSessions.length} Reports
-              </span>
-            </div>
-
-            <button
-              onClick={fetchSetupSessions}
-              style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: '#EFF6FF', border: '1px solid #BAE6FD', color: '#0284C7', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-            >
-              <RefreshCw size={14} />
-              <span>Refresh</span>
-            </button>
+        {loading ? (
+          <div style={{ padding: '60px 20px' }}>
+            <LoadingSpinner message="Fetching Setup Approval Data..." />
           </div>
+        ) : error ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#DC2626', background: '#FEF2F2', borderRadius: '12px', border: '1px solid #FCA5A5' }}>
+            {error}
+          </div>
+        ) : !reportData ? (
+          <div style={{ padding: '80px 24px', textAlign: 'center', background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+            <Search size={48} color="#CBD5E1" style={{ marginBottom: 16 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#334155', marginBottom: 8 }}>No Setup Approval Report Found</div>
+            <div style={{ fontSize: 13, color: '#64748B', maxWidth: '400px', margin: '0 auto' }}>
+              No inspector data entry exists for <strong>{machines.find(m => m.id.toString() === selectedMachine.toString())?.machine_code || 'this machine'}</strong> on <strong>{formatDate(selectedDate)}</strong>.
+            </div>
+          </div>
+        ) : (
+          <div style={{ background: '#FFFFFF', padding: '16px', borderRadius: '12px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
+            <div style={{ minWidth: '950px', border: '1.5px solid #000000', fontFamily: 'Arial, sans-serif' }}>
 
-          {loading ? (
-            <div style={{ padding: '60px 20px' }}>
-              <LoadingSpinner message="Loading Setup Approval Reports..." />
-            </div>
-          ) : error ? (
-            <div style={{ padding: '40px 24px', textAlign: 'center', color: '#DC2626' }}>{error}</div>
-          ) : filteredSessions.length === 0 ? (
-            <div style={{ padding: '60px 24px', textAlign: 'center' }}>
-              <ShieldCheck size={40} color="#94A3B8" style={{ marginBottom: 10 }} />
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#334155', marginBottom: 4 }}>No Setup Approval Reports Found</div>
-              <div style={{ fontSize: 12, color: '#64748B' }}>Try adjusting your filters or complete a First Piece inspection on the mobile app.</div>
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              {/* TOP HEADER */}
+              <div style={{ display: 'flex', borderBottom: '1.5px solid #000000' }}>
+                <div style={{ width: '12%', padding: '8px', background: '#000000', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1.5px solid #000000' }}>
+                  <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: 1 }}>{companyCode || 'LIHA-F1'}</div>
+                </div>
+                <div style={{ width: '73%', padding: '8px', textAlign: 'center', borderRight: '1.5px solid #000000' }}>
+                  <div style={{ fontSize: 15, fontWeight: 900, color: '#333333' }}>{companyName?.toUpperCase() || 'LIHA TECH FACTORY 1'}</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#1E40AF', marginTop: 4 }}>FIRST PIECE SETUP APPROVAL REPORT — PROCESS NO. 10</div>
+                </div>
+                <div style={{ width: '15%', padding: '6px', textAlign: 'right', fontSize: 9, color: '#000000', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div>DOC REF: {companyCode || 'LIHA-F1'}/PRD/F02</div>
+                  <div>REV: 02 (15.0.2013)</div>
+                  <div style={{ fontWeight: 800, marginTop: 2 }}>PAGE 1 OF 1</div>
+                </div>
+              </div>
+
+              {/* SECOND HEADER ROW */}
+              <div style={{ display: 'flex', borderBottom: '1px solid #000000', background: '#F8FAFC' }}>
+                <div style={{ flex: 3, padding: '6px 8px', borderRight: '1px solid #000000', fontSize: 11 }}>
+                  <span style={{ color: '#475569', fontWeight: 600 }}>PROCESS NO:</span> <strong style={{ color: '#000000' }}>10</strong>
+                </div>
+                <div style={{ flex: 7, padding: '6px 8px', borderRight: '1px solid #000000', fontSize: 11 }}>
+                  <span style={{ color: '#475569', fontWeight: 600 }}>PART NAME & NO:</span> <strong style={{ color: '#000000' }}>{pNum} ({pName})</strong>
+                </div>
+                <div style={{ flex: 5, padding: '6px 8px', fontSize: 11 }}>
+                  <span style={{ color: '#475569', fontWeight: 600 }}>INSPECTOR / OPERATOR:</span> <strong style={{ color: '#000000' }}>{insp}</strong>
+                </div>
+              </div>
+
+              {/* THIRD HEADER ROW */}
+              <div style={{ display: 'flex', borderBottom: '1.5px solid #000000', background: '#F8FAFC' }}>
+                <div style={{ flex: 5, padding: '6px 8px', borderRight: '1px solid #000000', fontSize: 11 }}>
+                  <span style={{ color: '#475569', fontWeight: 600 }}>MACHINE NO:</span> <strong style={{ color: '#000000' }}>{mCode}</strong>
+                </div>
+                <div style={{ flex: 6, padding: '6px 8px', borderRight: '1px solid #000000', fontSize: 11 }}>
+                  <span style={{ color: '#475569', fontWeight: 600 }}>DATE & SHIFT:</span> <strong style={{ color: '#000000' }}>{formatDate(selectedDate)} | Shift {shift}</strong>
+                </div>
+                <div style={{ flex: 4, padding: '6px 8px', background: '#F0FDF4', fontSize: 11 }}>
+                  <span style={{ color: '#166534', fontWeight: 600 }}>SETUP STATUS:</span> <strong style={{ color: '#166534' }}>{status}</strong>
+                </div>
+              </div>
+
+              {/* MAIN TABLE */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: 10 }}>
                 <thead>
-                  <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', textTransform: 'uppercase' }}>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#475569' }}>Date & Shift</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#475569' }}>Machine</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#475569' }}>Part Number & Name</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#475569' }}>Inspector / Operator</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 800, color: '#475569' }}>Trial</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 800, color: '#475569' }}>Actions</th>
+                  <tr style={{ background: '#E2E8F0', borderBottom: '1px solid #000000', color: '#334155' }}>
+                    <th style={{ borderRight: '1px solid #000000', padding: '6px 2px', width: '3.5%' }}>P.N O</th>
+                    <th style={{ borderRight: '1px solid #000000', padding: '6px 2px', width: '3.5%' }}>NO</th>
+                    <th style={{ borderRight: '1px solid #000000', padding: '6px 8px', width: '22%', textAlign: 'left' }}>PARAMETER NAME & DESCRIPTION</th>
+                    <th style={{ borderRight: '1px solid #000000', padding: '6px 4px', width: '6%' }}>CLASS</th>
+                    <th style={{ borderRight: '1px solid #000000', padding: '6px 4px', width: '15%' }}>SPECIFICATION</th>
+                    <th style={{ borderRight: '1px solid #000000', padding: '6px 4px', width: '15%' }}>EVALUATION TECHNIQUE</th>
+                    <th style={{ borderRight: '1px solid #000000', padding: '6px 4px', width: '10%' }}>SAMPLE FREQ</th>
+                    <th style={{ borderRight: '1px solid #000000', padding: '6px 4px', width: '8%', color: '#1E40AF', background: '#DBEAFE' }}>1ST #1</th>
+                    <th style={{ borderRight: '1px solid #000000', padding: '6px 4px', width: '8%', color: '#B45309', background: '#FEF3C7' }}>1ST #2</th>
+                    <th style={{ padding: '6px 4px', width: '8%', color: '#047857', background: '#D1FAE5' }}>1ST #3</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredSessions.map((s, idx) => {
-                    const isPassed = s.status === 'approved' || s.status === 'finalized_passed' || s.is_setup_approved;
-                    const prodCount = s.parameter_summary?.length || 0;
-                    const procCount = s.process_parameter_summary?.length || 0;
+                  {/* PRODUCT PARAMETERS */}
+                  {productParams.map((p, idx) => {
+                    const c = p.parameter_code || '';
+                    const n = p.parameter_name || '';
+                    const t1 = entriesByKey[c]?.['1'] || entriesByKey[n]?.['1'] || '-';
+                    const t2 = entriesByKey[c]?.['2'] || entriesByKey[n]?.['2'] || '-';
+                    const t3 = entriesByKey[c]?.['3'] || entriesByKey[n]?.['3'] || '-';
+                    const isCritical = p.is_critical || p.critical;
+                    const method = p.evaluation_technique || p.method || 'VERNIER CALIPER';
+                    const freq = p.sample_frequency || '5NOS/SHIFT';
+                    const nom = p.nominal_value || p.nominal || 0;
+                    const lLim = p.lower_tolerance || p.lower_limit || 0;
+                    const uLim = p.upper_tolerance || p.upper_limit || 0;
 
                     return (
-                      <tr key={s.session_id} style={{ background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC', borderBottom: '1px solid #F1F5F9' }}>
-                        
-                        <td style={{ padding: '12px 16px', fontWeight: 600, color: '#334155' }}>
-                          <div>{formatDate(s.started_at || s.created_at)}</div>
-                          <span style={{
-                            fontSize: 10,
-                            background: s.shift === 'I' || s.shift === 'A' ? '#EFF6FF' : s.shift === 'II' || s.shift === 'B' ? '#F5F3FF' : s.shift === 'III' || s.shift === 'C' ? '#FFFBEB' : '#F1F5F9',
-                            color: s.shift === 'I' || s.shift === 'A' ? '#1D4ED8' : s.shift === 'II' || s.shift === 'B' ? '#6D28D9' : s.shift === 'III' || s.shift === 'C' ? '#B45309' : '#475569',
-                            padding: '2px 7px',
-                            borderRadius: 4,
-                            fontWeight: 700,
-                          }}>
-                            Shift {s.shift || 'I'}
-                          </span>
+                      <tr key={`prod-${idx}`} style={{ borderBottom: '1px solid #CBD5E1', background: '#FFFFFF' }}>
+                        {idx === 0 && (
+                          <td rowSpan={productParams.length} style={{ borderRight: '1px solid #000000', background: '#F8FAFC' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '25px', margin: '0 auto', wordBreak: 'break-all', fontSize: 10, fontWeight: 800, color: '#1E40AF', lineHeight: '1.2' }}>
+                              PRODUCT<br /><br />PARAMETER
+                            </div>
+                          </td>
+                        )}
+                        <td style={{ borderRight: '1px solid #000000', fontWeight: 800 }}>{(idx + 1).toString().padStart(2, '0')}</td>
+                        <td style={{ borderRight: '1px solid #000000', textAlign: 'left', padding: '6px 8px', fontWeight: 700 }}>{n}</td>
+                        <td style={{ borderRight: '1px solid #000000', color: isCritical ? '#DC2626' : '#000000', fontWeight: isCritical ? 800 : 400, fontSize: 9 }}>
+                          {isCritical ? 'CRITICAL' : '—'}
                         </td>
-
-                        <td style={{ padding: '12px 16px', fontWeight: 800, color: '#0F172A', fontFamily: 'monospace' }}>
-                          {s.machine_code || 'CNC-01'}
+                        <td style={{ borderRight: '1px solid #000000', padding: '4px' }}>
+                          <div style={{ fontWeight: 800 }}>{nom} {p.unit || 'mm'}</div>
+                          <div style={{ fontSize: 9, color: '#64748B', fontWeight: 600 }}>[{lLim} to {uLim}]</div>
                         </td>
+                        <td style={{ borderRight: '1px solid #000000', fontSize: 9, color: '#475569', textTransform: 'uppercase' }}>{method}</td>
+                        <td style={{ borderRight: '1px solid #000000', fontSize: 9, color: '#475569' }}>{freq}</td>
+                        <td style={{ borderRight: '1px solid #000000', fontWeight: 600 }}>{t1}</td>
+                        <td style={{ borderRight: '1px solid #000000', fontWeight: 600 }}>{t2}</td>
+                        <td style={{ fontWeight: 600 }}>{t3}</td>
+                      </tr>
+                    );
+                  })}
 
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ fontWeight: 800, color: '#0F172A' }}>{s.part_number}</div>
-                          <div style={{ fontSize: 11, color: '#64748B' }}>{s.part_name || 'Part'}</div>
-                        </td>
+                  {/* PROCESS PARAMETERS */}
+                  {processParams.map((p, idx) => {
+                    const c = p.parameter_code || '';
+                    const n = p.parameter_name || '';
+                    const t1 = entriesByKey[c]?.['1'] || entriesByKey[n]?.['1'] || '-';
+                    const t2 = entriesByKey[c]?.['2'] || entriesByKey[n]?.['2'] || '-';
+                    const t3 = entriesByKey[c]?.['3'] || entriesByKey[n]?.['3'] || '-';
 
-                        <td style={{ padding: '12px 16px', fontWeight: 600, color: '#334155' }}>
-                          {s.operator_name || `Inspector #${s.operator_id || ''}`}
-                        </td>
+                    const rawSpec = p.specification || '-';
+                    const rawUnit = p.unit || '';
+                    const spec = rawSpec.replace('RPM RPM', 'RPM').replace('mm/rev mm/rev', 'mm/rev').replace('Bar Bar', 'Bar');
+                    const unit = rawUnit.replace('RPM RPM', 'RPM').replace('mm/rev mm/rev', 'mm/rev').replace('Bar Bar', 'Bar');
+                    const specDisplay = (unit && !spec.endsWith(unit)) ? `${spec} ${unit}` : spec;
 
-                        <td style={{ padding: '12px 16px' }}>
-                          <span style={{ background: '#EFF6FF', border: '1px solid #BAE6FD', color: '#0284C7', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 800 }}>
-                            1ST PC #{s.trial_number || 1}
-                          </span>
-                        </td>
-
-                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                            <button
-                              onClick={() => handleOpenFormF02(s)}
-                              style={{ padding: '6px 12px', fontSize: 12, fontWeight: 700, background: '#EEF2FF', border: '1px solid #C7D2FE', color: '#4338CA', borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-                              title="View Form F02 Report"
-                            >
-                              <Eye size={14} />
-                              <span>View Form F02</span>
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                const dateStr = s.started_at ? s.started_at.slice(0, 10) : '';
-                                const mc = (s.machine_code || 'MCH').replace(/[^a-zA-Z0-9_-]/g, '_');
-                                const part = (s.part_number || 'PART').replace(/[^a-zA-Z0-9_-]/g, '_');
-                                const shift = s.shift || 'A';
-                                const trial = s.trial_number ? `_Trial${s.trial_number}` : '';
-                                const fileName = `Setup_Approval_Report_${dateStr}_Shift_${shift}_${mc}_${part}${trial}.pdf`;
-                                downloadInspectionPDF(s.session_id, fileName);
-                              }}
-                              style={{ padding: '6px 12px', fontSize: 12, fontWeight: 700, background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#059669', borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-                              title="Download PDF Copy"
-                            >
-                              <Download size={14} />
-                              <span>PDF</span>
-                            </button>
-                          </div>
-                        </td>
-
+                    return (
+                      <tr key={`proc-${idx}`} style={{ borderBottom: '1px solid #CBD5E1', background: '#FFFFFF' }}>
+                        {idx === 0 && (
+                          <td rowSpan={processParams.length} style={{ borderRight: '1px solid #000000', background: '#F8FAFC' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '25px', margin: '0 auto', wordBreak: 'break-all', fontSize: 10, fontWeight: 800, color: '#1E40AF', lineHeight: '1.2' }}>
+                              PROCESS<br /><br />PARAMETER
+                            </div>
+                          </td>
+                        )}
+                        <td style={{ borderRight: '1px solid #000000', fontWeight: 800 }}>{(idx + 1).toString().padStart(2, '0')}</td>
+                        <td style={{ borderRight: '1px solid #000000', textAlign: 'left', padding: '6px 8px', fontWeight: 700, color: '#1E40AF' }}>[PROC] {n}</td>
+                        <td style={{ borderRight: '1px solid #000000', color: '#1E40AF', fontWeight: 800, fontSize: 9 }}>PROC</td>
+                        <td style={{ borderRight: '1px solid #000000', padding: '4px', fontWeight: 700 }}>{specDisplay}</td>
+                        <td style={{ borderRight: '1px solid #000000', fontSize: 9, color: '#475569', textTransform: 'uppercase' }}>CHECKLIST / DISPLAY</td>
+                        <td style={{ borderRight: '1px solid #000000', fontSize: 9, color: '#475569' }}>1ST PC ONLY</td>
+                        <td style={{ borderRight: '1px solid #000000', fontWeight: 600 }}>{t1}</td>
+                        <td style={{ borderRight: '1px solid #000000', fontWeight: 600 }}>{t2}</td>
+                        <td style={{ fontWeight: 600 }}>{t3}</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            </div>
-          )}
-        </div>
 
-        {/* OFFICIAL FORM F02 MODAL */}
-        {activeModalSession && (
-          <OfficialFormF02Modal
-            session={{ ...activeModalSession, is_setup_approval_only: true }}
-            onClose={() => setActiveModalSession(null)}
-          />
+              {/* FOOTER */}
+              <div style={{ borderTop: '1.5px solid #000000', background: '#F8FAFC', padding: '6px 8px', fontSize: 9, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
+                REACTION PLAN: REJECT, REWORK, SEGREGATE, INFORM SUPERVISOR OR READJUST THE PROCESS
+              </div>
+              <div style={{ borderTop: '1px solid #000000', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', background: '#FFFFFF' }}>
+                <div style={{ textAlign: 'center', width: '30%' }}>
+                  <div style={{ borderBottom: '1px solid #000000', paddingBottom: '4px', marginBottom: '4px', minHeight: '24px', fontStyle: 'italic', fontSize: 11, fontWeight: 600 }}>
+                    {insp}
+                  </div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: '#334155' }}>OPERATOR SIGNATURE</div>
+                </div>
+                <div style={{ textAlign: 'center', width: '30%' }}>
+                  <div style={{ borderBottom: '1px solid #000000', paddingBottom: '4px', marginBottom: '4px', minHeight: '24px', fontStyle: 'italic', fontSize: 11, fontWeight: 600 }}>
+                    {insp}
+                  </div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: '#334155' }}>QUALITY INSPECTOR SIGNATURE</div>
+                </div>
+                <div style={{ textAlign: 'center', width: '30%' }}>
+                  <div style={{ borderBottom: '1px solid #000000', paddingBottom: '4px', marginBottom: '4px', minHeight: '24px', fontStyle: 'italic', fontSize: 11, fontWeight: 600 }}>
+                    Supervisor Sign
+                  </div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: '#334155' }}>SUPERVISOR SIGNATURE</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
         )}
       </div>
     </>

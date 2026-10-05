@@ -529,10 +529,11 @@ class ApiService {
   }
 
   // Fetch 1st Piece Setup Approval Status for Machine
-  static Future<Map<String, dynamic>> checkSetupApproved(int machineId) async {
+  static Future<Map<String, dynamic>> checkSetupApproved(int machineId, {String? date}) async {
     try {
+      final query = date != null ? '&date=$date' : '';
       final response = await authenticatedRequest((headers) => http.get(
-        Uri.parse('$baseUrl/inspections/setup-status/?machine=$machineId'),
+        Uri.parse('$baseUrl/inspections/setup-status/?machine=$machineId$query'),
         headers: headers,
       ));
 
@@ -774,10 +775,11 @@ class ApiService {
   }
 
   // 14. Get Setup Approval Data
-  static Future<Map<String, dynamic>?> getSetupApprovalData(int templateId, int machineId) async {
+  static Future<Map<String, dynamic>?> getSetupApprovalData(int templateId, int machineId, {String? date}) async {
     try {
+      final query = date != null ? '&date=$date' : '';
       final response = await authenticatedRequest((headers) => http.get(
-        Uri.parse('$baseUrl/inspections/setup-approval/?template=$templateId&machine=$machineId'),
+        Uri.parse('$baseUrl/inspections/setup-approval/?machine=$machineId$query'),
         headers: headers,
       ));
       if (response.statusCode == 200) {
