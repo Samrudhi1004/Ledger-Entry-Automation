@@ -8,8 +8,10 @@ Two models:
 
 import uuid
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
+
+from common.dcr_numbers import next_dcr_number
 
 
 class Document(models.Model):
@@ -366,10 +368,24 @@ class DocumentChangeRequest(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.dcr_number:
-            year = timezone.now().year
-            count = DocumentChangeRequest.objects.filter(dcr_number__startswith=f'DCR-{year}-').count() + 1
-            self.dcr_number = f'DCR-{year}-{count:03d}'
+            with transaction.atomic():
+                self.dcr_number = next_dcr_number(
+                    DocumentChangeRequest,
+                    f'DCR-{timezone.now().year}-',
+                    3,
+                )
+                return super().save(*args, **kwargs)
         super().save(*args, **kwargs)
+
+
+class DCRNumberSequence(models.Model):
+    """Persistent counter so issued DCR numbers are never reused."""
+
+    prefix = models.CharField(max_length=50, unique=True)
+    next_value = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        db_table = 'dcr_number_sequences'
 
 
 class DCRNotification(models.Model):

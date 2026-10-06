@@ -4,8 +4,11 @@ This is the core master data that drives the entire inspection workflow.
 """
 
 from decimal import Decimal
-from django.db import models
+from django.db import models, transaction
 from django.core.validators import MinValueValidator
+from django.utils import timezone
+
+from common.dcr_numbers import next_dcr_number
 
 
 class Part(models.Model):
@@ -727,5 +730,16 @@ class TemplateChangeRequest(models.Model):
 
     def __str__(self):
         return f"{self.dcr_number} - {self.template} ({self.get_change_type_display()})"
+
+    def save(self, *args, **kwargs):
+        if not self.dcr_number:
+            with transaction.atomic():
+                self.dcr_number = next_dcr_number(
+                    TemplateChangeRequest,
+                    f'DCR-PARAM-{timezone.now().year}-',
+                    4,
+                )
+                return super().save(*args, **kwargs)
+        super().save(*args, **kwargs)
 
 

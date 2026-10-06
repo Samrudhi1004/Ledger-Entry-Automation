@@ -122,8 +122,14 @@ def generate_dcr_pdf(dcr):
     logo_elem = None
     if logo_url:
         try:
-            if factory and factory.logo and hasattr(factory.logo, 'path') and os.path.exists(factory.logo.path):
-                logo_elem = RLImage(factory.logo.path, width=50, height=40)
+            logo_path = ''
+            if factory and factory.logo:
+                try:
+                    logo_path = factory.logo.path
+                except (AttributeError, NotImplementedError, ValueError):
+                    logo_path = ''
+            if logo_path and os.path.exists(logo_path):
+                logo_elem = RLImage(logo_path, width=50, height=40)
             elif '/media/' in logo_url:
                 rel_path = logo_url.split('/media/', 1)[1]
                 disk_path = os.path.join(settings.MEDIA_ROOT, rel_path)
