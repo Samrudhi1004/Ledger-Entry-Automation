@@ -97,7 +97,8 @@ class ApiService {
   ///   true  -> Refresh succeeded (new access token saved)
   ///   false -> Token explicitly rejected by backend (400/401 invalid/blacklisted)
   ///   null  -> Network error or server unreachable (do NOT log out!)
-  static Future<bool?> refreshToken() async {
+  static Future<bool?> refreshToken([bool Function()? isCurrent]) async {
+    if (isCurrent != null && !isCurrent()) return null;
     if (_isRefreshing) {
       return await _refreshCompleter!.future;
     }
@@ -107,6 +108,11 @@ class ApiService {
 
     try {
       final refresh = await getRefreshToken();
+      if (isCurrent != null && !isCurrent()) {
+        _refreshCompleter!.complete(null);
+        _isRefreshing = false;
+        return null;
+      }
       if (refresh == null || refresh.isEmpty) {
         debugPrint('[ApiService] No refresh token found.');
         _refreshCompleter!.complete(false);
@@ -127,7 +133,17 @@ class ApiService {
         final newRefresh = data['refresh'] as String?;
 
         if (newAccess != null && newAccess.isNotEmpty) {
+          if (isCurrent != null && !isCurrent()) {
+            _refreshCompleter!.complete(null);
+            _isRefreshing = false;
+            return null;
+          }
           await _writeTokens(newAccess, newRefresh ?? refresh);
+          if (isCurrent != null && !isCurrent()) {
+            _refreshCompleter!.complete(null);
+            _isRefreshing = false;
+            return null;
+          }
           debugPrint('[ApiService] Token rotated & refreshed successfully.');
           _refreshCompleter!.complete(true);
           _isRefreshing = false;
@@ -214,12 +230,19 @@ class ApiService {
 
   /// Persist a successful login only after the caller confirms the request
   /// still belongs to the active authentication session.
-  static Future<void> persistLoginSession(Map<String, dynamic> data) async {
+  static Future<bool> persistLoginSession(
+    Map<String, dynamic> data,
+    bool Function()? isCurrent,
+  ) async {
+    if (isCurrent != null && !isCurrent()) return false;
     await _writeTokens(data['access'], data['refresh']);
+    if (isCurrent != null && !isCurrent()) return false;
     if (data['user'] != null) {
       final prefs = await SharedPreferences.getInstance();
+      if (isCurrent != null && !isCurrent()) return false;
       await prefs.setString('user_info', jsonEncode(data['user']));
     }
+    return isCurrent == null || isCurrent();
   }
 
   // 1b. Auth: Logout

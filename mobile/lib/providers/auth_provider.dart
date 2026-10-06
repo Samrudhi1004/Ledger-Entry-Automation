@@ -90,6 +90,10 @@ class AuthProvider with ChangeNotifier {
         if (userInfoStr != null) {
           try {
             final info = jsonDecode(userInfoStr);
+            _username =
+                prefs.getString('username') ??
+                info['username']?.toString() ??
+                _username;
             _userRole = info['role']?.toString();
             _roleVerified = _isApprovedMobileRole(_userRole);
             _permissions = Set<String>.from(info['permissions'] ?? []);
@@ -117,7 +121,9 @@ class AuthProvider with ChangeNotifier {
 
         // Silently attempt background refresh to get fresh access token & rotate refresh token
         if (bootstrapGeneration != _sessionGeneration) return;
-        final refreshStatus = await ApiService.refreshToken();
+        final refreshStatus = await ApiService.refreshToken(
+          () => bootstrapGeneration == _sessionGeneration,
+        );
         if (bootstrapGeneration != _sessionGeneration) return;
         if (refreshStatus == false) {
           // Explicitly rejected by server (expired/blacklisted/revoked) -> force logout
@@ -125,6 +131,7 @@ class AuthProvider with ChangeNotifier {
             '[AuthProvider] Refresh token explicitly rejected by server. Requiring login.',
           );
           await ApiService.clearTokens();
+          if (bootstrapGeneration != _sessionGeneration) return;
           _isAuthenticated = false;
           _username = null;
           _userId = null;
@@ -158,6 +165,7 @@ class AuthProvider with ChangeNotifier {
                 _assignedShift = shiftFromJwt;
                 _userId = idFromJwt;
                 final prefs = await SharedPreferences.getInstance();
+                if (bootstrapGeneration != _sessionGeneration) return;
                 await prefs.setString(
                   'user_info',
                   jsonEncode({
@@ -168,6 +176,7 @@ class AuthProvider with ChangeNotifier {
                     'full_name': _fullName ?? _username,
                   }),
                 );
+                if (bootstrapGeneration != _sessionGeneration) return;
                 debugPrint(
                   '[AuthProvider] Re-persisted user_info from JWT (role: $roleFromJwt, shift: $shiftFromJwt).',
                 );
@@ -179,6 +188,7 @@ class AuthProvider with ChangeNotifier {
         }
         // Fetch latest profile details from backend
         await refreshProfile();
+        if (bootstrapGeneration != _sessionGeneration) return;
         // If refreshStatus == null -> network timeout/error, local session STAYS LOGGED IN!
       } else {
         _isAuthenticated = false;
@@ -269,7 +279,15 @@ class AuthProvider with ChangeNotifier {
 
       if (result['success'] == true) {
         final data = Map<String, dynamic>.from(result['data'] ?? {});
-        await ApiService.persistLoginSession(data);
+        final persisted = await ApiService.persistLoginSession(
+          data,
+          () => requestGeneration == _sessionGeneration,
+        );
+        if (!persisted || requestGeneration != _sessionGeneration) return false;
+
+        final prefs = await SharedPreferences.getInstance();
+        if (requestGeneration != _sessionGeneration) return false;
+        await prefs.setString('username', username);
         if (requestGeneration != _sessionGeneration) return false;
 
         _isLoading = false;
