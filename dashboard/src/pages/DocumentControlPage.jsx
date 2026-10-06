@@ -101,35 +101,6 @@ export default function DocumentControlPage() {
 
       <div className="page-content bg-gradient-animated">
         <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-          <Breadcrumbs items={[{ label: 'Document Control' }]} />
-
-      {/* Stats row */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: '16px', marginBottom: '32px'
-      }}>
-        {statItems.map((s, i) => {
-          const Icon = s.icon;
-          return (
-            <div key={i} style={{
-              background: '#fff', borderRadius: '14px', padding: '18px 20px',
-              border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-              display: 'flex', alignItems: 'center', gap: '16px'
-            }}>
-              <div style={{
-                background: s.bg, borderRadius: '12px', width: '46px', height: '46px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-              }}>
-                <Icon size={22} color={s.color} />
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: '12px', color: '#64748b', fontWeight: '600' }}>{s.label}</p>
-                <p style={{ margin: '4px 0 0', fontSize: '22px', fontWeight: '800', color: '#0f172a' }}>{s.value}</p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
 
       {/* Module Cards */}
       <div style={{

@@ -12,11 +12,41 @@ import 'screens/splash_screen.dart';
 import 'screens/messaging/messages_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const VoiceInspectionApp());
 }
 
-class VoiceInspectionApp extends StatelessWidget {
+class VoiceInspectionApp extends StatefulWidget {
   const VoiceInspectionApp({super.key});
+
+  @override
+  State<VoiceInspectionApp> createState() => _VoiceInspectionAppState();
+}
+
+class _VoiceInspectionAppState extends State<VoiceInspectionApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Re-fetch company logo & details every time app returns to foreground.
+  /// This ensures in-app logo stays in sync with admin uploads automatically.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final companyProvider =
+          context.read<CompanyProvider>();
+      companyProvider.fetchCompanyDetails();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
