@@ -62,6 +62,8 @@ def create_users():
 
         user.username = u["username"]
         user.employee_id = u["employee_id"]
+        # Always repair existing fixtures too; get-or-create alone would keep
+        # an older quality_engineer role on the inspector account.
         user.role = u["role"]
         user.first_name = u["first_name"]
         user.last_name = u["last_name"]

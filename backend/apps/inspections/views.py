@@ -1611,7 +1611,7 @@ class JHChecklistItemsView(APIView):
     If machine has custom active checkpoints, returns those.
     Otherwise, falls back to default factory template checkpoints (machine__isnull=True).
     """
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'production.jh.view'
 
     def get(self, request):

@@ -45,13 +45,15 @@ class AuthProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
 
   bool hasAccess(String key) => _permissions.contains(key);
+  bool _isApprovedMobileRole(String? role) =>
+      role == 'operator' || role == 'inspector';
   // Mobile access is role-based. Dashboard permissions must not turn a
   // supervisor, quality engineer, or HR user into a mobile operator.
   bool get isOperator => _userRole == 'operator';
   // Role identity is intentional here: Quality Engineer and Inspector may
   // share quality permissions, but only Inspector gets the mobile workflow.
   bool get isInspector => _userRole == 'inspector';
-  bool get isMobileRole => _roleVerified && (isOperator || isInspector);
+  bool get isMobileRole => _roleVerified && _isApprovedMobileRole(_userRole);
   bool get isQualityEngineer => _userRole == 'quality_engineer';
   bool get isSupervisor => hasAccess('quality.inspections.review');
 
@@ -69,6 +71,7 @@ class AuthProvider with ChangeNotifier {
   /// Silently attempts a background token refresh to keep session warm.
   /// ONLY forces logout if the backend explicitly rejects the refresh token (HTTP 400/401).
   Future<void> checkLoginStatus() async {
+    final bootstrapGeneration = _sessionGeneration;
     _isLoading = true;
     notifyListeners();
 
@@ -76,6 +79,7 @@ class AuthProvider with ChangeNotifier {
       final token = await ApiService.getToken();
       final refreshToken = await ApiService.getRefreshToken();
       final prefs = await SharedPreferences.getInstance();
+      if (bootstrapGeneration != _sessionGeneration) return;
 
       if ((token != null && token.isNotEmpty) ||
           (refreshToken != null && refreshToken.isNotEmpty)) {
@@ -86,7 +90,12 @@ class AuthProvider with ChangeNotifier {
         if (userInfoStr != null) {
           try {
             final info = jsonDecode(userInfoStr);
+            _username =
+                prefs.getString('username') ??
+                info['username']?.toString() ??
+                _username;
             _userRole = info['role']?.toString();
+            _roleVerified = _isApprovedMobileRole(_userRole);
             _permissions = Set<String>.from(info['permissions'] ?? []);
             _assignedShift = info['assigned_shift'] ?? 'ALL';
             _userId = info['id'];
@@ -111,13 +120,18 @@ class AuthProvider with ChangeNotifier {
         );
 
         // Silently attempt background refresh to get fresh access token & rotate refresh token
-        final refreshStatus = await ApiService.refreshToken();
+        if (bootstrapGeneration != _sessionGeneration) return;
+        final refreshStatus = await ApiService.refreshToken(
+          () => bootstrapGeneration == _sessionGeneration,
+        );
+        if (bootstrapGeneration != _sessionGeneration) return;
         if (refreshStatus == false) {
           // Explicitly rejected by server (expired/blacklisted/revoked) -> force logout
           debugPrint(
             '[AuthProvider] Refresh token explicitly rejected by server. Requiring login.',
           );
           await ApiService.clearTokens();
+          if (bootstrapGeneration != _sessionGeneration) return;
           _isAuthenticated = false;
           _username = null;
           _userId = null;
@@ -147,10 +161,11 @@ class AuthProvider with ChangeNotifier {
                     ? int.tryParse(payload['user_id'].toString())
                     : _userId;
                 _userRole = roleFromJwt;
-                _roleVerified = roleFromJwt != null && roleFromJwt.isNotEmpty;
+                _roleVerified = _isApprovedMobileRole(roleFromJwt);
                 _assignedShift = shiftFromJwt;
                 _userId = idFromJwt;
                 final prefs = await SharedPreferences.getInstance();
+                if (bootstrapGeneration != _sessionGeneration) return;
                 await prefs.setString(
                   'user_info',
                   jsonEncode({
@@ -161,6 +176,7 @@ class AuthProvider with ChangeNotifier {
                     'full_name': _fullName ?? _username,
                   }),
                 );
+                if (bootstrapGeneration != _sessionGeneration) return;
                 debugPrint(
                   '[AuthProvider] Re-persisted user_info from JWT (role: $roleFromJwt, shift: $shiftFromJwt).',
                 );
@@ -172,6 +188,7 @@ class AuthProvider with ChangeNotifier {
         }
         // Fetch latest profile details from backend
         await refreshProfile();
+        if (bootstrapGeneration != _sessionGeneration) return;
         // If refreshStatus == null -> network timeout/error, local session STAYS LOGGED IN!
       } else {
         _isAuthenticated = false;
@@ -186,8 +203,10 @@ class AuthProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('[AuthProvider] checkLoginStatus error: $e');
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (bootstrapGeneration == _sessionGeneration) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -210,7 +229,7 @@ class AuthProvider with ChangeNotifier {
         _plantName = profile['plant_name'] ?? '';
         _profilePhotoUrl = profile['profile_photo_url'];
         _userRole = profile['role']?.toString();
-        _roleVerified = _userRole != null && _userRole!.isNotEmpty;
+        _roleVerified = _isApprovedMobileRole(_userRole);
         _permissions = Set<String>.from(profile['permissions'] ?? []);
         _assignedShift = profile['assigned_shift'] ?? _assignedShift ?? 'ALL';
         if (profile['id'] != null) {
@@ -248,7 +267,7 @@ class AuthProvider with ChangeNotifier {
 
   /// User explicit login with username & password.
   Future<bool> login(String username, String password) async {
-    _sessionGeneration++;
+    final requestGeneration = ++_sessionGeneration;
     _isLoading = true;
     _lastErrorMessage = null;
     notifyListeners();
@@ -256,17 +275,29 @@ class AuthProvider with ChangeNotifier {
     try {
       final result = await ApiService.login(username, password);
 
-      _isLoading = false;
+      if (requestGeneration != _sessionGeneration) return false;
+
       if (result['success'] == true) {
+        final data = Map<String, dynamic>.from(result['data'] ?? {});
+        final persisted = await ApiService.persistLoginSession(
+          data,
+          () => requestGeneration == _sessionGeneration,
+        );
+        if (!persisted || requestGeneration != _sessionGeneration) return false;
+
+        final prefs = await SharedPreferences.getInstance();
+        if (requestGeneration != _sessionGeneration) return false;
+        await prefs.setString('username', username);
+        if (requestGeneration != _sessionGeneration) return false;
+
+        _isLoading = false;
         _isAuthenticated = true;
         _username = username;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('username', username);
 
         final userData = result['data']?['user'];
         if (userData != null) {
           _userRole = userData['role']?.toString();
-          _roleVerified = _userRole != null && _userRole!.isNotEmpty;
+          _roleVerified = _isApprovedMobileRole(_userRole);
           _permissions = Set<String>.from(userData['permissions'] ?? []);
           _assignedShift = userData['assigned_shift'] ?? 'ALL';
           if (userData['id'] != null) {
@@ -277,16 +308,6 @@ class AuthProvider with ChangeNotifier {
                   userData['full_name'].toString().isNotEmpty)
               ? userData['full_name']
               : username;
-          await prefs.setString(
-            'user_info',
-            jsonEncode({
-              'id': _userId,
-              'role': _userRole,
-              'permissions': _permissions.toList(),
-              'assigned_shift': _assignedShift,
-              'full_name': _fullName,
-            }),
-          );
         } else {
           _userRole = null;
           _roleVerified = false;
@@ -296,11 +317,13 @@ class AuthProvider with ChangeNotifier {
         notifyListeners();
         return true;
       } else {
+        _isLoading = false;
         _lastErrorMessage = result['message'] ?? 'Invalid username or password';
         notifyListeners();
         return false;
       }
     } catch (e) {
+      if (requestGeneration != _sessionGeneration) return false;
       _isLoading = false;
       _lastErrorMessage = e.toString();
       notifyListeners();
