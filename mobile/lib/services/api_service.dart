@@ -199,13 +199,6 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // Persist tokens securely
-        await _writeTokens(data['access'], data['refresh']);
-        // User info in SharedPreferences (for UI display)
-        if (data['user'] != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_info', jsonEncode(data['user']));
-        }
         return {'success': true, 'data': data};
       } else {
         final body = jsonDecode(response.body);
@@ -216,6 +209,16 @@ class ApiService {
       }
     } catch (e) {
       return {'success': false, 'message': 'Cannot connect to backend server ($baseUrl). Please check network connection.'};
+    }
+  }
+
+  /// Persist a successful login only after the caller confirms the request
+  /// still belongs to the active authentication session.
+  static Future<void> persistLoginSession(Map<String, dynamic> data) async {
+    await _writeTokens(data['access'], data['refresh']);
+    if (data['user'] != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_info', jsonEncode(data['user']));
     }
   }
 
