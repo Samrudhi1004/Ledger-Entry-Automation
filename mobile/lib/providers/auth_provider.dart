@@ -83,7 +83,7 @@ class AuthProvider with ChangeNotifier {
         if (userInfoStr != null) {
           try {
             final info = jsonDecode(userInfoStr);
-            _userRole = info['role'] ?? 'operator';
+            _userRole = info['role']?.toString();
             _permissions = Set<String>.from(info['permissions'] ?? []);
             _assignedShift = info['assigned_shift'] ?? 'ALL';
             _userId = info['id'];
@@ -93,11 +93,13 @@ class AuthProvider with ChangeNotifier {
                 ? info['full_name']
                 : _username;
           } catch (_) {
-            _userRole = 'operator';
+            _userRole = null;
+            _permissions = {};
             _assignedShift = 'ALL';
           }
         } else {
-          _userRole = 'operator';
+          _userRole = null;
+          _permissions = {};
           _assignedShift = 'ALL';
         }
         _isAuthenticated = true;
@@ -133,8 +135,7 @@ class AuthProvider with ChangeNotifier {
                 final payload =
                     jsonDecode(utf8.decode(payloadBytes))
                         as Map<String, dynamic>;
-                final roleFromJwt =
-                    payload['role']?.toString() ?? _userRole ?? 'operator';
+                final roleFromJwt = payload['role']?.toString() ?? _userRole;
                 final shiftFromJwt =
                     payload['assigned_shift']?.toString() ??
                     _assignedShift ??
@@ -247,7 +248,7 @@ class AuthProvider with ChangeNotifier {
 
         final userData = result['data']?['user'];
         if (userData != null) {
-          _userRole = userData['role'] ?? 'operator';
+          _userRole = userData['role']?.toString();
           _permissions = Set<String>.from(userData['permissions'] ?? []);
           _assignedShift = userData['assigned_shift'] ?? 'ALL';
           if (userData['id'] != null) {
@@ -269,7 +270,7 @@ class AuthProvider with ChangeNotifier {
             }),
           );
         } else {
-          _userRole = 'operator';
+          _userRole = null;
           _permissions = {};
           _assignedShift = 'ALL';
         }
