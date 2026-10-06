@@ -378,6 +378,16 @@ class DocumentChangeRequest(models.Model):
         super().save(*args, **kwargs)
 
 
+class DCRNumberSequence(models.Model):
+    """Persistent counter so issued DCR numbers are never reused."""
+
+    prefix = models.CharField(max_length=50, unique=True)
+    next_value = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        db_table = 'dcr_number_sequences'
+
+
 class DCRNotification(models.Model):
     """
     In-app notifications for DCR assignments, reviews, approvals, and rejections.

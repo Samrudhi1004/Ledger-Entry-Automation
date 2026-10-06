@@ -7,14 +7,16 @@ from uuid import uuid4
 import cloudinary.api
 import cloudinary.uploader
 from cloudinary.utils import cloudinary_url, private_download_url
-from django.core.files.base import ContentFile
 from django.core.files.storage import Storage
 
 
 class CloudinaryMediaStorage(Storage):
     """Store images, videos, and raw documents with one Django backend."""
 
-    _IMAGE_EXTENSIONS = {'.gif', '.jpeg', '.jpg', '.png', '.webp'}
+    _IMAGE_EXTENSIONS = {
+        '.avif', '.bmp', '.gif', '.heic', '.ico', '.jpeg', '.jpg',
+        '.png', '.svg', '.tif', '.tiff', '.webp',
+    }
     _VIDEO_EXTENSIONS = {'.avi', '.m4v', '.mov', '.mp4', '.webm'}
     _PREFIX = 'cloudinary/'
 
@@ -34,12 +36,14 @@ class CloudinaryMediaStorage(Storage):
             public_id, separator, file_format = encoded.rpartition('~')
             if not separator:
                 public_id, file_format = encoded, ''
+            if resource_type == 'raw' and file_format and public_id.lower().endswith(f'.{file_format.lower()}'):
+                public_id = public_id[:-(len(file_format) + 1)]
             return resource_type, public_id, file_format
 
         resource_type = cls._resource_type(name)
         path = PurePosixPath(name)
         file_format = path.suffix.lstrip('.').lower()
-        public_id = path.as_posix() if resource_type == 'raw' else path.with_suffix('').as_posix()
+        public_id = path.with_suffix('').as_posix()
         return resource_type, public_id, file_format
 
     def _save(self, name, content):
@@ -50,9 +54,6 @@ class CloudinaryMediaStorage(Storage):
         public_id = uuid4().hex
         if folder != '.':
             public_id = f'{folder}/{public_id}'
-        if resource_type == 'raw' and file_format:
-            public_id = f'{public_id}.{file_format}'
-
         result = cloudinary.uploader.upload(
             content,
             public_id=public_id,
@@ -61,6 +62,8 @@ class CloudinaryMediaStorage(Storage):
         )
         actual_public_id = result['public_id']
         actual_format = result.get('format') or file_format
+        if resource_type == 'raw' and actual_format and actual_public_id.lower().endswith(f'.{actual_format.lower()}'):
+            actual_public_id = actual_public_id[:-(len(actual_format) + 1)]
         return f'{self._PREFIX}{resource_type}/{actual_public_id}~{actual_format}'
 
     def get_available_name(self, name, max_length=None):
@@ -70,8 +73,12 @@ class CloudinaryMediaStorage(Storage):
     def _open(self, name, mode='rb'):
         if mode not in ('r', 'rb'):
             raise ValueError('Cloudinary storage is read-only after upload.')
-        with urlopen(self.url(name), timeout=30) as response:
-            return ContentFile(response.read(), name=PurePosixPath(name).name)
+        response = urlopen(self.url(name), timeout=30)
+        try:
+            response.name = PurePosixPath(name).name
+        except (AttributeError, TypeError):
+            pass
+        return response
 
     def delete(self, name):
         resource_type, public_id, _ = self._asset(name)
