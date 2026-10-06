@@ -58,10 +58,18 @@ class VoiceInspectionApp extends StatelessWidget {
             useMaterial3: true,
           ),
           routes: {
-            '/messages': (context) => MessagesScreen(
-              initialConversationId:
-                  ModalRoute.of(context)?.settings.arguments as String?,
-            ),
+            '/messages': (context) {
+              final auth = context.read<AuthProvider>();
+              if (auth.isLoading ||
+                  !auth.isAuthenticated ||
+                  !auth.isMobileRole) {
+                return const SplashScreen();
+              }
+              return MessagesScreen(
+                initialConversationId:
+                    ModalRoute.of(context)?.settings.arguments as String?,
+              );
+            },
           },
           home: const SplashScreen(),
         ),

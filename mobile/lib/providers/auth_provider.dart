@@ -20,6 +20,8 @@ class AuthProvider with ChangeNotifier {
   String? _plantName;
   String? _profilePhotoUrl;
   bool _isLoading = true;
+  bool _roleVerified = false;
+  int _sessionGeneration = 0;
 
   bool get isAuthenticated => _isAuthenticated;
   int? _userId;
@@ -49,7 +51,7 @@ class AuthProvider with ChangeNotifier {
   // Role identity is intentional here: Quality Engineer and Inspector may
   // share quality permissions, but only Inspector gets the mobile workflow.
   bool get isInspector => _userRole == 'inspector';
-  bool get isMobileRole => isOperator || isInspector;
+  bool get isMobileRole => _roleVerified && (isOperator || isInspector);
   bool get isQualityEngineer => _userRole == 'quality_engineer';
   bool get isSupervisor => hasAccess('quality.inspections.review');
 
@@ -79,6 +81,7 @@ class AuthProvider with ChangeNotifier {
           (refreshToken != null && refreshToken.isNotEmpty)) {
         // Restore local user session immediately so app opens home screen instantly
         _username = prefs.getString('username') ?? 'Operator';
+        _roleVerified = false;
         final userInfoStr = prefs.getString('user_info');
         if (userInfoStr != null) {
           try {
@@ -135,7 +138,7 @@ class AuthProvider with ChangeNotifier {
                 final payload =
                     jsonDecode(utf8.decode(payloadBytes))
                         as Map<String, dynamic>;
-                final roleFromJwt = payload['role']?.toString() ?? _userRole;
+                final roleFromJwt = payload['role']?.toString();
                 final shiftFromJwt =
                     payload['assigned_shift']?.toString() ??
                     _assignedShift ??
@@ -144,6 +147,7 @@ class AuthProvider with ChangeNotifier {
                     ? int.tryParse(payload['user_id'].toString())
                     : _userId;
                 _userRole = roleFromJwt;
+                _roleVerified = roleFromJwt != null && roleFromJwt.isNotEmpty;
                 _assignedShift = shiftFromJwt;
                 _userId = idFromJwt;
                 final prefs = await SharedPreferences.getInstance();
@@ -174,6 +178,7 @@ class AuthProvider with ChangeNotifier {
         _username = null;
         _userId = null;
         _userRole = null;
+        _roleVerified = false;
         _permissions = {};
         _assignedShift = null;
         _fullName = null;
@@ -188,9 +193,14 @@ class AuthProvider with ChangeNotifier {
 
   /// Re-fetch current user profile details from backend and update local provider state
   Future<void> refreshProfile() async {
+    final requestGeneration = _sessionGeneration;
+    final requestUserId = _userId;
     try {
       final profile = await ApiService.getProfile();
-      if (profile != null) {
+      if (profile != null &&
+          requestGeneration == _sessionGeneration &&
+          _isAuthenticated &&
+          (requestUserId == null || requestUserId == _userId)) {
         _username = profile['username'] ?? _username;
         _firstName = profile['first_name'] ?? '';
         _lastName = profile['last_name'] ?? '';
@@ -199,7 +209,8 @@ class AuthProvider with ChangeNotifier {
         _employeeId = profile['employee_id'] ?? '';
         _plantName = profile['plant_name'] ?? '';
         _profilePhotoUrl = profile['profile_photo_url'];
-        _userRole = profile['role'] ?? _userRole;
+        _userRole = profile['role']?.toString();
+        _roleVerified = _userRole != null && _userRole!.isNotEmpty;
         _permissions = Set<String>.from(profile['permissions'] ?? []);
         _assignedShift = profile['assigned_shift'] ?? _assignedShift ?? 'ALL';
         if (profile['id'] != null) {
@@ -212,6 +223,11 @@ class AuthProvider with ChangeNotifier {
         _fullName = full.isNotEmpty ? full : _username;
 
         final prefs = await SharedPreferences.getInstance();
+        if (requestGeneration != _sessionGeneration ||
+            !_isAuthenticated ||
+            (requestUserId != null && requestUserId != _userId)) {
+          return;
+        }
         await prefs.setString(
           'user_info',
           jsonEncode({
@@ -232,6 +248,7 @@ class AuthProvider with ChangeNotifier {
 
   /// User explicit login with username & password.
   Future<bool> login(String username, String password) async {
+    _sessionGeneration++;
     _isLoading = true;
     _lastErrorMessage = null;
     notifyListeners();
@@ -249,6 +266,7 @@ class AuthProvider with ChangeNotifier {
         final userData = result['data']?['user'];
         if (userData != null) {
           _userRole = userData['role']?.toString();
+          _roleVerified = _userRole != null && _userRole!.isNotEmpty;
           _permissions = Set<String>.from(userData['permissions'] ?? []);
           _assignedShift = userData['assigned_shift'] ?? 'ALL';
           if (userData['id'] != null) {
@@ -271,6 +289,7 @@ class AuthProvider with ChangeNotifier {
           );
         } else {
           _userRole = null;
+          _roleVerified = false;
           _permissions = {};
           _assignedShift = 'ALL';
         }
@@ -292,6 +311,7 @@ class AuthProvider with ChangeNotifier {
   /// Explicit user logout: calls backend to blacklist refresh token,
   /// deletes secure storage keys, clears local auth state.
   Future<void> logout() async {
+    _sessionGeneration++;
     _isLoading = true;
     notifyListeners();
 
@@ -301,6 +321,7 @@ class AuthProvider with ChangeNotifier {
     _username = null;
     _userId = null;
     _userRole = null;
+    _roleVerified = false;
     _permissions = {};
     _fullName = null;
     _isLoading = false;
@@ -313,10 +334,12 @@ class AuthProvider with ChangeNotifier {
   void forceLogout() {
     // Update auth state and notify listeners immediately so the UI
     // (router/splash) can react without waiting for the async token clear.
+    _sessionGeneration++;
     _isAuthenticated = false;
     _username = null;
     _userId = null;
     _userRole = null;
+    _roleVerified = false;
     _permissions = {};
     _fullName = null;
     _isLoading = false;
