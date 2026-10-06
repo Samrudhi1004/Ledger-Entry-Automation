@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 # L1 FIX: Removed duplicate imports : Part and Machine already imported on lines 11-12.
 from apps.users.permissions import (  # type: ignore
-    HasAccess, IsSupervisorOrAbove, IsOperatorOrSupervisor,
+    HasAccess, IsSupervisorOrAbove, IsOperatorOrSupervisor, MobileInspectionAccess,
 )
 from .models import (
     InspectionSession,
@@ -60,7 +60,7 @@ class StartInspectionView(APIView):
     POST /api/inspections/start/
     Operator starts a new inspection session.
     """
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def post(self, request):
@@ -140,7 +140,7 @@ class RecordMeasurementView(APIView):
     Records a single voice/manual measurement for a parameter asynchronously.
     Returns HTTP 202 Accepted immediately (<100ms response time).
     """
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
@@ -226,7 +226,7 @@ class BatchMeasureView(APIView):
       ]
     }
     """
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
@@ -324,7 +324,7 @@ class BatchMeasureView(APIView):
 # ─── Complete Session ─────────────────────────────────────────────────────
 class CompleteInspectionView(APIView):
     """POST /api/inspections/<session_id>/complete/"""
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
@@ -558,7 +558,7 @@ class HourlyStatusView(APIView):
     GET /api/inspections/<session_id>/hourly-status/
     Returns open/locked/overdue status for hourly slots 1/HR through 8/HR.
     """
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def get(self, request, session_id):
@@ -580,7 +580,7 @@ class SetupStatusView(APIView):
       completed_slots, active_slot, and per-slot session_id list. This powers
       the 2-level drill-down UX: Operations List -> Per-Op Slot Screen -> Voice Entry.
     """
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def get(self, request):
@@ -751,7 +751,7 @@ class FinalizeFirstPieceView(APIView):
     POST /api/inspections/<session_id>/finalize/
     Inspector finalizes First Piece inspection and generates PDF.
     """
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def post(self, request, session_id):
@@ -807,7 +807,7 @@ class FirstPieceStatusView(APIView):
     GET /api/inspections/first-piece-status/?machine_id=2&part_number=PN-101
     Checks if 1st Piece Inspection is finalized and passed for a machine/part.
     """
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def get(self, request):
@@ -888,7 +888,7 @@ class SetupApprovalView(APIView):
         Returns the most recent Setup Approval data for a template + machine combination.
         Used to pre-populate the SetupApprovalScreen on the mobile app.
     """
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = {'GET': 'quality.setup.view', 'POST': 'quality.inspections.record'}
 
     def get(self, request):
@@ -1651,7 +1651,7 @@ class JHInspectionSubmitView(APIView):
     Submits a shift's Autonomous Maintenance checklist.
     Stored in PostgreSQL under JHInspectionRecord and JHInspectionItemResult.
     """
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'production.jh.submit'
 
     def post(self, request):

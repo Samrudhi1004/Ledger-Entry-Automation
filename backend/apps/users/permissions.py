@@ -62,6 +62,24 @@ class IsInspector(BasePermission):
                     and request.user.role == User.Role.INSPECTOR)
 
 
+class MobileInspectionAccess(BasePermission):
+    """Allow inspection workflow access only to approved mobile roles."""
+    message = 'Only operators and inspectors can use the mobile inspection workflow.'
+
+    def has_permission(self, request, view):
+        key = getattr(view, 'access_key', None)
+        if isinstance(key, dict):
+            key = key.get(request.method)
+        allowed_roles = {User.Role.OPERATOR, User.Role.INSPECTOR}
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.role in allowed_roles
+            and key
+            and request.user.has_access(key)
+        )
+
+
 class IsCalibrator(BasePermission):
     """Allow access to calibrators only."""
     message = 'Only calibrators can perform this action.'
