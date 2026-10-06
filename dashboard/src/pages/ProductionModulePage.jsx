@@ -92,15 +92,17 @@ export default function ProductionModulePage() {
                       style={{
                         width: '48px',
                         height: '48px',
+                        flex: '0 0 48px',
                         borderRadius: '12px',
                         backgroundColor: card.iconBg,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         color: card.iconColor,
+                        lineHeight: 0,
                       }}
                     >
-                      <IconComponent size={24} />
+                      <IconComponent size={24} style={{ display: 'block' }} />
                     </div>
                     <span
                       style={{

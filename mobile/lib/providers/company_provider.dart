@@ -11,6 +11,7 @@ class CompanyProvider extends ChangeNotifier {
   int _shiftHours = 8;
   int _totalShiftsPerDay = 3;
   bool _isLoading = false;
+  int _requestGeneration = 0;
 
   String get companyName => _companyName;
   String get companyCode => _companyCode;
@@ -53,6 +54,7 @@ class CompanyProvider extends ChangeNotifier {
   }
 
   Future<void> fetchCompanyDetails() async {
+    final requestGeneration = ++_requestGeneration;
     _isLoading = true;
     notifyListeners();
 
@@ -70,6 +72,8 @@ class CompanyProvider extends ChangeNotifier {
         final data = json.decode(res.body);
         final results = data['results'] ?? data;
         if (results is List && results.isNotEmpty) {
+          if (requestGeneration != _requestGeneration) return;
+
           final primary = results[0];
           _companyName = primary['name'] ?? 'Liha Tech Factory 1';
           _companyCode = primary['code'] ?? 'LIHA-F1';
@@ -92,8 +96,10 @@ class CompanyProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('[CompanyProvider] Failed to fetch company details: $e');
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (requestGeneration == _requestGeneration) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 }
