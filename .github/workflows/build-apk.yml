@@ -1,0 +1,80 @@
+﻿name: Build APK with Dynamic Launcher Icon
+
+on:
+  workflow_dispatch:
+    inputs:
+      logo_url:
+        description: 'Cloudinary URL of the new company logo'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: samruddhi_contri
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.6"
+          channel: "stable"
+          cache: true
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - name: Download new company logo from Cloudinary
+        run: |
+          echo "Downloading logo from: ${{ inputs.logo_url }}"
+          curl -fL "${{ inputs.logo_url }}" -o mobile/assets/images/new_app_icon.png
+          file mobile/assets/images/new_app_icon.png
+
+      - name: Get Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Generate launcher icons for all densities
+        working-directory: mobile
+        run: dart run flutter_launcher_icons
+
+      - name: Build release APK
+        working-directory: mobile
+        run: flutter build apk --release
+
+      - name: Copy APK to repo root
+        run: cp mobile/build/app/outputs/flutter-apk/app-release.apk Inspection_Hub.apk
+
+      - name: Commit updated APK and launcher icons
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Inspection_Hub.apk
+          git add mobile/assets/images/new_app_icon.png
+          git add mobile/android/app/src/main/res/
+          git add mobile/ios/Runner/Assets.xcassets/ || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore(auto): rebuild APK with updated company launcher icon [skip ci]"
+            git push origin samruddhi_contri
+          fi
+
+      - name: Upload APK as downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inspection_Hub_latest
+          path: Inspection_Hub.apk
+          retention-days: 30
+          if-no-files-found: error
