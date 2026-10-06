@@ -1,5 +1,7 @@
 import os
 import uuid
+import logging
+import threading
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -10,6 +12,8 @@ from .models import Factory, Plant, Machine
 from .serializers import FactorySerializer, PlantSerializer, MachineSerializer, MachineListSerializer
 from apps.users.permissions import HasAccess
 from apps.users.access import OPERATIONAL_READ
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Factory ──────────────────────────────────────────────────────────────
@@ -66,6 +70,42 @@ class FactoryDetailView(generics.RetrieveUpdateDestroyAPIView):
                 )
         except Exception:
             pass
+
+
+def _trigger_apk_rebuild(logo_url: str) -> None:
+    """
+    Fire-and-forget: triggers GitHub Actions workflow to rebuild the APK
+    with the new company logo as the launcher icon.
+    Runs in a background thread so it never blocks the API response.
+    Requires GITHUB_PAT env var with 'workflow' scope.
+    """
+    import requests as req
+    token = os.environ.get('GITHUB_PAT', '')
+    if not token:
+        logger.warning('[APK Rebuild] GITHUB_PAT not set — skipping APK rebuild trigger.')
+        return
+
+    repo          = 'Samrudhi1004/Ledger-Entry-Automation'
+    workflow_file = 'build-apk.yml'
+    url = f'https://api.github.com/repos/{repo}/actions/workflows/{workflow_file}/dispatches'
+
+    try:
+        resp = req.post(
+            url,
+            headers={
+                'Authorization': f'Bearer {token}',
+                'Accept': 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28',
+            },
+            json={'ref': 'samruddhi_contri', 'inputs': {'logo_url': logo_url}},
+            timeout=10,
+        )
+        if resp.status_code == 204:
+            logger.info(f'[APK Rebuild] GitHub Actions triggered successfully for logo: {logo_url}')
+        else:
+            logger.warning(f'[APK Rebuild] GitHub Actions returned {resp.status_code}: {resp.text}')
+    except Exception as exc:
+        logger.warning(f'[APK Rebuild] Failed to trigger GitHub Actions: {exc}')
 
 
 class FactoryUploadLogoView(APIView):
@@ -155,6 +195,13 @@ class FactoryUploadLogoView(APIView):
                     {'detail': 'Failed to upload logo. Ensure Cloudinary variables are configured.'},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
+
+        # Trigger async APK rebuild with the new launcher icon (non-blocking)
+        threading.Thread(
+            target=_trigger_apk_rebuild,
+            args=(factory.logo_url,),
+            daemon=True,
+        ).start()
 
         return Response({
             'success': True,

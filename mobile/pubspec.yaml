@@ -103,7 +103,13 @@ flutter:
   # see https://flutter.dev/to/font-from-package
 
 flutter_launcher_icons:
-  android: true
+  android: "ic_launcher"
   ios: true
   image_path: "assets/images/new_app_icon.png"
+  min_sdk_android: 21
+
+  # Android Adaptive Icon (Android 8.0+ / API 26+)
+  # Foreground = the bird logo, Background = clean white
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/new_app_icon.png"
 
