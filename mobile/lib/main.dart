@@ -16,37 +16,8 @@ void main() {
   runApp(const VoiceInspectionApp());
 }
 
-class VoiceInspectionApp extends StatefulWidget {
+class VoiceInspectionApp extends StatelessWidget {
   const VoiceInspectionApp({super.key});
-
-  @override
-  State<VoiceInspectionApp> createState() => _VoiceInspectionAppState();
-}
-
-class _VoiceInspectionAppState extends State<VoiceInspectionApp>
-    with WidgetsBindingObserver {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  /// Re-fetch company logo & details every time app returns to foreground.
-  /// This ensures in-app logo stays in sync with admin uploads automatically.
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      final companyProvider =
-          context.read<CompanyProvider>();
-      companyProvider.fetchCompanyDetails();
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,29 +41,65 @@ class _VoiceInspectionAppState extends State<VoiceInspectionApp>
           },
         ),
       ],
-      child: MaterialApp(
-        title: 'Inspection Hub',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          brightness: Brightness.light,
-          scaffoldBackgroundColor: Colors.grey[50],
-          primaryColor: Colors.blueAccent,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.blueAccent,
+      child: _AppLifecycleHandler(
+        child: MaterialApp(
+          title: 'Inspection Hub',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
             brightness: Brightness.light,
-            surface: Colors.white,
+            scaffoldBackgroundColor: Colors.grey[50],
+            primaryColor: Colors.blueAccent,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blueAccent,
+              brightness: Brightness.light,
+              surface: Colors.white,
+            ),
+            textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
+            useMaterial3: true,
           ),
-          textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
-          useMaterial3: true,
+          routes: {
+            '/messages': (context) => MessagesScreen(
+              initialConversationId:
+                  ModalRoute.of(context)?.settings.arguments as String?,
+            ),
+          },
+          home: const SplashScreen(),
         ),
-        routes: {
-          '/messages': (context) => MessagesScreen(
-            initialConversationId:
-                ModalRoute.of(context)?.settings.arguments as String?,
-          ),
-        },
-        home: const SplashScreen(),
       ),
     );
   }
+}
+
+class _AppLifecycleHandler extends StatefulWidget {
+  const _AppLifecycleHandler({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_AppLifecycleHandler> createState() => _AppLifecycleHandlerState();
+}
+
+class _AppLifecycleHandlerState extends State<_AppLifecycleHandler>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      context.read<CompanyProvider>().fetchCompanyDetails();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

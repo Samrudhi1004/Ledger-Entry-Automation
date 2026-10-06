@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../providers/messaging_provider.dart';
-import '../providers/company_provider.dart';
 import '../providers/notification_provider.dart';
 import '../models/notification_item.dart';
 import '../services/api_service.dart';
@@ -938,7 +937,6 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
     final provider = Provider.of<InspectionProvider>(context);
-    final company = Provider.of<CompanyProvider>(context);
 
     final name = auth.fullName ?? auth.username ?? 'Operator';
     final firstName = name.split(' ').first;
@@ -1045,19 +1043,6 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                       spacing: 0,
                       runSpacing: 0,
                       children: [
-                        if (company.logoUrl.isNotEmpty)
-                          Container(
-                            margin: const EdgeInsets.only(right: 8, top: 4),
-                            height: 36,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                company.logoUrl,
-                                fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
-                              ),
-                            ),
-                          ),
                         IconButton(
                           icon: const Icon(
                             Icons.bug_report_outlined,
