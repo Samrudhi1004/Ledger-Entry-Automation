@@ -773,18 +773,17 @@ export default function AllNotificationsModal({ isOpen, onClose, onNotificationU
                           disabled={actionLoadingId === notif.id}
                           title={notif.is_read ? 'Mark as unread' : 'Mark as read'}
                           style={{
-                            background: 'none',
-                            border: '1px solid #e2e8f0',
+                            backgroundColor: notif.is_read ? '#fff7ed' : '#ecfdf5',
+                            border: `1px solid ${notif.is_read ? '#fed7aa' : '#86efac'}`,
                             borderRadius: '6px',
                             padding: '3px 8px',
                             fontSize: '11px',
                             fontWeight: '600',
-                            color: '#64748b',
+                            color: notif.is_read ? '#c2410c' : '#15803d',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
-                            backgroundColor: '#ffffff',
                           }}
                         >
                           <Check size={12} />
