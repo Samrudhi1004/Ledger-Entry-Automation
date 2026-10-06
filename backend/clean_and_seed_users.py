@@ -49,7 +49,7 @@ ACCOUNTS = [
     {
         "username": "inspector",
         "password": "inspector123",
-        "role": User.Role.QUALITY_ENGINEER,
+        "role": User.Role.INSPECTOR,
         "employee_id": "EMP-INS-01",
         "first_name": "Quality",
         "last_name": "Inspector",

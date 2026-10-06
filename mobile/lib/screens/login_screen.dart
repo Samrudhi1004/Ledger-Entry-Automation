@@ -7,7 +7,6 @@ import '../providers/inspection_provider.dart';
 import '../providers/company_provider.dart';
 import '../services/persistence_service.dart';
 import 'app_home_screen.dart';
-import 'supervisor_info_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -72,32 +71,36 @@ class _LoginScreenState extends State<LoginScreen> {
                           return Image.network(
                             customLogo,
                             fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) => Image.network(
-                              'apple-touch-icon.png',
-                              fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) => Image.asset(
-                                'assets/images/app_logo.png',
-                                fit: BoxFit.contain,
-                              ),
-                            ),
+                            errorBuilder: (context, error, stackTrace) =>
+                                Image.network(
+                                  'apple-touch-icon.png',
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Image.asset(
+                                        'assets/images/app_logo.png',
+                                        fit: BoxFit.contain,
+                                      ),
+                                ),
                           );
                         }
                         return kIsWeb
                             ? Image.network(
                                 'apple-touch-icon.png',
                                 fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) => Image.asset(
-                                  'assets/images/app_logo.png',
-                                  fit: BoxFit.contain,
-                                ),
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Image.asset(
+                                      'assets/images/app_logo.png',
+                                      fit: BoxFit.contain,
+                                    ),
                               )
                             : Image.asset(
                                 'assets/images/app_logo.png',
                                 fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) => Image.network(
-                                  'apple-touch-icon.png',
-                                  fit: BoxFit.contain,
-                                ),
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Image.network(
+                                      'apple-touch-icon.png',
+                                      fit: BoxFit.contain,
+                                    ),
                               );
                       },
                     ),
@@ -150,7 +153,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         decoration: InputDecoration(
                           labelText: 'Employee ID / Username',
                           labelStyle: const TextStyle(color: Color(0xFF64748B)),
-                          prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF2563EB)),
+                          prefixIcon: const Icon(
+                            Icons.person_outline,
+                            color: Color(0xFF2563EB),
+                          ),
                           filled: true,
                           fillColor: const Color(0xFFF1F5F9),
                           border: OutlineInputBorder(
@@ -169,10 +175,15 @@ class _LoginScreenState extends State<LoginScreen> {
                         decoration: InputDecoration(
                           labelText: 'Password',
                           labelStyle: const TextStyle(color: Color(0xFF64748B)),
-                          prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF2563EB)),
+                          prefixIcon: const Icon(
+                            Icons.lock_outline,
+                            color: Color(0xFF2563EB),
+                          ),
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
                               color: const Color(0xFF64748B),
                             ),
                             onPressed: () {
@@ -196,120 +207,240 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: auth.isLoading
                             ? null
                             : () async {
-                                final username = _usernameController.text.trim();
-                                final password = _passwordController.text.trim();
+                                final username = _usernameController.text
+                                    .trim();
+                                final password = _passwordController.text
+                                    .trim();
 
                                 if (username.isEmpty || password.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Please enter username and password')),
+                                    const SnackBar(
+                                      content: Text(
+                                        'Please enter username and password',
+                                      ),
+                                    ),
                                   );
                                   return;
                                 }
 
-                                final success = await auth.login(username, password);
+                                final success = await auth.login(
+                                  username,
+                                  password,
+                                );
 
                                 if (context.mounted) {
                                   if (success) {
-                                    // Refresh company schedule details (shifts, factory info)
-                                    Provider.of<CompanyProvider>(context, listen: false).fetchCompanyDetails();
-                                    Widget targetScreen = const AppHomeScreen();
-                                    if (auth.isSupervisor) {
-                                      targetScreen = const SupervisorInfoScreen();
-                                    } else {
-                                      if (auth.userId != null) {
-                                        final provider = Provider.of<InspectionProvider>(context, listen: false);
-                                        provider.currentUserId = auth.userId!;
+                                    if (!auth.isMobileRole) {
+                                      final role =
+                                          auth.userRole ?? 'dashboard-only';
+                                      await auth.logout();
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'This account ($role) is for dashboard use only. '
+                                            'Use an operator or inspector account on mobile.',
+                                          ),
+                                          backgroundColor:
+                                              Colors.orange.shade800,
+                                        ),
+                                      );
+                                      return;
+                                    }
 
-                                        final summary = await PersistenceService.getSavedStateSummary(auth.userId!);
-                                        if (summary != null && context.mounted) {
-                                          final shouldResume = await showDialog<bool>(
-                                            context: context,
-                                            barrierDismissible: false,
-                                            builder: (ctx) => AlertDialog(
-                                              backgroundColor: const Color(0xFF0D1424),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(16),
-                                                side: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                                    // Refresh company schedule details (shifts, factory info)
+                                    Provider.of<CompanyProvider>(
+                                      context,
+                                      listen: false,
+                                    ).fetchCompanyDetails();
+                                    Widget targetScreen = const AppHomeScreen();
+                                    if (auth.userId != null) {
+                                      final provider =
+                                          Provider.of<InspectionProvider>(
+                                            context,
+                                            listen: false,
+                                          );
+                                      provider.currentUserId = auth.userId!;
+
+                                      final summary =
+                                          await PersistenceService.getSavedStateSummary(
+                                            auth.userId!,
+                                          );
+                                      if (summary != null && context.mounted) {
+                                        final shouldResume = await showDialog<bool>(
+                                          context: context,
+                                          barrierDismissible: false,
+                                          builder: (ctx) => AlertDialog(
+                                            backgroundColor: const Color(
+                                              0xFF0D1424,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              side: const BorderSide(
+                                                color: Color(0xFF2563EB),
+                                                width: 1.5,
                                               ),
-                                              title: const Row(
-                                                children: [
-                                                  Icon(Icons.restore_rounded, color: Color(0xFF2563EB), size: 28),
-                                                  SizedBox(width: 10),
-                                                  Text(
-                                                    'Resume Session?',
-                                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-                                                  ),
-                                                ],
-                                              ),
-                                              content: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  const Text(
-                                                    'You have an unfinished inspection session:',
-                                                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                                                  ),
-                                                  const SizedBox(height: 14),
-                                                  _resumeRow(Icons.precision_manufacturing_rounded, 'Machine', summary['machine'] ?? '—'),
-                                                  const SizedBox(height: 8),
-                                                  _resumeRow(Icons.category_rounded, 'Part', summary['part'] ?? '—'),
-                                                  const SizedBox(height: 8),
-                                                  _resumeRow(Icons.assignment_rounded, 'Inspection', summary['inspection'] ?? '—'),
-                                                  const SizedBox(height: 8),
-                                                  _resumeRow(Icons.bar_chart_rounded, 'Progress', summary['progress'] ?? '—'),
-                                                  const SizedBox(height: 8),
-                                                  _resumeRow(Icons.access_time_rounded, 'Saved', summary['saved_at'] ?? 'Recently'),
-                                                ],
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () => Navigator.pop(ctx, false),
-                                                  style: TextButton.styleFrom(foregroundColor: const Color(0xFFEF4444)),
-                                                  child: const Text('START FRESH', style: TextStyle(fontWeight: FontWeight.bold)),
+                                            ),
+                                            title: const Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.restore_rounded,
+                                                  color: Color(0xFF2563EB),
+                                                  size: 28,
                                                 ),
-                                                ElevatedButton.icon(
-                                                  onPressed: () => Navigator.pop(ctx, true),
-                                                  style: ElevatedButton.styleFrom(
-                                                    backgroundColor: const Color(0xFF2563EB),
-                                                    foregroundColor: Colors.white,
-                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                SizedBox(width: 10),
+                                                Text(
+                                                  'Resume Session?',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 18,
                                                   ),
-                                                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                                                  label: const Text('RESUME', style: TextStyle(fontWeight: FontWeight.bold)),
                                                 ),
                                               ],
                                             ),
-                                          );
-                                          if (shouldResume == true) {
-                                            final savedState = await PersistenceService.loadState(auth.userId!);
-                                            if (savedState != null) {
-                                              provider.restoreFromLocalState(savedState, auth.userId!);
-                                            }
-                                          } else {
-                                            await PersistenceService.clearState();
+                                            content: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                const Text(
+                                                  'You have an unfinished inspection session:',
+                                                  style: TextStyle(
+                                                    color: Color(0xFF94A3B8),
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 14),
+                                                _resumeRow(
+                                                  Icons
+                                                      .precision_manufacturing_rounded,
+                                                  'Machine',
+                                                  summary['machine'] ?? '—',
+                                                ),
+                                                const SizedBox(height: 8),
+                                                _resumeRow(
+                                                  Icons.category_rounded,
+                                                  'Part',
+                                                  summary['part'] ?? '—',
+                                                ),
+                                                const SizedBox(height: 8),
+                                                _resumeRow(
+                                                  Icons.assignment_rounded,
+                                                  'Inspection',
+                                                  summary['inspection'] ?? '—',
+                                                ),
+                                                const SizedBox(height: 8),
+                                                _resumeRow(
+                                                  Icons.bar_chart_rounded,
+                                                  'Progress',
+                                                  summary['progress'] ?? '—',
+                                                ),
+                                                const SizedBox(height: 8),
+                                                _resumeRow(
+                                                  Icons.access_time_rounded,
+                                                  'Saved',
+                                                  summary['saved_at'] ??
+                                                      'Recently',
+                                                ),
+                                              ],
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(ctx, false),
+                                                style: TextButton.styleFrom(
+                                                  foregroundColor: const Color(
+                                                    0xFFEF4444,
+                                                  ),
+                                                ),
+                                                child: const Text(
+                                                  'START FRESH',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                              ElevatedButton.icon(
+                                                onPressed: () =>
+                                                    Navigator.pop(ctx, true),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: const Color(
+                                                    0xFF2563EB,
+                                                  ),
+                                                  foregroundColor: Colors.white,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                  ),
+                                                ),
+                                                icon: const Icon(
+                                                  Icons.play_arrow_rounded,
+                                                  size: 18,
+                                                ),
+                                                label: const Text(
+                                                  'RESUME',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                        if (shouldResume == true) {
+                                          final savedState =
+                                              await PersistenceService.loadState(
+                                                auth.userId!,
+                                              );
+                                          if (savedState != null) {
+                                            provider.restoreFromLocalState(
+                                              savedState,
+                                              auth.userId!,
+                                            );
                                           }
                                         } else {
-                                          final hasSaved = await PersistenceService.hasSavedState(auth.userId!);
-                                          if (hasSaved) {
-                                            final savedState = await PersistenceService.loadState(auth.userId!);
-                                            if (savedState != null) {
-                                              provider.restoreFromLocalState(savedState, auth.userId!);
-                                            }
+                                          await PersistenceService.clearState();
+                                        }
+                                      } else {
+                                        final hasSaved =
+                                            await PersistenceService.hasSavedState(
+                                              auth.userId!,
+                                            );
+                                        if (hasSaved) {
+                                          final savedState =
+                                              await PersistenceService.loadState(
+                                                auth.userId!,
+                                              );
+                                          if (savedState != null) {
+                                            provider.restoreFromLocalState(
+                                              savedState,
+                                              auth.userId!,
+                                            );
                                           }
                                         }
                                       }
-                                      targetScreen = const AppHomeScreen();
                                     }
 
                                     if (!context.mounted) return;
                                     Navigator.pushReplacement(
                                       context,
-                                      MaterialPageRoute(builder: (_) => targetScreen),
+                                      MaterialPageRoute(
+                                        builder: (_) => targetScreen,
+                                      ),
                                     );
                                   } else {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text(auth.lastErrorMessage ?? 'Login failed. Please check credentials.'),
+                                        content: Text(
+                                          auth.lastErrorMessage ??
+                                              'Login failed. Please check credentials.',
+                                        ),
                                         backgroundColor: Colors.redAccent,
                                       ),
                                     );
@@ -328,17 +459,22 @@ class _LoginScreenState extends State<LoginScreen> {
                             ? const SizedBox(
                                 width: 24,
                                 height: 24,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Text(
                                 'LOGIN TO CONSOLE',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                       ),
                     ],
                   ),
                 ),
-
               ],
             ),
           ),
@@ -353,11 +489,18 @@ class _LoginScreenState extends State<LoginScreen> {
       children: [
         Icon(icon, color: const Color(0xFF38BDF8), size: 16),
         const SizedBox(width: 8),
-        Text('$label: ', style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+        Text(
+          '$label: ',
+          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+        ),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
         ),

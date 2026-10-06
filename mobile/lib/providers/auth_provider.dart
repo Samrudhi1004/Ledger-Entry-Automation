@@ -28,7 +28,10 @@ class AuthProvider with ChangeNotifier {
   String? get userRole => _userRole;
   String get assignedShift => _assignedShift ?? 'ALL';
   bool get isShiftLocked => _assignedShift != null && _assignedShift != 'ALL';
-  bool canAccessShift(String shift) => _assignedShift == null || _assignedShift == 'ALL' || _assignedShift == shift;
+  bool canAccessShift(String shift) =>
+      _assignedShift == null ||
+      _assignedShift == 'ALL' ||
+      _assignedShift == shift;
   String? get fullName => _fullName;
   String? get firstName => _firstName;
   String? get lastName => _lastName;
@@ -40,10 +43,13 @@ class AuthProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
 
   bool hasAccess(String key) => _permissions.contains(key);
-  bool get isOperator => hasAccess('production.jh.submit') && !isSupervisor && !isInspector;
+  // Mobile access is role-based. Dashboard permissions must not turn a
+  // supervisor, quality engineer, or HR user into a mobile operator.
+  bool get isOperator => _userRole == 'operator';
   // Role identity is intentional here: Quality Engineer and Inspector may
   // share quality permissions, but only Inspector gets the mobile workflow.
   bool get isInspector => _userRole == 'inspector';
+  bool get isMobileRole => isOperator || isInspector;
   bool get isQualityEngineer => _userRole == 'quality_engineer';
   bool get isSupervisor => hasAccess('quality.inspections.review');
 
@@ -69,7 +75,8 @@ class AuthProvider with ChangeNotifier {
       final refreshToken = await ApiService.getRefreshToken();
       final prefs = await SharedPreferences.getInstance();
 
-      if ((token != null && token.isNotEmpty) || (refreshToken != null && refreshToken.isNotEmpty)) {
+      if ((token != null && token.isNotEmpty) ||
+          (refreshToken != null && refreshToken.isNotEmpty)) {
         // Restore local user session immediately so app opens home screen instantly
         _username = prefs.getString('username') ?? 'Operator';
         final userInfoStr = prefs.getString('user_info');
@@ -80,7 +87,9 @@ class AuthProvider with ChangeNotifier {
             _permissions = Set<String>.from(info['permissions'] ?? []);
             _assignedShift = info['assigned_shift'] ?? 'ALL';
             _userId = info['id'];
-            _fullName = (info['full_name'] != null && info['full_name'].toString().isNotEmpty)
+            _fullName =
+                (info['full_name'] != null &&
+                    info['full_name'].toString().isNotEmpty)
                 ? info['full_name']
                 : _username;
           } catch (_) {
@@ -92,13 +101,17 @@ class AuthProvider with ChangeNotifier {
           _assignedShift = 'ALL';
         }
         _isAuthenticated = true;
-        debugPrint('[AuthProvider] Restored local session for $_username (role: $_userRole, shift: $_assignedShift)');
+        debugPrint(
+          '[AuthProvider] Restored local session for $_username (role: $_userRole, shift: $_assignedShift)',
+        );
 
         // Silently attempt background refresh to get fresh access token & rotate refresh token
         final refreshStatus = await ApiService.refreshToken();
         if (refreshStatus == false) {
           // Explicitly rejected by server (expired/blacklisted/revoked) -> force logout
-          debugPrint('[AuthProvider] Refresh token explicitly rejected by server. Requiring login.');
+          debugPrint(
+            '[AuthProvider] Refresh token explicitly rejected by server. Requiring login.',
+          );
           await ApiService.clearTokens();
           _isAuthenticated = false;
           _username = null;
@@ -117,22 +130,35 @@ class AuthProvider with ChangeNotifier {
               if (parts.length == 3) {
                 final paddedPayload = base64Url.normalize(parts[1]);
                 final payloadBytes = base64Url.decode(paddedPayload);
-                final payload = jsonDecode(utf8.decode(payloadBytes)) as Map<String, dynamic>;
-                final roleFromJwt = payload['role']?.toString() ?? _userRole ?? 'operator';
-                final shiftFromJwt = payload['assigned_shift']?.toString() ?? _assignedShift ?? 'ALL';
-                final idFromJwt = payload['user_id'] != null ? int.tryParse(payload['user_id'].toString()) : _userId;
+                final payload =
+                    jsonDecode(utf8.decode(payloadBytes))
+                        as Map<String, dynamic>;
+                final roleFromJwt =
+                    payload['role']?.toString() ?? _userRole ?? 'operator';
+                final shiftFromJwt =
+                    payload['assigned_shift']?.toString() ??
+                    _assignedShift ??
+                    'ALL';
+                final idFromJwt = payload['user_id'] != null
+                    ? int.tryParse(payload['user_id'].toString())
+                    : _userId;
                 _userRole = roleFromJwt;
                 _assignedShift = shiftFromJwt;
                 _userId = idFromJwt;
                 final prefs = await SharedPreferences.getInstance();
-                await prefs.setString('user_info', jsonEncode({
-                  'id': idFromJwt,
-                  'role': roleFromJwt,
-                  'permissions': _permissions.toList(),
-                  'assigned_shift': shiftFromJwt,
-                  'full_name': _fullName ?? _username,
-                }));
-                debugPrint('[AuthProvider] Re-persisted user_info from JWT (role: $roleFromJwt, shift: $shiftFromJwt).');
+                await prefs.setString(
+                  'user_info',
+                  jsonEncode({
+                    'id': idFromJwt,
+                    'role': roleFromJwt,
+                    'permissions': _permissions.toList(),
+                    'assigned_shift': shiftFromJwt,
+                    'full_name': _fullName ?? _username,
+                  }),
+                );
+                debugPrint(
+                  '[AuthProvider] Re-persisted user_info from JWT (role: $roleFromJwt, shift: $shiftFromJwt).',
+                );
               }
             }
           } catch (e) {
@@ -185,13 +211,16 @@ class AuthProvider with ChangeNotifier {
         _fullName = full.isNotEmpty ? full : _username;
 
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('user_info', jsonEncode({
-          'id': _userId,
-          'role': _userRole,
-          'permissions': _permissions.toList(),
-          'assigned_shift': _assignedShift,
-          'full_name': _fullName,
-        }));
+        await prefs.setString(
+          'user_info',
+          jsonEncode({
+            'id': _userId,
+            'role': _userRole,
+            'permissions': _permissions.toList(),
+            'assigned_shift': _assignedShift,
+            'full_name': _fullName,
+          }),
+        );
 
         notifyListeners();
       }
@@ -224,16 +253,21 @@ class AuthProvider with ChangeNotifier {
           if (userData['id'] != null) {
             _userId = int.tryParse(userData['id'].toString());
           }
-          _fullName = (userData['full_name'] != null && userData['full_name'].toString().isNotEmpty)
+          _fullName =
+              (userData['full_name'] != null &&
+                  userData['full_name'].toString().isNotEmpty)
               ? userData['full_name']
               : username;
-          await prefs.setString('user_info', jsonEncode({
-            'id': _userId,
-            'role': _userRole,
-            'permissions': _permissions.toList(),
-            'assigned_shift': _assignedShift,
-            'full_name': _fullName,
-          }));
+          await prefs.setString(
+            'user_info',
+            jsonEncode({
+              'id': _userId,
+              'role': _userRole,
+              'permissions': _permissions.toList(),
+              'assigned_shift': _assignedShift,
+              'full_name': _fullName,
+            }),
+          );
         } else {
           _userRole = 'operator';
           _permissions = {};

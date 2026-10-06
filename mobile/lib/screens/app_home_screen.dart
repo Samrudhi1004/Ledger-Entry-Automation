@@ -944,7 +944,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
         ? 'Quality Inspector'
         : (auth.isQualityEngineer
               ? 'Quality Engineer'
-              : (auth.isOperator ? 'Machine Operator' : 'Supervisor'));
+              : (auth.isOperator
+                    ? 'Machine Operator'
+                    : 'Mobile Access Restricted'));
 
     final selectedPart = provider.selectedPart;
     final partNumber = selectedPart?['part_number'] ?? 'FBT00222';
