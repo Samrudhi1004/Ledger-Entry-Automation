@@ -219,6 +219,39 @@ class ApiService {
     }
   }
 
+  /// POST /api/users/password-reset/request/ — request a reset email.
+  ///
+  /// The backend deliberately returns the same success message whether or not
+  /// the email belongs to an account, preventing user enumeration.
+  static Future<Map<String, dynamic>> requestPasswordReset(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/users/password-reset/request/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email.trim()}),
+      ).timeout(const Duration(seconds: 30));
+
+      final body = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': body['message'] ??
+              'If an account with that email exists, a password reset link has been sent.',
+        };
+      }
+
+      return {
+        'success': false,
+        'message': body['error'] ?? body['detail'] ?? 'Unable to send reset link.',
+      };
+    } catch (_) {
+      return {
+        'success': false,
+        'message': 'Unable to connect to the server. Please try again.',
+      };
+    }
+  }
+
   // 1b. Auth: Logout
   static Future<void> logout() async {
     try {
