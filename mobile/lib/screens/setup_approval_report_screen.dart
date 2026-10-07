@@ -44,6 +44,9 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _setupApprovalData = null;
+      _productResults = {};
+      _processParamEntries = [];
     });
 
     final provider = Provider.of<InspectionProvider>(context, listen: false);
@@ -88,73 +91,51 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
       final reportSessionId = setupStatus['first_piece_session_id']
           ?? setupStatus['session_id'];
 
-      final setupAppDoc = await ApiService.getSetupApprovalData(templateId, machineId, date: dateStr);
-      if (setupAppDoc != null) {
-        _setupApprovalData = setupAppDoc;
-      } else if (reportSessionId != null) {
+      if (reportSessionId != null) {
         final sessionDoc = await ApiService.getSessionDetail(reportSessionId.toString());
         if (sessionDoc != null) {
           _setupApprovalData = sessionDoc;
         }
       }
 
+      _setupApprovalData ??= await ApiService.getSetupApprovalData(templateId, machineId, date: dateStr);
+
       if (_setupApprovalData != null && _setupApprovalData!['process_param_entries'] is List) {
         _processParamEntries = _setupApprovalData!['process_param_entries'] as List;
-      } else {
-        _processParamEntries = [];
       }
 
       _productResults = {};
 
-      // 1. Populate from Setup Approval process_param_entries
-      if (_processParamEntries.isNotEmpty) {
-        for (final entry in _processParamEntries) {
-          final code = entry['parameter_code']?.toString() ?? '';
-          final name = entry['parameter_name']?.toString() ?? '';
-          if (code.isNotEmpty) _productResults.putIfAbsent(code, () => {});
-          if (name.isNotEmpty) _productResults.putIfAbsent(name, () => {});
-          
-          if (entry['trial_1'] != null && entry['trial_1'].toString().trim().isNotEmpty) {
-            final t1 = entry['trial_1'].toString();
-            if (code.isNotEmpty) _productResults[code]!['1'] = t1;
-            if (name.isNotEmpty) _productResults[name]!['1'] = t1;
-          }
-          if (entry['trial_2'] != null && entry['trial_2'].toString().trim().isNotEmpty) {
-            final t2 = entry['trial_2'].toString();
-            if (code.isNotEmpty) _productResults[code]!['2'] = t2;
-            if (name.isNotEmpty) _productResults[name]!['2'] = t2;
-          }
-          if (entry['trial_3'] != null && entry['trial_3'].toString().trim().isNotEmpty) {
-            final t3 = entry['trial_3'].toString();
-            if (code.isNotEmpty) _productResults[code]!['3'] = t3;
-            if (name.isNotEmpty) _productResults[name]!['3'] = t3;
-          }
-        }
-      }
-
-      // 2. Populate from backend session measurements (if any First Piece measurements exist and we used sessionDoc)
-      final measurements = _setupApprovalData?['measurements'] as List? ?? [];
+      // 1. Populate from backend session measurements
+      // Fix 4: Null-safe trial_number mapping — preserve all 3 trial values.
+      // Measurements with inspection_type='hourly' are ignored here (they belong
+      // to the DailyProductionReport, not the SetupApproval F02 report).
+      final measurements = _setupApprovalData?['process_param_entries'] as List? ?? [];
       for (final m in measurements) {
-        final inspType = m['inspection_type']?.toString() ?? 'first_piece';
-        if (inspType == 'hourly') continue;
-
         final code = m['parameter_code']?.toString() ?? '';
         final name = m['parameter_name']?.toString() ?? '';
-        final rawTrial = m['trial_number'];
-        final trial = (rawTrial != null && rawTrial != 0) ? rawTrial.toString() : '1';
-        final val = m['voice_raw_text']?.toString() ?? (m['measured_value'] != null ? m['measured_value'].toString() : '-');
+        
+        // Setup Approval has trial_1, trial_2, trial_3
+        if (code.isNotEmpty) _productResults.putIfAbsent(code, () => {});
+        if (name.isNotEmpty) _productResults.putIfAbsent(name, () => {});
+
+        final t1 = m['trial_1']?.toString() ?? '-';
+        final t2 = m['trial_2']?.toString() ?? '-';
+        final t3 = m['trial_3']?.toString() ?? '-';
 
         if (code.isNotEmpty) {
-          _productResults.putIfAbsent(code, () => {});
-          _productResults[code]![trial] = val;
+          _productResults[code]!['1'] = t1;
+          _productResults[code]!['2'] = t2;
+          _productResults[code]!['3'] = t3;
         }
         if (name.isNotEmpty) {
-          _productResults.putIfAbsent(name, () => {});
-          _productResults[name]![trial] = val;
+          _productResults[name]!['1'] = t1;
+          _productResults[name]!['2'] = t2;
+          _productResults[name]!['3'] = t3;
         }
       }
 
-      // 3. Layer provider.recordedResults (only if inspection_type is first_piece)
+      // 2. Layer provider.recordedResults (only if inspection_type is first_piece)
       provider.recordedResults.forEach((code, val) {
         final inspType = val['inspection_type']?.toString() ?? 'first_piece';
         if (inspType == 'hourly') return; // skip hourly in this report
