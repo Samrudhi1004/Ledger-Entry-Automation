@@ -7,6 +7,7 @@ import '../providers/messaging_provider.dart';
 import '../providers/notification_provider.dart';
 import '../models/notification_item.dart';
 import '../services/api_service.dart';
+import '../services/app_update_service.dart';
 import '../services/persistence_service.dart';
 import 'account_screen.dart';
 import 'machine_select_screen.dart';
@@ -36,6 +37,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   void initState() {
     super.initState();
     _loadDashboardData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppUpdateService.checkAndPrompt(context);
+    });
   }
 
   Future<void> _loadDashboardData() async {
