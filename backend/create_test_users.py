@@ -44,7 +44,7 @@ def create_users():
         {
             "username": "inspector",
             "password": "inspector123",
-            "role": User.Role.QUALITY_ENGINEER,
+            "role": User.Role.INSPECTOR,
             "employee_id": "EMP-INS-01",
             "first_name": "Sarah",
             "last_name": "Inspector",
@@ -62,6 +62,8 @@ def create_users():
 
         user.username = u["username"]
         user.employee_id = u["employee_id"]
+        # Always repair existing fixtures too; get-or-create alone would keep
+        # an older quality_engineer role on the inspector account.
         user.role = u["role"]
         user.first_name = u["first_name"]
         user.last_name = u["last_name"]

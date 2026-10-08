@@ -352,13 +352,7 @@ class TemplateChangeRequestListCreateView(APIView):
         template = get_object_or_404(InspectionTemplate, pk=template_id)
         data = request.data
 
-        # Generate DCR Number: DCR-PARAM-YYYY-XXXX
-        year = timezone.now().year
-        count = TemplateChangeRequest.objects.filter(created_at__year=year).count() + 1
-        dcr_number = f"DCR-PARAM-{year}-{count:04d}"
-
         dcr = TemplateChangeRequest.objects.create(
-            dcr_number=dcr_number,
             form_doc_no=data.get('form_doc_no', 'DKI/MR/F/05'),
             template=template,
             change_type=data.get('change_type', TemplateChangeRequest.ChangeType.MODIFICATION),
@@ -384,7 +378,7 @@ class TemplateChangeRequestListCreateView(APIView):
         serializer = TemplateChangeRequestSerializer(dcr, context={'request': request})
         return Response({
             'success': True,
-            'message': f"Document Change Request {dcr_number} submitted successfully for review.",
+            'message': f"Document Change Request {dcr.dcr_number} submitted successfully for review.",
             'dcr': serializer.data
         }, status=status.HTTP_201_CREATED)
 

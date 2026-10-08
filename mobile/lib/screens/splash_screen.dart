@@ -8,7 +8,6 @@ import '../providers/company_provider.dart';
 import '../services/persistence_service.dart';
 import 'login_screen.dart';
 import 'app_home_screen.dart';
-import 'supervisor_info_screen.dart';
 import 'operator_home_screen.dart';
 import 'inspection_voice_screen.dart';
 import 'summary_screen.dart';
@@ -83,6 +82,18 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (auth.isAuthenticated) {
+      // Only operator and inspector accounts are approved for the mobile app.
+      // Do not fall through to the supervisor-style home for dashboard roles.
+      if (!auth.isMobileRole) {
+        await auth.logout();
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+        return;
+      }
+
       // Fetch company details now that we have valid tokens.
       Provider.of<CompanyProvider>(
         context,
@@ -130,15 +141,11 @@ class _SplashScreenState extends State<SplashScreen>
         }
       }
 
-      if (auth.isSupervisor) {
-        home = const SupervisorInfoScreen();
-      }
-
       // Preserve a browser deep link after authentication. Flutter web keeps
       // the hash in the URL, but the splash flow must explicitly honor it
       // because it replaces the startup route after auth is restored.
       final startupUri = Uri.parse(Uri.base.fragment);
-      if (!auth.isSupervisor && startupUri.path == '/messages') {
+      if (startupUri.path == '/messages') {
         home = MessagesScreen(
           initialConversationId: startupUri.queryParameters['conversation'],
         );

@@ -272,6 +272,24 @@ try:
 except ImportError:
     pass
 
+# Railway containers are ephemeral. Store user uploads in the already-configured
+# Cloudinary account in production, while keeping local development dependency-free.
+_cloudinary_configured = all(os.getenv(key) for key in (
+    'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET',
+))
+STORAGES = {
+    'default': {
+        'BACKEND': (
+            'common.storage.CloudinaryMediaStorage'
+            if _cloudinary_configured
+            else 'django.core.files.storage.FileSystemStorage'
+        ),
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
+
 
 # ─── Essential Logging Configuration ───────────────────────────
 LOGGING = {

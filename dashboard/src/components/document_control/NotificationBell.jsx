@@ -242,10 +242,10 @@ export default function NotificationBell() {
               <button
                 onClick={handleMarkAllRead}
                 style={{
-                  background: 'none',
-                  border: 'none',
+                  backgroundColor: '#ecfdf5',
+                  border: '1px solid #86efac',
                   fontSize: '11px',
-                  color: '#4f46e5',
+                  color: '#15803d',
                   fontWeight: '600',
                   cursor: 'pointer',
                   display: 'flex',

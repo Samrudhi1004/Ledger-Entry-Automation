@@ -49,7 +49,7 @@ ACCOUNTS = [
     {
         "username": "inspector",
         "password": "inspector123",
-        "role": User.Role.QUALITY_ENGINEER,
+        "role": User.Role.INSPECTOR,
         "employee_id": "EMP-INS-01",
         "first_name": "Quality",
         "last_name": "Inspector",
@@ -75,6 +75,7 @@ def cleanup_and_seed():
     for acc in ACCOUNTS:
         user, created = User.objects.get_or_create(username=acc["username"])
         user.employee_id = acc["employee_id"]
+        # Keep existing accounts aligned with the canonical role allowlist.
         user.role = acc["role"]
         user.first_name = acc["first_name"]
         user.last_name = acc["last_name"]

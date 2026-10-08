@@ -1037,6 +1037,10 @@ class DCRNotificationViewSet(viewsets.ReadOnlyModelViewSet):
                 qs = qs.filter(is_read=False)
 
         all_param = self.request.query_params.get('all', '').lower()
+        # Detail actions call get_object(), which must filter before slicing.
+        if getattr(self, 'action', None) != 'list':
+            return qs
+
         if all_param in ('true', '1', 'yes'):
             return qs[:250]
 

@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../providers/messaging_provider.dart';
-import '../providers/company_provider.dart';
 import '../providers/notification_provider.dart';
 import '../models/notification_item.dart';
 import '../services/api_service.dart';
@@ -938,7 +937,6 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
     final provider = Provider.of<InspectionProvider>(context);
-    final company = Provider.of<CompanyProvider>(context);
 
     final name = auth.fullName ?? auth.username ?? 'Operator';
     final firstName = name.split(' ').first;
@@ -946,7 +944,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
         ? 'Quality Inspector'
         : (auth.isQualityEngineer
               ? 'Quality Engineer'
-              : (auth.isOperator ? 'Machine Operator' : 'Supervisor'));
+              : (auth.isOperator
+                    ? 'Machine Operator'
+                    : 'Mobile Access Restricted'));
 
     final selectedPart = provider.selectedPart;
     final partNumber = selectedPart?['part_number'] ?? 'FBT00222';
