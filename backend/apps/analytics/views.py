@@ -258,10 +258,35 @@ class DailyCompletedReportsView(APIView):
             status__in=['draft', 'in_progress', 'pending_review', 'rejected', 'finalized_failed']
         )
 
+        from apps.machines.models import Factory
+        from datetime import datetime, timedelta
+        
+        factory = Factory.objects.first()
+        shift_1_start = factory.shift_1_start if (factory and factory.shift_1_start) else None
+
         if start_date:
-            qs = qs.filter(started_at__date__gte=start_date)
+            if shift_1_start:
+                try:
+                    dt = datetime.strptime(start_date, '%Y-%m-%d')
+                    dt = dt.replace(hour=shift_1_start.hour, minute=shift_1_start.minute)
+                    qs = qs.filter(started_at__gte=dt)
+                except ValueError:
+                    qs = qs.filter(started_at__date__gte=start_date)
+            else:
+                qs = qs.filter(started_at__date__gte=start_date)
+                
         if end_date:
-            qs = qs.filter(started_at__date__lte=end_date)
+            if shift_1_start:
+                try:
+                    dt = datetime.strptime(end_date, '%Y-%m-%d')
+                    dt = dt + timedelta(days=1)
+                    dt = dt.replace(hour=shift_1_start.hour, minute=shift_1_start.minute)
+                    qs = qs.filter(started_at__lt=dt)
+                except ValueError:
+                    qs = qs.filter(started_at__date__lte=end_date)
+            else:
+                qs = qs.filter(started_at__date__lte=end_date)
+                
         if machine_code:
             qs = qs.filter(machine__machine_code__icontains=machine_code.strip())
         if part_number:

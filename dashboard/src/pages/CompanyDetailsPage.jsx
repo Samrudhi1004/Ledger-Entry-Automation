@@ -45,6 +45,9 @@ export default function CompanyDetailsPage() {
     lunch_break_minutes: 30,
     tea_break_minutes: 30,
     available_working_minutes: 420,
+    shift_1_start: '08:00',
+    shift_2_start: '16:00',
+    shift_3_start: '00:00',
     is_active: true,
   });
 
@@ -96,6 +99,9 @@ export default function CompanyDetailsPage() {
           lunch_break_minutes: lunchMins,
           tea_break_minutes: teaMins,
           available_working_minutes: availMins,
+          shift_1_start: (primary.shift_1_start || '08:00:00').substring(0, 5),
+          shift_2_start: (primary.shift_2_start || '16:00:00').substring(0, 5),
+          shift_3_start: (primary.shift_3_start || '00:00:00').substring(0, 5),
           is_active: primary.is_active !== false,
         });
       }
@@ -214,6 +220,9 @@ export default function CompanyDetailsPage() {
         lunch_break_minutes: lunchMins,
         tea_break_minutes: teaMins,
         available_working_minutes: availMins,
+        shift_1_start: company.shift_1_start + ':00',
+        shift_2_start: company.shift_2_start + ':00',
+        shift_3_start: company.shift_3_start + ':00',
       };
 
       let res;
@@ -788,6 +797,56 @@ export default function CompanyDetailsPage() {
                             </div>
                           </div>
                         </div>
+                      </div>
+                    </div>
+
+                    {/* Dynamic Shift Timings Grid */}
+                    <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+                      <h5 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
+                        Exact Shift Timings
+                      </h5>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">Shift 1 Start Time</label>
+                          <input
+                            className="form-input font-mono"
+                            type="time"
+                            name="shift_1_start"
+                            value={company.shift_1_start}
+                            readOnly={!isAdmin}
+                            onChange={handleChange}
+                            required={isAdmin}
+                            style={inputStyle(true)}
+                          />
+                        </div>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">Shift 2 Start Time</label>
+                          <input
+                            className="form-input font-mono"
+                            type="time"
+                            name="shift_2_start"
+                            value={company.shift_2_start}
+                            readOnly={!isAdmin}
+                            onChange={handleChange}
+                            required={isAdmin}
+                            style={inputStyle(true)}
+                          />
+                        </div>
+                        {Number(company.shift_hours) === 8 && (
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label">Shift 3 Start Time</label>
+                            <input
+                              className="form-input font-mono"
+                              type="time"
+                              name="shift_3_start"
+                              value={company.shift_3_start}
+                              readOnly={!isAdmin}
+                              onChange={handleChange}
+                              required={isAdmin}
+                              style={inputStyle(true)}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
 

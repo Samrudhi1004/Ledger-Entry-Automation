@@ -1871,6 +1871,32 @@ export default function ParametersPage() {
                   {processParameters.length}
                 </span>
               </button>
+
+              <div style={{ flex: 1 }}></div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#475569', background: '#FFFFFF', padding: '5px 12px', borderRadius: 6, border: '1px solid #E2E8F0' }}>
+                  Cycle Time: <span style={{ color: '#0F172A', fontWeight: 800 }}>{selectedTemplate?.cycle_time_mins || 0} mins</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { 
+                    if (!requireManageAccess('edit target settings')) return; 
+                    setEditTargetCount(selectedTemplate?.target_parameter_count || 10); 
+                    setEditCycleTime(selectedTemplate?.cycle_time_mins || ''); 
+                    setShowEditTargetModal(true); 
+                  }}
+                  style={{
+                    padding: '6px 14px', fontSize: 12, fontWeight: 700,
+                    background: '#EFF6FF', border: '1px solid #BAE6FD',
+                    borderRadius: 6, color: '#0284C7', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                  }}
+                >
+                  <Settings size={14} />
+                  Operation Settings
+                </button>
+              </div>
             </div>
           )}
 
@@ -2605,16 +2631,6 @@ export default function ParametersPage() {
                       In Progress
                     </span>
                   )}
-                  <button
-                    onClick={() => { if (!requireManageAccess('edit target settings')) return; setEditTargetCount(target); setEditCycleTime(selectedTemplate?.cycle_time_mins || ''); setShowEditTargetModal(true); }}
-                    style={{
-                      padding: '5px 12px', fontSize: 11, fontWeight: 700,
-                      background: '#EFF6FF', border: '1px solid #BAE6FD',
-                      borderRadius: 8, color: '#0284C7', cursor: 'pointer'
-                    }}
-                  >
-                    Edit Target ({target})
-                  </button>
                 </div>
               </div>
 
@@ -3295,7 +3311,7 @@ export default function ParametersPage() {
           <div className="modal-overlay" onClick={() => setShowEditTargetModal(false)}>
             <div className="modal-content" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
-                <h3>Set Target Parameters Count</h3>
+                <h3>Operation Settings</h3>
                 <button type="button" className="btn-close" onClick={() => setShowEditTargetModal(false)}>×</button>
               </div>
               <form onSubmit={handleSaveTargetCount}>
@@ -3339,7 +3355,7 @@ export default function ParametersPage() {
                 </div>
                 <div className="modal-footer">
                   <button type="button" className="btn btn-ghost" onClick={() => setShowEditTargetModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary">Save Target Count</button>
+                  <button type="submit" className="btn btn-primary">Save Settings</button>
                 </div>
               </form>
             </div>
