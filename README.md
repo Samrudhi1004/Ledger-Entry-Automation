@@ -1,8 +1,10 @@
-# Voice-Driven Machine Inspection, Jishu Hozen (JH) & Ledger Automation System
+# Inspection Hub — Voice-Driven Machine Inspection, Jishu Hozen (JH) & Ledger Automation System
 
-An enterprise-grade, real-time quality control, autonomous maintenance, and ledger automation platform designed for modern manufacturing floors (IATF 16949 / ISO 9001 compliant). 
+An enterprise-grade, real-time quality control, autonomous maintenance, and ledger automation platform designed for modern manufacturing floors (IATF 16949 / ISO 9001 compliant).
 
 Operators record physical part measurements hands-free using voice recognition powered by **Faster-Whisper (CTranslate2)**, conduct daily **Jishu Hozen (JH)** autonomous maintenance checklists, access **Controlled Quality Documents (L1:L4 SOPs)**, and communicate via real-time shopfloor messaging—all fully synchronized between the **Flutter Android Mobile App** and the **React Vite Supervisor Dashboard**.
+
+> **Architecture Note:** As of September 2026, the system runs on a **PostgreSQL-only** database architecture. MongoDB was fully deprecated and all inspection data is now stored using PostgreSQL JSONB fields.
 
 ---
 
@@ -24,8 +26,7 @@ flowchart TB
     end
 
     subgraph Data["Persistence & Messaging"]
-        Postgres[(🐘 PostgreSQL\nMaster Data, Auth, JH Checklists & SOPs)]
-        Mongo[(🍃 MongoDB\nInspection Sessions & Voice Measurement Logs)]
+        Postgres[("🐘 PostgreSQL\nAll Data: Master Records, Auth, JH Checklists,\nInspection Sessions & Voice Logs (JSONB)")]
         Redis[(🔴 Redis\nJob Cache & Channels Layer)]
     end
 
@@ -34,7 +35,6 @@ flowchart TB
     Mobile -->|Async Voice Job| Whisper
     Whisper --> API
     API --> Postgres
-    API --> Mongo
     API --> JHParser
     API --> DocEngine
     ASGI <--> Redis
@@ -118,8 +118,7 @@ The compiled, production-ready release APK is provided via GitHub Releases:
 | **Backend Framework** | Django 6.0 + Django REST Framework | Python 3.12, modular app architecture |
 | **Realtime Server** | Daphne + Django Channels | ASGI WebSockets for live feed & messaging |
 | **Speech-to-Text** | Faster-Whisper (CTranslate2) | CPU int8 quantization with pre-warmed `.hf_cache` |
-| **Relational DB** | PostgreSQL | Master data, users, JH checklists, SOP metadata |
-| **Document DB** | MongoDB (PyMongo) | Flexible inspection sessions & voice audit logs |
+| **Database** | PostgreSQL (with JSONB) | All data — master records, auth, JH checklists, inspection sessions & voice logs stored in JSONB fields with GIN indexes |
 | **Cache & Broker** | Redis | Channel layer for WebSockets and async jobs |
 | **Supervisor Web** | React 19 + Vite | Recharts, Lucide Icons, Pure CSS design tokens |
 | **Shopfloor Mobile** | Flutter 3.x (Dart) | Material 3 dark-mode UI, secure storage |
@@ -138,10 +137,12 @@ Ledger_entry_automation/
 │   │   ├── machines/          # Factory, Plant & Machine metadata
 │   │   ├── parts/             # Parts, templates & engineering tolerances
 │   │   ├── inspections/       # JH Inspection, First-Piece sessions, Excel generator
+│   │   │                      # (inspection data stored in PostgreSQL JSONB)
 │   │   ├── document_control/  # L1-L4 Quality SOPs, DCRs & approval workflows
 │   │   ├── messaging/         # WebSockets, chat conversations & presence
 │   │   ├── calibration/       # Instrument calibration tracking
-│   │   ├── voice/             # Faster-Whisper engine & number parser
+│   │   ├── voice/             # Faster-Whisper engine, number parser & VoiceLog model
+│   │   ├── analytics/         # OEE, downtime & parameter analytics
 │   │   └── dashboard/         # WebSocket consumers & live analytics
 │   ├── test_jh_flow.py        # 61-test automated JH inspection test suite
 │   ├── manage.py
@@ -159,7 +160,7 @@ Ledger_entry_automation/
 │   │   └── providers/         # Auth, Inspection, Messaging state management
 │   ├── android/               # Native Android configurations & Manifest
 │   └── pubspec.yaml
-└── DOC/                       # Architectural & Deployment Documentation
+└── DOC/                       # Internal architecture & migration documentation
 ```
 
 ---

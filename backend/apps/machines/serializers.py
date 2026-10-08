@@ -10,7 +10,7 @@ class FactorySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'code', 'location',
             'contact_email', 'phone', 'address', 'gstin', 'logo_url', 'industry_type',
-            'shift_hours', 'total_shifts_per_day', 'lunch_break_minutes',
+            'shift_hours', 'shift_1_start', 'shift_2_start', 'shift_3_start', 'total_shifts_per_day', 'lunch_break_minutes',
             'tea_break_minutes', 'available_working_minutes',
             'is_active', 'plant_count', 'created_at'
         ]

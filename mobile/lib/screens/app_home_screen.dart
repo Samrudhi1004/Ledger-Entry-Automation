@@ -1045,6 +1045,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                       spacing: 0,
                       runSpacing: 0,
                       children: [
+
                         IconButton(
                           icon: const Icon(
                             Icons.bug_report_outlined,
@@ -1288,24 +1289,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         },
                       ),
 
-                      // Inspector / Supervisor Card 3: Setup Approval Report
-                      _buildSoftPastelCard(
-                        title: 'Setup Approval Report',
-                        description:
-                            'View official first piece setup approval report (Form F02)',
-                        icon: Icons.assignment_turned_in_rounded,
-                        bgColor: const Color(0xFFFAF5FF),
-                        borderColor: const Color(0xFFE9D5FF),
-                        iconColor: const Color(0xFF9333EA),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const SetupApprovalReportScreen(),
-                            ),
-                          );
-                        },
-                      ),
+
 
                       // Inspector / Supervisor Card 4: Resume Entry
                       _buildSoftPastelCard(

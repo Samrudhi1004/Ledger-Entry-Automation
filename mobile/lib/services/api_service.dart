@@ -23,7 +23,7 @@ class ApiService {
           ? 'http://10.0.2.2:8000/api'
           : 'http://localhost:8000/api';
     }
-    return 'https://backend-production-343b4.up.railway.app/api';
+    return 'https://ledger-entry-automation-production-24a1.up.railway.app/api';
   }
 
   // Secure storage for JWT tokens — EncryptedSharedPreferences on Android / Keychain on iOS
@@ -225,6 +225,39 @@ class ApiService {
       }
     } catch (e) {
       return {'success': false, 'message': 'Cannot connect to backend server ($baseUrl). Please check network connection.'};
+    }
+  }
+
+  /// POST /api/users/password-reset/request/ — request a reset email.
+  ///
+  /// The backend deliberately returns the same success message whether or not
+  /// the email belongs to an account, preventing user enumeration.
+  static Future<Map<String, dynamic>> requestPasswordReset(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/users/password-reset/request/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email.trim()}),
+      ).timeout(const Duration(seconds: 30));
+
+      final body = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': body['message'] ??
+              'If an account with that email exists, a password reset link has been sent.',
+        };
+      }
+
+      return {
+        'success': false,
+        'message': body['error'] ?? body['detail'] ?? 'Unable to send reset link.',
+      };
+    } catch (_) {
+      return {
+        'success': false,
+        'message': 'Unable to connect to the server. Please try again.',
+      };
     }
   }
 
